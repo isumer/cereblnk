@@ -1,0 +1,10 @@
+pipeline {
+  agent { label 'linux' }
+  stages {
+    stage('build') {
+      steps {
+        script { docker.image('maven:3.9').inside { sh 'mvn -B verify' } }
+      }
+    }
+  }
+}

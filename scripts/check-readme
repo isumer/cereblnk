@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""check-readme (CB-104) — the front page must not lie about the repo.
+
+README invites the reader to count things and then prints the counts.
+Three of the four were wrong when this was written: skills read 63
+against 93, commands 13 against 14, hooks 7 against 11. Nobody
+introduced those errors; they arrived one merge at a time, because
+nothing compared the sentence to the tree.
+
+A README is the only document most readers finish. Getting caught
+miscounting on the page that says "count them" costs more than the
+numbers are worth.
+
+Asserts:
+  M-1  every `/cb-*` command documented in README resolves to an entry
+       point skill that exists
+  M-2  every entry point that exists is documented — a shipped command
+       nobody can find is the same defect from the other side
+  M-3  the agent, skill and hook counts printed in README match the
+       tree, whatever the prose around them says
+
+Counts are read from the README text rather than a manifest on purpose:
+the number a reader sees is the number under test.
+
+Exit: 0 clean · 1 drift (each printed with its M-id).
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+README = ROOT / "README.md"
+PLUGIN = ROOT / "plugins/cereblnk"
+
+
+def main():
+    if not README.is_file():
+        print("check-readme: README.md missing", file=sys.stderr)
+        return 1
+    text = README.read_text(encoding="utf-8")
+    bad = 0
+
+    entry_points = {}
+    for f in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
+        m = re.search(r"^name:\s*(\S+)", f.read_text(encoding="utf-8"), re.M)
+        if m:
+            entry_points[m.group(1)] = f
+    documented = set(re.findall(r"`/(cb-[a-z0-9-]+)", text))
+
+    for name in sorted(documented - set(entry_points)):
+        print(f"M-1 README documents /{name}, which no entry point provides")
+        bad += 1
+    for name in sorted(set(entry_points) - documented):
+        print(f"M-2 /{name} ships but README never mentions it")
+        bad += 1
+
+    actual = {
+        "agents": len(list((PLUGIN / "agents").rglob("*-agent.md"))),
+        "skills": len(list((PLUGIN / "skills").rglob("SKILL.md"))),
+        "hooks": len(list((PLUGIN / "hooks/scripts").glob("*.sh"))),
+    }
+    for label, count in actual.items():
+        # Matches "26 agents", "93 skills", "11 hooks" anywhere in the prose.
+        found = [int(n) for n in re.findall(r"\*?\*?(\d+)\*?\*?\s+" + label, text)]
+        if not found:
+            print(f"M-3 README states no {label} count; expected {count}")
+            bad += 1
+        elif count not in found:
+            print(f"M-3 README says {found} {label}, tree has {count}")
+            bad += 1
+
+    if bad:
+        print(f"check-readme: {bad} drift(s)", file=sys.stderr)
+        return 1
+    print(f"check-readme: {len(entry_points)} entry points documented, "
+          f"counts match ({actual['agents']} agents, {actual['skills']} skills, "
+          f"{actual['hooks']} hooks)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

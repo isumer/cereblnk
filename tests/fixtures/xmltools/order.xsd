@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://example.com/order"
+           targetNamespace="http://example.com/order"
+           elementFormDefault="qualified">
+  <xs:element name="order" type="tns:OrderType"/>
+  <xs:complexType name="OrderType">
+    <xs:sequence>
+      <xs:element name="customer" type="xs:string"/>
+      <xs:element name="item" type="tns:ItemType" maxOccurs="unbounded"/>
+      <xs:element name="note" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:positiveInteger" use="required"/>
+    <xs:attribute name="status" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="open"/>
+          <xs:enumeration value="shipped"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+  </xs:complexType>
+  <xs:complexType name="ItemType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="qty" type="xs:int" use="required"/>
+        <xs:attribute name="price" type="xs:decimal"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+</xs:schema>

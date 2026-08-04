@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""rule-load (CB-108) — how many constraint files one edited file pulls.
+
+Rules attach by glob. Nothing has ever counted how many attach to the
+same file type, so the input cost of the constraint layer was never a
+number — only an impression.
+
+It should have been. Splitting `orchestration.md` by domain took a
+Kubernetes ruleset off every `.yaml` in the repository, and that gain
+was invisible until it was measured.
+
+This reports; it does not fail. A shared glob is not automatically a
+defect: three data rules land on `**/entity/**/*` and all three say
+different true things about a domain entity. Eleven files on `**/*.tsx`
+is a different claim, and which parts of it are layering versus
+duplication is a design question, not a mechanical one. Setting a
+threshold before that question is answered would encode a guess as a
+gate.
+
+Usage:
+  rule-load              rank every glob by how many rule files share it
+  rule-load <path>       list the rule files a given path would load
+
+Exit: 0 always. This is an instrument, not a gate.
+"""
+import collections
+import fnmatch
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+RULES = ROOT / "plugins/cereblnk/rules"
+
+
+def globs_of(f):
+    text = f.read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        return []
+    fm = text.split("---")[1]
+    if "paths:" not in fm:
+        return []
+    tail = fm[fm.find("paths:"):]
+    return [g.strip().strip("\"'")
+            for g in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if g.strip()]
+
+
+def rule_files():
+    for f in sorted(RULES.rglob("*.md")):
+        if f.parent.name != "common":
+            yield f
+
+
+def main():
+    index = {f: globs_of(f) for f in rule_files()}
+    common = len(list((RULES / "common").glob("*.md")))
+
+    if len(sys.argv) > 1:
+        target = "/" + sys.argv[1].replace("\\", "/").lstrip("./")
+        hit = [f for f, gs in index.items()
+               if any(fnmatch.fnmatch(target, "*" + g.lstrip("*")) for g in gs)]
+        print(f"rule-load: {sys.argv[1]} pulls {len(hit)} rule file(s) "
+              f"plus {common} from common/")
+        for f in sorted(hit):
+            print(f"  {f.relative_to(RULES)}")
+        return 0
+
+    shared = collections.defaultdict(list)
+    for f, gs in index.items():
+        for g in gs:
+            shared[g].append(f)
+    ranked = sorted(shared.items(), key=lambda kv: -len(kv[1]))
+    heavy = [(g, v) for g, v in ranked if len(v) >= 3]
+
+    print(f"rule-load: {len(index)} rule file(s) outside common/, "
+          f"{common} loaded unconditionally")
+    print(f"rule-load: {len(heavy)} glob(s) shared by three or more files")
+    for g, v in heavy[:15]:
+        names = ", ".join(sorted(str(x.relative_to(RULES)) for x in v)[:3])
+        print(f"  {len(v):3d}  {g:32s} {names}"
+              + ("  ..." if len(v) > 3 else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        # Piping into head is the expected use; do not traceback on it.
+        sys.exit(0)

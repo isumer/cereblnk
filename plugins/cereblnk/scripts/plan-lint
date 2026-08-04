@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# plan-lint (CB-051) — refuses malformed plan files per plan-format.md.
+# Dependency-free ($PYBIN stdlib). Exit 0 = plan admissible; exit 1 =
+# violations (one per line to stderr). Usage: plan-lint <plan.md>
+set -euo pipefail
+# shellcheck source=../lib/cbenv.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ $# -ge 1 ] || { echo "usage: plan-lint <plan.md>" >&2; exit 2; }
+[ -f "$1" ] || { echo "plan-lint: no such file: $1" >&2; exit 2; }
+export PLAN="$1"
+$PYBIN << 'PY'
+import os, re, sys
+
+text = open(os.environ["PLAN"]).read()
+lines = text.splitlines()
+V = []
+
+# ---- Header (R4) ----
+header = {}
+for key in ("spec", "goal", "out_of_scope", "recomposition_check"):
+    m = re.search(rf'^\s*-\s*{key}\s*:\s*(.+)$', text, re.M)
+    if not m or not m.group(1).strip():
+        V.append(f"R4: header missing or empty field: {key}")
+
+# ---- Split into tasks ----
+task_hdr = re.compile(r'^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:', re.M)
+tasks = list(task_hdr.finditer(text))
+if not tasks:
+    V.append("no tasks found (expected '### [ ] Task N: ...')")
+
+PLACEHOLDERS = ("todo", "...", "similar to", "same as above", "implement similarly", "<placeholder>")
+DESTRUCTIVE = re.compile(r'\b(drop|truncate|delete\s+from|alter\s+table|rm\s+-rf|migrat|\.sql\b|schema)\b', re.I)
+COMPILE_ONLY = re.compile(r'^\s*(it\s+)?(compiles?|builds?|no\s+errors?)\s*\.?\s*$', re.I)
+
+for i, m in enumerate(tasks):
+    start = m.end()
+    end = tasks[i+1].start() if i+1 < len(tasks) else len(text)
+    body = text[start:end]
+    tid = m.group(2)
+
+    # R1 verify
+    vm = re.search(r'^\s*-\s*verify\s*:\s*(.+)$', body, re.M | re.I)
+    if not vm or not vm.group(1).strip():
+        V.append(f"R1: Task {tid} has no verify: line")
+    else:
+        # R6 not compile-only
+        if COMPILE_ONLY.match(vm.group(1).strip().strip('"')):
+            V.append(f"R6: Task {tid} verify: is compile-only ('{vm.group(1).strip()}') — name the behavior")
+
+    # R5 risk
+    if not re.search(r'^\s*-\s*risk\s*:\s*(HIGH|MED|LOW)\b', body, re.M | re.I):
+        V.append(f"R5: Task {tid} missing risk: rank (HIGH/MED/LOW)")
+
+    # R2 rollback if destructive
+    files_line = re.search(r'^\s*-\s*files\s*:\s*(.+)$', body, re.M | re.I)
+    scope = (files_line.group(1) if files_line else "") + " " + body
+    if DESTRUCTIVE.search(scope):
+        if not re.search(r'^\s*-\s*rollback\s*:\s*(.+)$', body, re.M | re.I):
+            V.append(f"R2: Task {tid} looks destructive/persistent but has no rollback: line")
+
+    # R3 placeholders
+    low = body.lower()
+    for p in PLACEHOLDERS:
+        if p in low:
+            V.append(f"R3: Task {tid} contains placeholder marker '{p}'")
+            break
+
+if V:
+    for v in V:
+        sys.stderr.write("plan-lint BLOCK: " + v + "\n")
+    sys.exit(1)
+done = sum(1 for m in tasks if m.group(1).lower() == 'x')
+print(f"plan-lint OK: {len(tasks)} task(s), header complete ({done} already checked)")
+sys.exit(0)
+PY

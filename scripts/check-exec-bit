@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""check-exec-bit — a hook that cannot run fails silently.
+
+Every hook in `hooks.json` is invoked as a command. If its file is not
+executable the platform cannot run it, and nothing says so: no error,
+no warning, the guard simply never fires. The delegation guard stops
+guarding, the secret guard stops redacting, and a run looks normal
+while every hard-enforcement mechanism in the plugin is absent.
+
+This has happened once. A push from a filesystem that does not carry
+the POSIX mode bit cleared all 52 of them, and the repository looked
+fine — only one test in one suite noticed, and it noticed for an
+unrelated-looking reason.
+
+Scope is deliberately narrow. Files that are *imported* rather than
+invoked do not need the bit, and telling the two apart from the
+filesystem alone is guesswork. So this checks the two sets whose
+failure is silent or total:
+
+  X-1  every command named in `hooks/hooks.json` is executable in the
+       index — the twelve whose absence is invisible
+  X-2  `scripts/verify` itself is executable — the documented entry
+       point, and the thing a contributor runs first
+
+Everything else that loses the bit fails loudly at its call site, which
+is a report rather than a hazard.
+
+The index is what is checked, not the working tree: the index is what
+travels. A local `chmod` that never reaches a commit fixes nothing.
+
+Exit: 0 clean · 1 a command cannot be executed (each named).
+"""
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOOKS_JSON = ROOT / "plugins/cereblnk/hooks/hooks.json"
+
+
+def index_modes():
+    out = subprocess.run(["git", "ls-files", "-s"], cwd=str(ROOT),
+                         capture_output=True, text=True, check=True).stdout
+    modes = {}
+    for line in out.splitlines():
+        head, _, path = line.partition("\t")
+        modes[path] = head.split()[0]
+    return modes
+
+
+def main():
+    if not HOOKS_JSON.is_file():
+        print("check-exec-bit: hooks.json missing", file=sys.stderr)
+        return 1
+    try:
+        modes = index_modes()
+    except Exception as e:
+        print(f"check-exec-bit: cannot read the index ({e})", file=sys.stderr)
+        return 1
+
+    wanted = set()
+    cfg = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+    for event in cfg.get("hooks", {}).values():
+        for group in event:
+            for hook in group.get("hooks", []):
+                m = re.search(r"hooks/scripts/([\w.-]+)", hook.get("command", ""))
+                if m:
+                    wanted.add(f"plugins/cereblnk/hooks/scripts/{m.group(1)}")
+    hook_count = len(wanted)
+    wanted.add("scripts/verify")
+
+    bad = 0
+    for path in sorted(wanted):
+        mode = modes.get(path)
+        rule = "X-2" if path == "scripts/verify" else "X-1"
+        if mode is None:
+            print(f"{rule} {path}: named as a command but not tracked")
+            bad += 1
+        elif mode != "100755":
+            print(f"{rule} {path}: mode {mode} in the index — it cannot be executed, "
+                  f"and nothing will say so at run time")
+            bad += 1
+
+    if bad:
+        print(f"check-exec-bit: {bad} command(s) cannot run. Restore with "
+              f"`git update-index --chmod=+x <path>` and commit.", file=sys.stderr)
+        return 1
+    print(f"check-exec-bit: {hook_count} hook(s) and the verify entry point are executable")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

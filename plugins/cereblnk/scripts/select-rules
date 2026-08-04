@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""select-rules (CB-109) — which constraints a file actually pulls.
+
+The rules layer matched on globs alone. A glob answers "what kind of
+file is this"; it cannot answer "is this framework part of the
+project". So a lone `.tsx` in a service that never depends on Next.js
+still pulled the Next.js ruleset, because `**/app/**/*.tsx` matched.
+
+The missing half was already computed. `scripts/detect-stack` writes a
+stack profile, and `policies/skill-selection.yaml` already carries the
+`stack:` token for each skill. 102 of the tree's rule files belong to a
+skill with such a token; nothing consumed it on the rules side.
+
+So the gate is both halves together:
+
+    glob matches the file  AND  the owning skill's stack token is
+    present in the profile
+
+Language and format rules carry no stack token and are never gated —
+a `.sql` file means SQL is present, and there is nothing further to
+prove. The same is true of the cross-cutting rules that sit directly
+under a category rather than in a skill directory.
+
+Absent profile means no gate, never a wrong guess: if detect-stack has
+not run, every glob match is returned, which is the behaviour this
+script replaces. Reducing the set on missing evidence would drop real
+constraints silently, and a missing constraint is worse than an extra
+one.
+
+Usage:
+  select-rules <path>...     rule files to read for these paths
+  select-rules --explain <path>   also show what each gate decided
+
+Exit: 0 always — this computes a list, it does not judge.
+"""
+import fnmatch
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+RULES = ROOT / "rules"
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+try:
+    import cbmap
+except Exception:
+    cbmap = None
+
+
+def globs_of(path):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        return []
+    fm = text.split("---")[1]
+    if "paths:" not in fm:
+        return []
+    tail = fm[fm.find("paths:"):]
+    return [g.strip().strip("\"'")
+            for g in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if g.strip()]
+
+
+def stack_tokens():
+    """Tokens detect-stack found. Empty means the gate does not apply."""
+    for base in (pathlib.Path.cwd(), ROOT.parent.parent):
+        p = base / ".claude/cereblnk/stack-profile.yaml"
+        if p.is_file():
+            body = p.read_text(encoding="utf-8", errors="replace")
+            if "tokens:" not in body:
+                return set()
+            tail = body[body.find("tokens:"):]
+            tail = tail.split("\nmanifests:")[0]
+            return {t.strip().strip("\"'")
+                    for t in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if t.strip()}
+    return set()
+
+
+def gate_of(rule_path):
+    """The stack token guarding this rule, or None when it is ungated."""
+    rel = rule_path.relative_to(RULES)
+    if len(rel.parts) < 3 or cbmap is None:
+        return None                       # cross-cutting or common: never gated
+    skill = rel.parts[1]
+    try:
+        rules, _ = cbmap.load()
+    except Exception:
+        return None
+    for r in rules:
+        if r["skill"] == skill:
+            return r.get("stack") or None
+    return None
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a != "--explain"]
+    explain = "--explain" in sys.argv[1:]
+    if not args:
+        print("usage: select-rules [--explain] <path>...", file=sys.stderr)
+        return 0
+
+    tokens = stack_tokens()
+    common = sorted((RULES / "common").glob("*.md"))
+    selected, dropped = set(), []
+
+    for raw in args:
+        target = "/" + raw.replace("\\", "/").lstrip("./")
+        for f in sorted(RULES.rglob("*.md")):
+            if f.parent.name == "common":
+                continue
+            if not any(fnmatch.fnmatch(target, "*" + g.lstrip("*"))
+                       for g in globs_of(f)):
+                continue
+            gate = gate_of(f)
+            if gate and tokens and gate not in tokens:
+                dropped.append((f, gate))
+                continue
+            selected.add(f)
+
+    print("# select-rules — glob match plus stack gate (CB-109)")
+    print(f"stack_profile: {'present' if tokens else 'absent — no gate applied'}")
+    print("rules:")
+    for f in sorted(selected):
+        print(f"  - {f.relative_to(RULES)}")
+    print("common:")
+    for f in common:
+        print(f"  - common/{f.name}")
+    print(f"total: {len(selected) + len(common)}"
+          + (f" ({len(dropped)} gated out)" if dropped else ""))
+    if explain and dropped:
+        print("gated_out:")
+        for f, gate in sorted(dropped):
+            print(f"  - {f.relative_to(RULES)}   # needs '{gate}' in the profile")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        sys.exit(0)

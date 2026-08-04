@@ -1,0 +1,194 @@
+# Agent Communication Protocol (ACP)
+
+> Status: Frozen v1.0
+> This document defines the ONLY format in which agents exchange information.
+> Depends on: 00_MANIFESTO.md, 01_RUNTIME_SPECIFICATION.md
+> No agent output in free-form text is ever accepted by another agent.
+
+---
+
+## 1. Why ACP Exists
+
+Synthesis across many agents is only possible if every agent speaks the
+same structured language. ACP guarantees:
+
+- **Mergeability** — the Consensus Engine can compare outputs mechanically.
+- **Evidence traceability** — every claim links to its source (Law 2).
+- **Epistemic integrity** — labels survive summarization (Principle 5).
+- **Budget accounting** — every block reports its context consumption.
+
+---
+
+## 2. Task Block (Runtime → Agent)
+
+Every agent receives exactly one Task Block. Nothing else.
+
+```yaml
+acp_version: "1.0"
+kind: task
+task_id: T-014
+run_id: R-2026-07-16-001
+role: SecurityAgent
+objective: >
+  Determine whether the JWT validation change in AuthFilter introduces
+  an authentication bypass.
+constraints:
+  - Do not evaluate performance implications (out of expertise → Law 1)
+  - Production system, zero-downtime requirement
+risk: high
+budget_tokens: 8000
+verification_level: 3
+context_refs:               # provided by Context OS, never raw files
+  - ref: CTX-114            # compressed evidence bundle: AuthFilter diff
+  - ref: CTX-115            # compressed evidence bundle: SecurityConfig
+acceptance: >
+  A pass/fail conclusion on auth bypass with every supporting claim
+  labeled Known or Derived and linked to evidence.
+```
+
+---
+
+## 3. Response Block (Agent → Runtime)
+
+Every agent returns exactly one Response Block.
+
+```yaml
+acp_version: "1.0"
+kind: response
+task_id: T-014
+role: SecurityAgent
+status: completed          # completed | blocked | escalated
+
+decision: >                # one sentence, the answer to the objective
+  The change introduces a token-expiry bypass when clock skew exceeds 30s.
+
+facts:
+  known:                   # directly observed in evidence
+    - id: F-1
+      claim: "AuthFilter no longer calls validateExpiry() on refresh path"
+      evidence: [CTX-114#L42-58]
+  derived:                 # logically follows from known facts
+    - id: F-2
+      claim: "Expired tokens on the refresh path are accepted"
+      from: [F-1]
+  estimated:               # quantified with uncertainty
+    - id: F-3
+      claim: "Exploit window is roughly the configured skew tolerance (~30s)"
+      basis: "config value in CTX-115#L12"
+  assumed:                 # taken without evidence — must be listed
+    - id: F-4
+      claim: "No upstream gateway re-validates expiry"
+  speculative: []          # hypotheses; never drive decisions alone
+
+unknowns:
+  - "Whether the API gateway performs its own JWT validation"
+
+risks:
+  - severity: high
+    description: "Authentication bypass on refresh endpoint"
+    falsified_by: "Evidence that gateway validates expiry (resolves F-4)"
+
+confidence: 0.78           # 0.00–1.00, calibrated, justified by fact mix
+confidence_basis: >
+  High on F-1/F-2 (direct evidence). Discounted for assumption F-4.
+
+next_action: >
+  Verify gateway JWT config before finalizing severity.
+
+artifacts: []              # produced files/patches, by reference
+
+budget_report:
+  tokens_received: 8000
+  tokens_used: 6200
+```
+
+---
+
+## 4. Field Rules
+
+### 4.1 Epistemic labels (mandatory, Principle 5)
+
+| Label | Definition | May drive a decision? |
+|---|---|---|
+| known | Directly observed in referenced evidence | Yes |
+| derived | Logical consequence of known facts, chain stated | Yes |
+| estimated | Quantified with stated basis and uncertainty | Yes, with caveat |
+| assumed | Believed without evidence, explicitly listed | Only if flagged in decision |
+| speculative | Hypothesis | Never alone |
+
+Rules:
+- Every fact has an `id` so other agents can reference it (`from: [F-1]`).
+- A `derived` fact must name the `known` facts it follows from.
+- If a decision depends on any `assumed` fact, the decision text must say so.
+- Labels are preserved verbatim through compression and synthesis.
+
+### 4.2 Evidence references
+
+- Evidence is referenced, never inlined in bulk: `CTX-114#L42-58`.
+- A claim without an evidence reference cannot be labeled `known`.
+- The Consensus Engine rejects any Response Block containing an unlabeled claim.
+
+### 4.3 Confidence
+
+- Single calibrated number plus a one-line basis.
+- Confidence above 0.9 requires zero `assumed` facts in the decision chain.
+- Confidence is about the decision, not about individual facts.
+
+### 4.4 Status semantics
+
+| Status | Meaning | Runtime action |
+|---|---|---|
+| completed | Objective met within budget | Merge into Evidence Graph |
+| blocked | Cannot proceed; missing evidence or budget | Planner re-plans |
+| escalated | Risk higher than assigned | Risk upgraded, task re-issued |
+
+---
+
+## 5. Verification Blocks
+
+The Verifier and Challenger use the same Response Block schema with
+one additional field:
+
+```yaml
+kind: verification          # or: challenge
+target_task: T-014
+verdict: confirmed          # confirmed | refuted | weakened | inconclusive
+verdict_detail: >
+  F-1 re-derived independently from CTX-114. F-4 remains the weak point.
+```
+
+Rules:
+- The Verifier re-derives claims from evidence; it never re-reads the
+  original agent's reasoning first (independence requirement).
+- The Challenger must produce at least one concrete counter-scenario
+  or explicitly state that none could be constructed.
+
+---
+
+## 6. Synthesis Block (Runtime → User)
+
+The only block a user ever sees. Fixed ordering (Principle 7):
+
+```
+1. DECISION      — one paragraph, the answer
+2. EVIDENCE      — the known/derived facts that matter, with references
+3. REASONING     — how evidence leads to the decision
+4. RISK          — what could be wrong, what would falsify this
+5. CONFIDENCE    — number + basis + open unknowns
+```
+
+Assumed and speculative content appears in RISK, never silently in DECISION.
+
+---
+
+## 7. Protocol Violations
+
+The following are hard failures. The Runtime discards the block and
+re-issues the task:
+
+1. Free-form output between agents.
+2. Unlabeled claims.
+3. `known` claim without evidence reference.
+4. Decision resting on `speculative` facts.
+5. Budget overrun without a `blocked` status.
+6. Conclusion accepted from another agent without its evidence attached (Law 2).

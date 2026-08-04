@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""check-skill-relations — validate the skill relations graph.
+
+M-class checker for skill-relations-policy.md. ConsistencyAgent applies
+the same rules at runtime; this script applies them at commit/CI time,
+which is where a broken knowledge map is cheapest to catch.
+
+Rules enforced (policy §1, §4):
+  1. Every requires/complements target resolves to an existing skill.
+  2. The `requires` graph is acyclic.
+  3. No relations line carries a static confidence token.
+  4. escalate_to entries name a target and a "(when)" condition.
+
+Usage: scripts/check-skill-relations [skills_root]
+Exit: 0 clean · 1 violations found
+"""
+import pathlib
+import re
+import sys
+
+CONFIDENCE_TOKENS = re.compile(
+    r"\b(confidence|certainty|high[- ]confidence|reliability score)\b", re.I)
+FIELDS = ("requires", "complements", "escalate_to")
+
+
+def parse(root: pathlib.Path):
+    skills, relations = set(), {}
+    for path in sorted(root.rglob("SKILL.md")):
+        name = path.parent.name
+        skills.add(name)
+        rel = {}
+        for line in path.read_text().splitlines()[:20]:
+            for field in FIELDS:
+                if line.startswith(field + ":"):
+                    value = line.split(":", 1)[1].strip()
+                    rel[field] = [x.strip() for x in value.split("·")
+                                  if x.strip()]
+        relations[name] = (rel, path)
+    return skills, relations
+
+
+def main(argv):
+    root = pathlib.Path(argv[1] if len(argv) > 1
+                        else "plugins/cereblnk/skills")
+    if not root.is_dir():
+        print(f"skills root not found: {root}")
+        return 1
+    skills, relations = parse(root)
+    problems = []
+
+    for name, (rel, path) in relations.items():
+        for field in ("requires", "complements"):
+            for target in rel.get(field, []):
+                if target not in skills:
+                    problems.append(
+                        f"{path}: {field} -> '{target}' does not resolve "
+                        f"to an existing skill")
+        for entry in rel.get("escalate_to", []):
+            if "(" not in entry or ")" not in entry:
+                problems.append(
+                    f"{path}: escalate_to entry '{entry}' has no "
+                    f"'(when)' condition")
+        for field in FIELDS:
+            joined = " ".join(rel.get(field, []))
+            if CONFIDENCE_TOKENS.search(joined):
+                problems.append(
+                    f"{path}: {field} carries a confidence-like token — "
+                    f"forbidden by skill-relations-policy.md §4")
+
+    # rule 2: acyclic requires
+    graph = {n: r.get("requires", []) for n, (r, _) in relations.items()}
+    state = {}
+
+    def visit(node, stack):
+        if state.get(node) == "done":
+            return
+        if state.get(node) == "open":
+            problems.append("requires cycle: " + " -> ".join(stack + [node]))
+            return
+        state[node] = "open"
+        for nxt in graph.get(node, []):
+            if nxt in graph:
+                visit(nxt, stack + [node])
+        state[node] = "done"
+
+    for node in graph:
+        visit(node, [])
+
+    if problems:
+        print(f"FAIL: {len(problems)} relations violation(s)")
+        for p in problems:
+            print(f"  {p}")
+        return 1
+    with_rel = sum(1 for _, (r, _) in relations.items() if r)
+    print(f"OK: {len(skills)} skills, {with_rel} carrying relations — "
+          f"all references resolve, requires graph acyclic, "
+          f"no confidence tokens")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""check-skill-frontmatter (CB-088) — every skill must actually load.
+
+A SKILL.md without YAML frontmatter is invisible to the platform: the
+skill exists in the repo and nowhere else. This checker makes that
+failure mode impossible to reintroduce.
+
+Asserts, for every plugins/cereblnk/skills/**/SKILL.md:
+  F-1  file starts with a `---` frontmatter block, closed by `---`
+  F-2  frontmatter has a non-empty `name:`
+  F-3  name matches the skill directory name, OR carries the `cb-`
+       entry-point prefix (dispatch, think, ... — README naming rule)
+  F-4  frontmatter has a non-empty `description:` of at most 1024 chars
+  F-5  no duplicate names across the tree
+  F-6  no per-file version string — the plugin carries one version;
+       a stale per-skill version misreports the artifact's age
+
+Exit: 0 all pass · 1 any violation (each printed with its F-id).
+"""
+import pathlib, re, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SKILLS = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "plugins/cereblnk/skills"
+
+def main():
+    bad, names = 0, {}
+    for f in sorted(SKILLS.rglob("SKILL.md")):
+        rel = f.relative_to(SKILLS)
+        text = f.read_text()
+
+        m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+        if not m:
+            print(f"F-1 {rel}: no YAML frontmatter — skill will not load"); bad += 1
+            continue
+        fm = m.group(1)
+
+        nm = re.search(r"^name:\s*(\S+)\s*$", fm, re.M)
+        if not nm or not nm.group(1):
+            print(f"F-2 {rel}: frontmatter missing name"); bad += 1
+            continue
+        name = nm.group(1)
+
+        dirname = f.parent.name
+        if name != dirname and not name.startswith("cb-"):
+            print(f"F-3 {rel}: name '{name}' is neither dir '{dirname}' nor cb- entry point"); bad += 1
+
+        dm = re.search(r"^description:\s*(.+)$", fm, re.M)
+        if not dm or not dm.group(1).strip():
+            print(f"F-4 {rel}: frontmatter missing description"); bad += 1
+        elif len(dm.group(1)) > 1024:
+            print(f"F-4 {rel}: description over 1024 chars ({len(dm.group(1))})"); bad += 1
+
+        if re.search(r"(^|·\s*)version:\s*\d+\.\d+\.\d+", text, re.M):
+            print(f"F-6 {rel}: per-file version — the plugin version is the only one"); bad += 1
+
+        if name in names:
+            print(f"F-5 {rel}: duplicate name '{name}' (also {names[name]})"); bad += 1
+        names[name] = rel
+
+    total = len(list(SKILLS.rglob("SKILL.md")))
+    print(f"check-skill-frontmatter: {total} skills, "
+          + ("all pass" if bad == 0 else f"{bad} VIOLATIONS"))
+    return 1 if bad else 0
+
+if __name__ == "__main__":
+    sys.exit(main())

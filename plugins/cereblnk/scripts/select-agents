@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# select-agents (CB-081, extended CB-097) — deterministic specialist AND
+# skill selection, the scriptable subset of agent-selection-policy.md
+# §1 + §3b + §4c.
+#
+# A weak conductor pipes `git diff --name-only <range>` in and reads the
+# answer instead of reasoning about the routing table. The policy stays
+# authoritative for signals a path cannot carry (task semantics, money,
+# prod-config intent); this script never DOWNGRADES — it emits the floor.
+#
+# CB-097 adds two things paths alone could not do:
+#   --text  route from the REQUEST when nothing has changed yet (design,
+#           new build). A path-only selector is blind at exactly the
+#           moment a spec is being written.
+#   skills_required  per role, from policies/skill-selection.yaml, gated
+#           by the stack profile. The agent loads these at run start;
+#           SubagentStop blocks the run if it did not.
+#
+# Usage: select-agents <file>...
+#        git diff --name-only main... | select-agents
+#        select-agents --text "add idempotency to the payment service"
+#        select-agents --text "<request>" -- <file>...
+# Output: YAML (specialists, gate_level, skills_required, signals).
+# Exit: 0 resolved · 2 usage error · 3 unresolved (no signal matched —
+#       the conductor must supply --text or name the surface; silently
+#       defaulting to one agent is how a run gets the wrong specialist).
+set -euo pipefail
+CB_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/cbenv.sh
+. "$CB_SCRIPTS/lib/cbenv.sh"
+cb_require_python
+CB_LIB="$CB_SCRIPTS/lib"
+
+CB_TEXT=""
+if [ "${1:-}" = "--text" ]; then
+  [ $# -ge 2 ] || { echo "select-agents: --text needs a request string" >&2; exit 2; }
+  CB_TEXT="$2"; shift 2
+  [ "${1:-}" = "--" ] && shift
+fi
+if [ $# -ge 1 ]; then CB_PATHS="$(printf '%s\n' "$@")"
+elif [ -n "$CB_TEXT" ]; then CB_PATHS=""
+else CB_PATHS="$(cat)"; fi
+export CB_PATHS CB_TEXT CB_LIB
+$PYBIN << 'PY'
+import os, pathlib, re, sys
+
+sys.path.insert(0, os.environ["CB_LIB"])
+import cbmap  # noqa: E402
+
+RULES = [
+    # (name, path regex, agents, gate floor)
+    ("auth/security surface", r'(?i)(auth|security|jwt|oauth|token|session|crypt|secret|login|permission|acl|filterchain)',
+     ["security-agent"], 3),
+    ("schema/migration",      r'(?i)(\.sql$|liquibase|migration|flyway|changelog.*\.(xml|ya?ml)$)',
+     ["database-agent", "security-agent"], 3),
+    ("terraform state",       r'\.tf(vars)?$',
+     ["infra-agent", "security-agent"], 3),
+    ("container/orchestration", r'(?i)(dockerfile|docker-compose|/k8s/|kubernetes|/helm/|chart\.ya?ml$|nginx.*\.conf$)',
+     ["infra-agent"], 2),
+    ("ci/cd pipeline",        r'(?i)(jenkinsfile|\.github/workflows/|bitbucket-pipelines\.ya?ml$|\.gitlab-ci)',
+     ["infra-agent"], 2),
+    ("ui surface",            r'(?i)(\.(tsx|jsx|vue|svelte|css|scss|less|html)$|/components?/|/pages?/|/frontend/)',
+     ["frontend-agent"], 1),
+    ("server-side code",      r'(?i)(\.(java|kt|kts|go|py|rb|cs|scala)$|/src/main/|/server/|/api/)',
+     ["backend-agent"], 1),
+    ("plain js/ts backend",   r'(?i)\.(js|ts|mjs|cjs)$',
+     ["backend-agent"], 1),   # only if no UI rule matched the same file (handled below)
+    ("test surface",          r'(?i)(/tests?/|\.test\.|\.spec\.|_test\.(go|py)$|Test\.java$)',
+     ["qa-agent"], 1),
+    ("documentation",         r'(?i)\.md$',
+     ["docs-agent"], 1),
+    # Documentation splits by WHO owns the artifact, not by extension.
+    # docs-agent reviews docs against a diff inside a code workflow;
+    # technicalwriter-agent owns the document when the document IS the
+    # deliverable. memory/specs and memory/briefs only exist while one
+    # is being authored, so the path settles it. Both separators: the
+    # blocked path arrives as the platform wrote it.
+    ("authored documentation", r'(?i)(?:^|[/\\])memory[/\\](specs|briefs)[/\\]',
+     ["technicalwriter-agent"], 1),
+]
+UI = re.compile(RULES[5][1])
+AUTHORED = re.compile(RULES[10][1])
+
+# Signals a path cannot carry. Text RAISES the floor, never lowers it —
+# "just a small expiry bump" is still auth.
+TEXT_RULES = [
+    ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
+     ["backend-agent", "security-agent"], 3),
+    ("auth/session",   r'(?i)(auth|login|token|session|permission)',
+     ["security-agent"], 3),
+    ("deletion/retention", r'(?i)(delete|purge|retention|drop table)',
+     ["database-agent", "security-agent"], 3),
+    ("schema/migration", r'(?i)(migration|schema|changeset|liquibase|flyway)',
+     ["database-agent"], 3),
+    ("ui/experience",  r'(?i)(\bui\b|screen|page|component|form)',
+     ["frontend-agent"], 1),
+    ("api contract",   r'(?i)(\bapi\b|endpoint|contract|versioning)',
+     ["apidesign-agent"], 2),
+    ("infrastructure", r'(?i)(deploy|cluster|container|pipeline|terraform|helm|kubernetes)',
+     ["infra-agent"], 2),
+    ("performance",    r'(?i)(slow|latency|throughput|performance)',
+     ["performance-agent"], 2),
+    ("tests",          r'(?i)(\btest\b|coverage|regression)',
+     ["qa-agent"], 1),
+]
+
+paths = [l.strip() for l in os.environ.get("CB_PATHS", "").splitlines() if l.strip()]
+text = os.environ.get("CB_TEXT", "")
+if not paths and not text:
+    print("select-agents: no paths on stdin/argv and no --text", file=sys.stderr)
+    raise SystemExit(2)
+
+agents, level, signals, domains = [], 1, [], set()
+
+
+def add(agent_list, gl, signal):
+    global level
+    for a in agent_list:
+        if a not in agents:
+            agents.append(a)
+    domains.add(agent_list[0])
+    level = max(level, gl)
+    signals.append(signal)
+
+
+for p in paths:
+    for name, rx, ag, gl in RULES:
+        if name == "plain js/ts backend" and UI.search(p):
+            continue
+        # An authored spec is not also a diff-driven doc review. Adding
+        # docs-agent here would not raise a floor, it would name the
+        # wrong specialist alongside the right one.
+        if name == "documentation" and AUTHORED.search(p):
+            continue
+        if re.search(rx, p):
+            add(ag, gl, "%s -> %s" % (p, name))
+if text:
+    for name, rx, ag, gl in TEXT_RULES:
+        if re.search(rx, text):
+            add(ag, gl, "text -> %s" % name)
+
+# multi-domain work is at least level 2 even without an L3 signal
+if len(domains) >= 2:
+    level = max(level, 2)
+
+# ---- stack profile: absent means no stack gate, never a wrong guess ----
+stack, stack_note = None, "none — stack gate not applied (run scripts/detect-stack)"
+cbdir = os.environ.get("CB_DIR") or ""
+if cbdir:
+    sp = pathlib.Path(cbdir) / "context/stack-profile.yaml"
+    if sp.exists():
+        head = sp.read_text(encoding="utf-8").split("manifests:")[0]
+        stack = set(re.findall(r"^\s+-\s+(\S+)\s*$", head, re.M))
+        stack_note = "stack-profile.yaml (%d tokens)" % len(stack)
+
+rules, errors = cbmap.load()
+if errors:
+    for e in errors[:5]:
+        print("select-agents: skill-selection.yaml: %s" % e, file=sys.stderr)
+    raise SystemExit(2)
+
+skills, skill_why = {}, []
+for r in rules:
+    if stack is not None and r["stack"] and r["stack"] not in stack:
+        continue                      # declared for a stack this project does not have
+    hit = None
+    for rx in r["paths"]:
+        for p in paths:
+            if re.search(rx, p):
+                hit = "path %s" % p
+                break
+        if hit:
+            break
+    if not hit and text:
+        low = text.lower()
+        for t in r["topics"]:
+            if t.lower() in low:
+                hit = "topic '%s'" % t
+                break
+    if not hit:
+        continue
+    placed = False
+    for role in r["roles"]:
+        if role in agents:
+            skills.setdefault(role, [])
+            if r["skill"] not in skills[role]:
+                skills[role].append(r["skill"])
+            placed = True
+    if placed:
+        skill_why.append("%s <- %s" % (r["skill"], hit))
+
+if not agents:
+    print("# select-agents — UNRESOLVED", file=sys.stderr)
+    print("unresolved: true", file=sys.stderr)
+    print("reason: no path rule and no text rule matched", file=sys.stderr)
+    print("next: re-run with --text \"<the request>\" or name the surface; "
+          "agent-selection-policy.md 1 stays authoritative. A silent "
+          "single-agent default is how a run gets the wrong specialist.",
+          file=sys.stderr)
+    raise SystemExit(3)
+
+print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
+print("specialists:")
+for a in agents:
+    print("  - %s" % a)
+if level == 3:
+    print("  - challenger-agent   # mandatory at gate level 3")
+print("gate_level: %d" % level)
+print("stack_source: %s" % stack_note)
+print("skills_required:")
+for role in agents:
+    got = skills.get(role) or []
+    if got:
+        print("  %s: [%s]" % (role, ", ".join(got)))
+    else:
+        print("  %s: []   # no skill signal for this role" % role)
+print("signals:")
+for s in signals:
+    print("  - \"%s\"" % s)
+for s in skill_why:
+    print("  - \"%s\"" % s)
+PY

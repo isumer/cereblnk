@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""check-rules (CB-092) — the constraint layer must stay loadable and honest.
+
+A rules file that no glob attaches, or that a skill points at and does
+not exist, is the same failure class as a skill with no frontmatter:
+present in the repo, active nowhere.
+
+Asserts, for every plugins/cereblnk/rules/**/*.md:
+  R-1  YAML frontmatter present and closed
+  R-2  `name` present, unique across the tree, and matching the file's
+       position (<dir>-<file> for language and framework rules,
+       common-<file> for the common layer)
+  R-3  `genre: constraint` declared — the lint band depends on it
+  R-4  an attachment declared: either `paths:` with at least one
+       non-empty glob, or `applies_when:` naming the task signal.
+       A rule that attaches to everything attaches to nothing, so
+       `**/*` alone is rejected
+  R-5  a trigger table exists (the entry point an agent reads first)
+  R-6  every section that states a constraint also names what is
+       prohibited, without showing it
+  R-7  code blocks use a four-space continuation indent — an example
+       a weaker model copies must teach the house form, not two
+
+And, across the repo:
+  R-8  every `rules/...` path referenced by a SKILL.md description
+       resolves to a real directory or file
+  R-9  every rules directory has a skill, and that skill carries a
+       `## Constraints` section in its BODY. A mention inside the
+       frontmatter description is prose the model may or may not act
+       on; the body is the instruction that loads the layer. A rules
+       directory no body loads is an inert file tree — present in the
+       repo, active nowhere, which is the same failure this checker
+       exists to catch at the file level (R-4)
+
+What this cannot check: whether an example is idiomatic, complete, or
+worth copying. That stays a reading job.
+
+Exit: 0 all pass · 1 any violation (each printed with its R-id).
+"""
+import pathlib, re, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+RULES = ROOT / "plugins/cereblnk/rules"
+SKILLS = ROOT / "plugins/cereblnk/skills"
+
+def expected_name(f: pathlib.Path) -> str:
+    rel = f.relative_to(RULES)
+    if rel.parts[0] == "common":
+        return f"common-{f.stem}"
+    return f"{f.parent.name}-{f.stem}"
+
+def main():
+    bad, names = 0, {}
+
+    if not RULES.is_dir():
+        print("check-rules: no rules/ directory — nothing to check")
+        return 0
+
+    files = sorted(RULES.rglob("*.md"))
+    for f in files:
+        rel = f.relative_to(RULES)
+        text = f.read_text()
+
+        m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+        if not m:
+            print(f"R-1 {rel}: no YAML frontmatter — rule will not load"); bad += 1
+            continue
+        fm, body = m.group(1), text[m.end():]
+
+        nm = re.search(r"^name:\s*(\S+)\s*$", fm, re.M)
+        if not nm:
+            print(f"R-2 {rel}: frontmatter missing name"); bad += 1
+        else:
+            name = nm.group(1)
+            want = expected_name(f)
+            if name != want:
+                print(f"R-2 {rel}: name '{name}' should be '{want}'"); bad += 1
+            if name in names:
+                print(f"R-2 {rel}: duplicate name '{name}' (also {names[name]})"); bad += 1
+            names[name] = rel
+
+        if not re.search(r"^genre:\s*constraint\s*$", fm, re.M):
+            print(f"R-3 {rel}: missing 'genre: constraint'"); bad += 1
+
+        globs = [g.strip() for g in re.findall(r"^\s+-\s*[\"']?([^\"'\n]+)[\"']?\s*$",
+                 fm[fm.find("paths:"):] if "paths:" in fm else "", re.M) if g.strip()]
+        # `applies_when:` must name a task signal, not fill the field. The
+        # literal None passed for two releases and left both files
+        # unreachable: no glob, and a signal that matches nothing. R-4
+        # existed the whole time — its predicate was "non-empty", which a
+        # placeholder satisfies.
+        ts = re.search(r"^applies_when:\s*(\S.*)$", fm, re.M)
+        signal = ts.group(1).strip() if ts else ""
+        if signal.lower() in ("none", "null", "n/a", "-", "tbd", "todo"):
+            print(f"R-4 {rel}: applies_when is a placeholder ({signal!r}) — "
+                  f"nothing attaches this rule")
+            bad += 1
+            signal = "__placeholder__"   # reported once, not twice
+        task_signal = bool(signal)
+        if not globs and not task_signal:
+            print(f"R-4 {rel}: no paths glob and no applies_when — nothing attaches this rule")
+            bad += 1
+        elif globs and all(g in ("**/*", "**") for g in globs):
+            print(f"R-4 {rel}: paths is '**/*' — attaches to everything, so to nothing")
+            bad += 1
+
+        if not re.search(r"^\|\s*(Seen in the diff|Situation)\s*\|", body, re.M):
+            print(f"R-5 {rel}: no trigger table"); bad += 1
+
+        for block in re.findall(r"^```[a-z]*\n(.*?)^```", body, re.M | re.S):
+            for line in block.splitlines():
+                if re.match(r"^ {12,}[.)]", line):
+                    print(f"R-7 {rel}: continuation indent over four spaces — "
+                          f"{line.strip()[:40]}")
+                    bad += 1
+                    break
+
+        sections = re.findall(r"^## §\d+ .+?(?=^## |\Z)", body, re.M | re.S)
+        for s in sections:
+            if "Named, not shown" not in s:
+                head = s.splitlines()[0][:60]
+                print(f"R-6 {rel}: section without a prohibition line — {head}")
+                bad += 1
+
+    # R-8: skill descriptions must not point at rules that do not exist
+    for sf in sorted(SKILLS.rglob("SKILL.md")):
+        for ref in set(re.findall(r"rules/[a-z0-9/-]+", sf.read_text())):
+            target = ROOT / "plugins/cereblnk" / ref
+            if not target.exists() and not target.with_suffix(".md").exists():
+                print(f"R-8 {sf.relative_to(SKILLS)}: references missing {ref}")
+                bad += 1
+            # An empty directory satisfied existence and proved nothing. A
+            # skill pointing at a directory with no rules in it is the same
+            # dangling reference in a shape the first version could not see.
+            elif target.is_dir() and not any(target.glob("*.md")):
+                print(f"R-8 {sf.relative_to(SKILLS)}: {ref} exists but is empty")
+                bad += 1
+
+    # R-9: a rules directory whose skill body never loads it is inert.
+    # R-4 catches a rule file that attaches to nothing. This catches the
+    # tier above it: a whole directory that attaches correctly and is
+    # still never read, because the skill that owns it never says to.
+    for d in sorted(RULES.iterdir()):
+        if not d.is_dir() or d.name == "common":
+            continue
+        for sub in sorted(d.iterdir()):
+            if not sub.is_dir():
+                continue
+            skill = SKILLS / d.name / sub.name / "SKILL.md"
+            if not skill.is_file():
+                print(f"R-9 rules/{d.name}/{sub.name}: no skill carries these rules")
+                bad += 1
+            elif "## Constraints" not in skill.read_text():
+                print(f"R-9 skills/{d.name}/{sub.name}: rules exist but the body "
+                      f"never loads them")
+                bad += 1
+
+    print(f"check-rules: {len(files)} rule file(s), "
+          + ("all pass" if bad == 0 else f"{bad} VIOLATIONS"))
+    return 1 if bad else 0
+
+if __name__ == "__main__":
+    sys.exit(main())

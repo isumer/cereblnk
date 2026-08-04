@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""test-skill-selection — CB-097 acceptance, mechanical half.
+
+Covers the three things that must hold for task-scoped skills to be
+worth their complexity:
+  1. the floor is computed from paths AND from request text
+  2. the stack profile subtracts skills this project cannot use
+  3. an agent that skips its floor cannot finish (SubagentStop, exit 2)
+
+The hook cases assert the failure path too: a hook that never blocks
+is a hook that enforces nothing (Part II trap #8 applied to hooks).
+
+Usage: scripts/test-skill-selection
+Exit:  0 all green · 1 any failure
+"""
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PS = ROOT / "plugins/cereblnk/scripts"
+HS = ROOT / "plugins/cereblnk/hooks/scripts"
+
+
+def sh(cmd, stdin=None, env=None):
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    return subprocess.run(cmd, input=stdin, capture_output=True, text=True, env=e)
+
+
+def main():
+    results, bad = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal bad
+        results.append(("  PASS  " if ok else "  FAIL  ") + name +
+                       ("" if ok else " — " + detail))
+        bad += 0 if ok else 1
+
+    # ---- 1. path floor -------------------------------------------------
+    r = sh(["bash", str(PS / "select-agents"),
+            "src/main/java/com/acme/pay/PaymentService.java",
+            "src/main/resources/db/changelog/v12-idempotency.xml"])
+    case("path floor: java to backend, liquibase to database",
+         r.returncode == 0
+         and "backend-agent: [java" in r.stdout
+         and "liquibase-migrations" in r.stdout
+         and "gate_level: 3" in r.stdout,
+         r.stdout[-200:])
+
+    # a role never receives another role's skill
+    case("path floor: database-agent does not receive java",
+         "database-agent: [java" not in r.stdout, "role scoping leaked")
+
+    # ---- 2. text floor -------------------------------------------------
+    r = sh(["bash", str(PS / "select-agents"), "--text",
+            "add idempotency to the payment service, java spring boot"])
+    case("text floor: request alone selects java and spring-boot",
+         r.returncode == 0 and "java" in r.stdout and "spring-boot" in r.stdout,
+         r.stdout[-200:])
+
+    # ---- 3. unresolved is an exit, not a default -----------------------
+    r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"])
+    case("unresolved: exit 3, no silent single-agent default",
+         r.returncode == 3 and "unresolved: true" in r.stderr
+         and "backend-agent" not in r.stdout,
+         "rc=%d" % r.returncode)
+
+    # ---- 4. stack gate -------------------------------------------------
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-skill-"))
+    try:
+        cb = tmp / ".claude/cereblnk"
+        (cb / "context").mkdir(parents=True)
+        (cb / "context/stack-profile.yaml").write_text(
+            "tokens:\n  - java\n  - angular\nmanifests:\n  - pom.xml\n",
+            encoding="utf-8")
+        env = {"CLAUDE_PROJECT_DIR": str(tmp)}
+        r = sh(["bash", str(PS / "select-agents"), "src/app/x.component.ts",
+                "src/ui/Widget.jsx"], env=env)
+        case("stack gate: angular selected, react withheld (not in stack)",
+             r.returncode == 0 and "angular" in r.stdout and "react" not in r.stdout,
+             r.stdout[-200:])
+
+        # ---- 5. skill floor hook ---------------------------------------
+        run = cb / "context/R-test"
+        run.mkdir(parents=True)
+        (run / "skills-required.yaml").write_text(
+            "  backend-agent: [java, spring-boot]\n  qa-agent: [test-strategy]\n",
+            encoding="utf-8")
+        payload = '{"agent_type":"backend-agent","stop_hook_active":false}'
+
+        r = sh(["bash", str(HS / "skill-floor.sh")], stdin=payload, env=env)
+        case("floor hook: unmet floor blocks the stop (exit 2)",
+             r.returncode == 2 and "java" in r.stderr and "spring-boot" in r.stderr,
+             "rc=%d err=%s" % (r.returncode, r.stderr[:120]))
+
+        r = sh(["bash", str(HS / "skill-floor.sh")],
+               stdin='{"agent_type":"backend-agent","stop_hook_active":true}',
+               env=env)
+        case("floor hook: stop_hook_active always allows the stop",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        # ledger records a load, then the floor is met
+        for skill in ("java", "spring-boot"):
+            r = sh(["bash", str(HS / "skill-ledger.sh")],
+                   stdin='{"agent_type":"backend-agent","tool_input":{"skill":"cereblnk:%s"}}' % skill,
+                   env=env)
+        log = run / "skills-loaded.log"
+        case("ledger hook: records agent and skill, never blocks",
+             log.exists() and "backend-agent\tjava" in log.read_text(encoding="utf-8"),
+             "log missing or unrecorded")
+
+        r = sh(["bash", str(HS / "skill-floor.sh")], stdin=payload, env=env)
+        case("floor hook: met floor allows the stop",
+             r.returncode == 0, "rc=%d err=%s" % (r.returncode, r.stderr[:120]))
+
+        # an agent with no required entry is not the hook's business
+        r = sh(["bash", str(HS / "skill-floor.sh")],
+               stdin='{"agent_type":"architect-agent"}', env=env)
+        case("floor hook: no floor declared, no interference",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        # cap: repeated failures disarm rather than loop
+        (run / "skills-loaded.log").unlink()
+        (run / "skill-floor.backend-agent.state").write_text("2", encoding="utf-8")
+        r = sh(["bash", str(HS / "skill-floor.sh")], stdin=payload, env=env)
+        case("floor hook: nudge cap reached, stop allowed (no loop)",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        # ---- 6. detect-stack -------------------------------------------
+        (tmp / "pom.xml").write_text(
+            "<project><dependency><artifactId>spring-boot-starter-web"
+            "</artifactId></dependency><dependency><artifactId>liquibase-core"
+            "</artifactId></dependency></project>", encoding="utf-8")
+        r = sh(["bash", str(PS / "detect-stack"), "--force", str(tmp)], env=env)
+        case("detect-stack: manifest content yields spring-boot and liquibase",
+             r.returncode == 0 and "- spring-boot" in r.stdout
+             and "- liquibase" in r.stdout and "- java" in r.stdout,
+             r.stdout[-200:])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("test-skill-selection:")
+    print("\n".join(results))
+    if bad:
+        print("test-skill-selection: %d case(s) failed" % bad, file=sys.stderr)
+        return 1
+    print("test-skill-selection: all green")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

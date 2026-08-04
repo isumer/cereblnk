@@ -1,0 +1,469 @@
+# Skill Selection Map (CB-097)
+#
+# The single source for WHICH skill a task needs, WHO loads it, and WHEN.
+# Consumed by scripts/select-agents (floor computation) and validated by
+# scripts/check-agent-skills (reachability). Agent frontmatter carries
+# only invariant craft; everything stack-shaped resolves here, per task.
+#
+# Schema, one block per skill:
+#   skill:      directory name under skills/<group>/<skill>/
+#   roles:      specialists that receive this skill when a signal fires
+#   paths:      regex over changed/declared file paths (task signal)
+#   stack:      token that must appear in the stack profile for this
+#               skill to be selectable at all (omitted = always)
+#   topics:     literal phrases matched against the request text
+#   discovery:  evidence seen INSIDE the agent window -> next skill
+#               (the cascade; the agent loads it mid-run and records it)
+#
+# Floor = (path OR topic match) AND (stack token present, when declared).
+# A skill reachable by no rule is a check-agent-skills failure.
+
+version: 1
+rules:
+  - skill: java
+    roles: [backend-agent, architect-agent, debugger-agent, refactoring-agent]
+    paths: ['\.java$']
+    stack: java
+    topics: [java, jvm, jdk, maven, gradle]
+    discovery: ['spring-boot-starter -> spring-boot', '@Entity -> hibernate-jpa', 'JpaRepository -> hibernate-jpa', 'org.junit -> junit-testing']
+
+  - skill: kotlin
+    roles: [backend-agent]
+    paths: ['\.kts?$']
+    stack: kotlin
+    topics: [kotlin]
+    discovery: ['org.springframework -> spring-boot', '@Entity -> hibernate-jpa']
+
+  - skill: csharp
+    roles: [backend-agent]
+    paths: ['\.cs$']
+    stack: csharp
+    topics: [csharp, c#, dotnet, .net]
+    discovery: ['[Test] -> unit-testing']
+
+  - skill: cpp
+    roles: [backend-agent]
+    paths: ['\.(cpp|cc|cxx|hpp)$']
+    stack: cpp
+    topics: [cpp, c++]
+
+  - skill: dart
+    roles: [frontend-agent]
+    paths: ['\.dart$']
+    stack: dart
+    topics: [dart, flutter]
+    discovery: ['flutter_test -> unit-testing']
+
+  - skill: go
+    roles: [backend-agent]
+    paths: ['\.go$']
+    stack: go
+    topics: [go, golang]
+    discovery: ['database/sql -> sql', 'testing.T -> unit-testing']
+
+  - skill: groovy
+    roles: [backend-agent, infra-agent]
+    paths: ['(\.groovy$|\.gradle$|Jenkinsfile)']
+    stack: groovy
+    topics: [groovy, jenkinsfile, gradle dsl]
+    discovery: ['pipeline { -> jenkins-pipelines']
+
+  - skill: php
+    roles: [backend-agent]
+    paths: ['\.php$']
+    stack: php
+    topics: [php, laravel, symfony]
+    discovery: ['PHPUnit -> unit-testing']
+
+  - skill: python
+    roles: [backend-agent]
+    paths: ['\.py$']
+    stack: python
+    topics: [python, pip, django, flask]
+    discovery: ['import pytest -> unit-testing', 'psycopg -> postgresql', 'import boto3 -> cloud-architecture']
+
+  - skill: ruby
+    roles: [backend-agent]
+    paths: ['\.rb$']
+    stack: ruby
+    topics: [ruby, rails]
+    discovery: ['RSpec -> unit-testing', 'ActiveRecord -> data-modeling']
+
+  - skill: rust
+    roles: [backend-agent]
+    paths: ['\.rs$']
+    stack: rust
+    topics: [rust, cargo]
+    discovery: ['#[test] -> unit-testing']
+
+  - skill: swift
+    roles: [frontend-agent]
+    paths: ['\.swift$']
+    stack: swift
+    topics: [swift, ios]
+    discovery: ['XCTest -> unit-testing']
+
+  - skill: javascript
+    roles: [backend-agent, frontend-agent]
+    paths: ['\.(js|mjs|cjs)$']
+    stack: javascript
+    topics: [javascript, js]
+    discovery: ['require('express') -> nodejs', 'from 'vue' -> vue', 'next/router -> nextjs']
+
+  - skill: typescript
+    roles: [backend-agent, frontend-agent]
+    paths: ['\.tsx?$']
+    stack: typescript
+    topics: [typescript, ts]
+    discovery: ['@angular/core -> angular', 'from 'react' -> react', 'from "react" -> react']
+
+  - skill: sql
+    roles: [database-agent]
+    paths: ['\.sql$']
+    topics: [sql, query, join, index]
+    discovery: ['EXPLAIN -> query-optimization', 'CREATE INDEX -> query-optimization', '<changeSet -> liquibase-migrations']
+
+  - skill: shell
+    roles: [infra-agent, backend-agent]
+    paths: ['\.(sh|bash)$']
+    topics: [shell, bash, shell script]
+    discovery: ['kubectl -> kubernetes', 'terraform apply -> terraform', 'docker build -> docker']
+
+  - skill: yaml
+    roles: [infra-agent, backend-agent]
+    paths: ['\.ya?ml$']
+    topics: [yaml, manifest, values file]
+    discovery: ['apiVersion: -> kubernetes', 'runs-on: -> github-actions', 'services: -> docker']
+
+  - skill: css
+    roles: [frontend-agent]
+    paths: ['\.css$']
+    topics: [css, stylesheet, cascade]
+
+  - skill: scss
+    roles: [frontend-agent]
+    paths: ['\.(scss|sass)$']
+    stack: scss
+    topics: [scss, sass]
+
+  - skill: spring-boot
+    roles: [backend-agent, architect-agent]
+    stack: spring-boot
+    topics: [spring, spring boot, actuator, restcontroller]
+    discovery: ['spring-boot-starter-security -> spring-security', '@Entity -> hibernate-jpa']
+
+  - skill: spring-security
+    roles: [security-agent, backend-agent]
+    stack: spring-security
+    topics: [spring security, filterchain, securityfilterchain]
+    discovery: ['@PreAuthorize -> owasp-threat-modeling', 'SecurityFilterChain -> owasp-threat-modeling']
+
+  - skill: hibernate-jpa
+    roles: [backend-agent, database-agent]
+    stack: hibernate-jpa
+    topics: [jpa, hibernate, entity, repository, lazy loading, n+1]
+    discovery: ['@Query -> query-optimization', 'FetchType.EAGER -> performance-engineering']
+
+  - skill: junit-testing
+    roles: [qa-agent, testengineer-agent]
+    paths: ['Test\.java$']
+    stack: junit
+    topics: [junit, java test]
+    discovery: ['@Testcontainers -> docker', '@SpringBootTest -> spring-boot']
+
+  - skill: playwright-testing
+    roles: [qa-agent, testengineer-agent]
+    paths: ['\.spec\.(ts|js)$']
+    stack: playwright
+    topics: [playwright, e2e]
+    discovery: ['page.goto -> functional-testing']
+
+  - skill: selenium-webdriver
+    roles: [qa-agent, testengineer-agent]
+    stack: selenium
+    topics: [selenium, webdriver]
+    discovery: ['WebDriverWait -> functional-testing']
+
+  - skill: react
+    roles: [frontend-agent]
+    paths: ['\.jsx$']
+    stack: react
+    topics: [react, jsx, hook, usestate]
+    discovery: ['react-redux -> redux', 'react-window -> react-virtualization', 'react-virtualized -> react-virtualization']
+
+  - skill: redux
+    roles: [frontend-agent]
+    stack: redux
+    topics: [redux, store, reducer, slice]
+    discovery: ['createSlice -> react']
+
+  - skill: react-native
+    roles: [frontend-agent]
+    stack: react-native
+    topics: [react native, expo]
+    discovery: ['@react-navigation -> react']
+
+  - skill: react-virtualization
+    roles: [frontend-agent]
+    stack: react-virtualization
+    topics: [virtualized list, windowing, react-window]
+    discovery: ['react-window -> performance-engineering']
+
+  - skill: angular
+    roles: [frontend-agent]
+    paths: ['\.component\.ts$']
+    stack: angular
+    topics: [angular, rxjs, ngmodule, signal]
+    discovery: ['@ngrx/store -> redux', 'HttpClient -> api-design']
+
+  - skill: vue
+    roles: [frontend-agent]
+    paths: ['\.vue$']
+    stack: vue
+    topics: [vue, composition api]
+    discovery: ['defineNuxtConfig -> nuxt']
+
+  - skill: nuxt
+    roles: [frontend-agent]
+    stack: nuxt
+    topics: [nuxt]
+    discovery: ['<script setup -> vue']
+
+  - skill: nextjs
+    roles: [frontend-agent]
+    stack: nextjs
+    topics: [next.js, nextjs, app router]
+    discovery: ['getServerSideProps -> react', 'use client -> react']
+
+  - skill: nodejs
+    roles: [backend-agent]
+    stack: nodejs
+    topics: [node, express, npm]
+    discovery: ['next.config -> nextjs', 'express() -> api-design']
+
+  - skill: electron
+    roles: [frontend-agent]
+    stack: electron
+    topics: [electron, desktop app]
+    discovery: ['ipcMain -> nodejs']
+
+  - skill: postgresql
+    roles: [database-agent]
+    stack: postgresql
+    topics: [postgres, postgresql]
+    discovery: ['EXPLAIN ANALYZE -> query-optimization', 'pg_stat -> performance-engineering']
+
+  - skill: oracle
+    roles: [database-agent]
+    stack: oracle
+    topics: [oracle, plsql]
+    discovery: ['EXPLAIN PLAN -> query-optimization', 'PL/SQL -> sql']
+
+  - skill: redis
+    roles: [database-agent, performance-agent]
+    stack: redis
+    topics: [redis, cache]
+    discovery: ['SETEX -> performance-engineering']
+
+  - skill: elasticsearch
+    roles: [database-agent]
+    stack: elasticsearch
+    topics: [elasticsearch, full-text search]
+    discovery: ['_search -> query-optimization']
+
+  - skill: liquibase-migrations
+    roles: [database-agent]
+    paths: ['(changelog.*\.(xml|ya?ml|sql)$|liquibase)']
+    stack: liquibase
+    topics: [liquibase, changeset, migration, rollback]
+    discovery: ['<rollback -> data-modeling', '<sql> -> sql']
+
+  - skill: query-optimization
+    roles: [database-agent, performance-agent]
+    topics: [slow query, explain, query plan, index tuning]
+    discovery: ['FOREIGN KEY -> data-modeling']
+
+  - skill: data-modeling
+    roles: [database-agent, architect-agent]
+    topics: [schema design, data model, normalization]
+    discovery: ['CREATE TABLE -> sql']
+
+  - skill: docker
+    roles: [infra-agent]
+    paths: ['([Dd]ockerfile|docker-compose)']
+    stack: docker
+    topics: [docker, image, container]
+    discovery: ['FROM node -> nodejs', 'FROM eclipse-temurin -> java']
+
+  - skill: kubernetes
+    roles: [infra-agent]
+    paths: ['(/k8s/|kustomization\.ya?ml$)']
+    stack: kubernetes
+    topics: [kubernetes, k8s, pod, deployment manifest]
+    discovery: ['Chart.yaml -> helm', 'kind: Ingress -> nginx']
+
+  - skill: helm
+    roles: [infra-agent]
+    paths: ['(/helm/|Chart\.ya?ml$)']
+    stack: helm
+    topics: [helm, chart, values]
+    discovery: ['kubectl -> kubernetes']
+
+  - skill: terraform
+    roles: [infra-agent]
+    paths: ['\.tf(vars)?$']
+    stack: terraform
+    topics: [terraform, hcl, state file, plan]
+    discovery: ['provider "aws" -> cloud-architecture', 'backend "s3" -> cloud-architecture']
+
+  - skill: nginx
+    roles: [infra-agent]
+    paths: ['nginx.*\.conf$']
+    topics: [nginx, reverse proxy]
+    discovery: ['upstream -> performance-engineering']
+
+  - skill: linux-ops
+    roles: [infra-agent, debugger-agent]
+    paths: ['(\.service$|/systemd/)']
+    topics: [systemd, linux, disk, process, ulimit]
+    discovery: ['systemctl -> observability']
+
+  - skill: cloud-architecture
+    roles: [architect-agent, infra-agent]
+    topics: [cloud, region, availability zone, scaling]
+    discovery: ['resource "aws_ -> terraform']
+
+  - skill: observability
+    roles: [performance-agent, debugger-agent, infra-agent]
+    paths: ['(prometheus|grafana|otel)']
+    topics: [observability, metric, trace, alert, logging]
+    discovery: ['prometheus -> kubernetes']
+
+  - skill: jenkins-pipelines
+    roles: [infra-agent]
+    paths: ['Jenkinsfile']
+    stack: jenkins
+    topics: [jenkins, pipeline]
+    discovery: ['agent { -> groovy', 'docker.image -> docker']
+
+  - skill: github-actions
+    roles: [infra-agent]
+    paths: ['\.github/workflows/']
+    stack: github-actions
+    topics: [github actions, workflow]
+    discovery: ['uses: docker/ -> docker', 'runs-on: ubuntu -> linux-ops']
+
+  - skill: bitbucket-pipelines
+    roles: [infra-agent]
+    paths: ['bitbucket-pipelines']
+    stack: bitbucket
+    topics: [bitbucket pipelines]
+    discovery: ['image: -> docker']
+
+  - skill: git-strategy
+    roles: [infra-agent, refactoring-agent]
+    topics: [branch strategy, merge, rebase, git flow]
+
+  - skill: release-engineering
+    roles: [infra-agent]
+    topics: [release, versioning, tag, rollout]
+    discovery: ['semantic-release -> git-strategy']
+
+  - skill: artifact-management
+    roles: [infra-agent]
+    topics: [artifact, registry, nexus, artifactory]
+    discovery: ['nexus -> release-engineering']
+
+  - skill: api-design
+    roles: [apidesign-agent, architect-agent]
+    topics: [api, endpoint, contract, versioning, rest]
+
+  - skill: event-driven-architecture
+    roles: [apidesign-agent, architect-agent]
+    topics: [event, kafka, queue, pub/sub]
+    discovery: ['@KafkaListener -> spring-boot']
+
+  - skill: microservices
+    roles: [architect-agent, apidesign-agent]
+    topics: [microservice, service boundary]
+    discovery: ['kind: Service -> kubernetes']
+
+  - skill: owasp-threat-modeling
+    roles: [security-agent]
+    topics: [owasp, threat model, vulnerability]
+
+  - skill: devsecops
+    roles: [security-agent, infra-agent]
+    topics: [devsecops, secret, supply chain, scanning]
+    discovery: ['trivy -> docker']
+
+  - skill: code-review-craft
+    roles: [refactoring-agent, qa-agent, security-agent]
+    topics: [code review, pr review]
+
+  - skill: coding-standards
+    roles: [backend-agent, frontend-agent, database-agent, infra-agent]
+    topics: [coding standard, style guide, convention]
+
+  - skill: legacy-modernization
+    roles: [refactoring-agent, architect-agent]
+    topics: [legacy, modernization, strangler]
+
+  - skill: performance-engineering
+    roles: [performance-agent]
+    topics: [performance, latency, throughput, profiling]
+    discovery: ['EXPLAIN -> query-optimization']
+
+  - skill: accessibility
+    roles: [frontend-agent]
+    topics: [accessibility, a11y, wcag, screen reader]
+
+  - skill: technical-writing
+    roles: [docs-agent, technicalwriter-agent]
+    paths: ['\.md$']
+    topics: [documentation, readme, guide]
+
+  - skill: xml-processing
+    roles: [backend-agent, apidesign-agent]
+    paths: ['\.(xml|xsd|wsdl)$']
+    topics: [xml, xsd, wsdl, xxe]
+
+  - skill: test-strategy
+    roles: [qa-agent, testengineer-agent]
+    topics: [test strategy, coverage, test pyramid]
+
+  - skill: unit-testing
+    roles: [testengineer-agent, qa-agent]
+    topics: [unit test]
+
+  - skill: component-testing
+    roles: [testengineer-agent, frontend-agent]
+    topics: [component test]
+    discovery: ['@testing-library -> react']
+
+  - skill: integration-testing
+    roles: [testengineer-agent, qa-agent]
+    topics: [integration test]
+    discovery: ['@Testcontainers -> docker']
+
+  - skill: functional-testing
+    roles: [testengineer-agent, requirements-agent]
+    topics: [functional test, acceptance test]
+    discovery: ['page.goto -> playwright-testing']
+
+  - skill: bdd-gherkin
+    roles: [testengineer-agent, requirements-agent]
+    topics: [gherkin, bdd, given when then]
+
+  - skill: requirements-engineering
+    roles: [requirements-agent]
+    topics: [requirement, user story, acceptance criteria]
+
+  - skill: document-extraction
+    roles: [docintake-agent]
+    topics: [document extraction, parse pdf, parse docx]
+
+  - skill: ocr
+    roles: [docintake-agent]
+    topics: [ocr, scanned document]
+

@@ -1,0 +1,59 @@
+# ACP Verification / Challenge Block — Gate Agent → Runtime
+# Same schema as a Response Block, plus: kind, target_task, verdict,
+# verdict_detail.
+#
+# Rules:
+# - The Verifier re-derives claims from evidence; it never reads the
+#   original agent's reasoning first (independence).
+# - The Challenger must produce at least one concrete counter-scenario
+#   OR explicitly state that none could be constructed.
+# - verdict: confirmed | refuted | weakened | inconclusive
+#   refuted → task returns to Planner; inconclusive → more evidence
+#   requested, never silently passes.
+#
+# ---- Fully worked example ----
+acp_version: "1.0"
+kind: verification          # or: challenge
+task_id: V-014
+target_task: T-014
+role: VerifierAgent
+status: completed
+
+verdict: confirmed
+verdict_detail: >
+  F-1 re-derived independently from CTX-114#L42-58: the refresh branch
+  returns before validateExpiry() is reachable. F-4 remains the weak point.
+
+decision: >
+  T-014's decision stands as stated; confidence discount for F-4 is justified.
+
+facts:
+  known:
+    - id: F-V1
+      claim: "Refresh branch exits at L47 before any expiry validation call"
+      evidence: [CTX-114#L42-58]
+  derived:
+    - id: F-V2
+      claim: "T-014 fact F-1 is independently reproducible"
+      from: [F-V1]
+  estimated: []
+  assumed: []
+  speculative: []
+
+unknowns:
+  - "Gateway-side validation (same as T-014 F-4)"
+
+risks: []
+
+confidence: 0.9
+confidence_basis: >
+  Direct re-derivation from the same evidence bundle, no assumptions used.
+
+next_action: >
+  None. Forward verdict to Consensus.
+
+artifacts: []
+
+budget_report:
+  tokens_received: 4000
+  tokens_used: 2100

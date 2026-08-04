@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# detect-stack (CB-097) — what this project is actually built from.
+#
+# The skill pool covers many stacks; a project uses few. Without this,
+# a text signal saying "component" cannot tell React from Angular and
+# the floor either guesses or loads both. Manifests answer it from
+# evidence, once per change.
+#
+# Reads manifest FILES (presence) and their dependency text (content),
+# emits stack tokens consumed by select-agents through the `stack:`
+# field of policies/skill-selection.yaml.
+#
+# Cached at $CB_DIR/context/stack-profile.yaml and reused while every
+# recorded manifest keeps its size and mtime — a repo scan per agent
+# spawn would cost more than the skills it saves.
+#
+# Usage: detect-stack [--force] [repo_root]
+# Exit:  0 profile written or reused · 2 usage/interpreter error
+set -euo pipefail
+# shellcheck source=lib/cbenv.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+CB_FORCE=0
+if [ "${1:-}" = "--force" ]; then CB_FORCE=1; shift; fi
+CB_SCAN_ROOT="${1:-${CB_ROOT:-$PWD}}"
+export CB_FORCE CB_SCAN_ROOT
+$PYBIN << 'PY'
+import os, pathlib, re, sys
+
+root = pathlib.Path(os.environ["CB_SCAN_ROOT"]).resolve()
+cbdir = os.environ.get("CB_DIR") or ""
+force = os.environ.get("CB_FORCE") == "1"
+SKIP = {".git", "node_modules", "target", "build", "dist", "vendor",
+        ".gradle", ".venv", "venv", "__pycache__", ".idea", ".next"}
+
+# manifest glob -> tokens implied by PRESENCE alone
+PRESENCE = [
+    ("pom.xml", ["java", "maven"]),
+    ("build.gradle", ["java", "gradle", "groovy"]),
+    ("build.gradle.kts", ["java", "kotlin", "gradle"]),
+    ("package.json", ["nodejs", "javascript"]),
+    ("requirements.txt", ["python"]),
+    ("pyproject.toml", ["python"]),
+    ("go.mod", ["go"]),
+    ("Cargo.toml", ["rust"]),
+    ("Gemfile", ["ruby"]),
+    ("composer.json", ["php"]),
+    ("pubspec.yaml", ["dart"]),
+    ("Package.swift", ["swift"]),
+    ("CMakeLists.txt", ["cpp"]),
+    ("Dockerfile", ["docker"]),
+    ("docker-compose.yml", ["docker"]),
+    ("docker-compose.yaml", ["docker"]),
+    ("Chart.yaml", ["helm", "kubernetes"]),
+    ("kustomization.yaml", ["kubernetes"]),
+    ("Jenkinsfile", ["jenkins", "groovy"]),
+    ("bitbucket-pipelines.yml", ["bitbucket"]),
+]
+# manifest -> [(dependency regex, tokens)] read from its text
+CONTENT = {
+    "pom.xml": [
+        (r"spring-boot-starter", ["spring-boot"]),
+        (r"spring-(boot-starter-)?security", ["spring-security"]),
+        (r"(hibernate|spring-boot-starter-data-jpa|jakarta\.persistence)", ["hibernate-jpa"]),
+        (r"\bjunit", ["junit"]),
+        (r"liquibase", ["liquibase"]),
+        (r"postgresql", ["postgresql"]),
+        (r"(ojdbc|oracle)", ["oracle"]),
+        (r"(spring-boot-starter-data-redis|jedis|lettuce)", ["redis"]),
+        (r"elasticsearch", ["elasticsearch"]),
+        (r"selenium", ["selenium"]),
+    ],
+    "build.gradle": [
+        (r"spring-boot", ["spring-boot"]),
+        (r"spring-security", ["spring-security"]),
+        (r"(hibernate|data-jpa)", ["hibernate-jpa"]),
+        (r"\bjunit", ["junit"]),
+        (r"liquibase", ["liquibase"]),
+    ],
+    "package.json": [
+        (r'"react"', ["react"]),
+        (r'"react-native"', ["react-native"]),
+        (r'"@reduxjs/toolkit"|"react-redux"|"redux"', ["redux"]),
+        (r'"react-window"|"react-virtualized"|"@tanstack/react-virtual"', ["react-virtualization"]),
+        (r'"@angular/core"', ["angular"]),
+        (r'"vue"', ["vue"]),
+        (r'"nuxt"', ["nuxt"]),
+        (r'"next"', ["nextjs"]),
+        (r'"electron"', ["electron"]),
+        (r'"typescript"', ["typescript"]),
+        (r'"@playwright/test"|"playwright"', ["playwright"]),
+        (r'"selenium-webdriver"', ["selenium"]),
+        (r'"sass"|"node-sass"', ["scss"]),
+        (r'"express"', ["nodejs"]),
+    ],
+}
+NAMES = {n for n, _ in PRESENCE}
+
+found, manifests = set(), []
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if d not in SKIP and not d.startswith(".claude")]
+    rel = pathlib.Path(dirpath).relative_to(root)
+    if len(rel.parts) > 4:
+        dirnames[:] = []
+        continue
+    for fn in filenames:
+        if fn in NAMES:
+            p = pathlib.Path(dirpath) / fn
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            manifests.append((str(p.relative_to(root)), st.st_size, int(st.st_mtime)))
+            for name, toks in PRESENCE:
+                if fn == name:
+                    found.update(toks)
+            if fn in CONTENT:
+                try:
+                    text = p.read_text(encoding="utf-8", errors="replace")[:200000]
+                except OSError:
+                    continue
+                for rx, toks in CONTENT[fn]:
+                    if re.search(rx, text, re.I):
+                        found.update(toks)
+    for fn in filenames:
+        if fn.endswith(".tf"):
+            found.add("terraform")
+        elif re.search(r"changelog.*\.(xml|ya?ml|sql)$", fn, re.I):
+            found.add("liquibase")
+    if rel.parts and rel.parts[-1] in ("k8s", "kubernetes"):
+        found.add("kubernetes")
+    if ".github" in rel.parts and "workflows" in rel.parts:
+        found.add("github-actions")
+
+manifests.sort()
+if not cbdir:
+    print("detect-stack: no project root resolved; profile not cached", file=sys.stderr)
+    out_path = None
+else:
+    out_path = pathlib.Path(cbdir) / "context/stack-profile.yaml"
+
+sig = "\n".join("%s %d %d" % m for m in manifests)
+if out_path and out_path.exists() and not force:
+    prev = out_path.read_text(encoding="utf-8")
+    m = re.search(r"# signature:(.*?)# /signature", prev, re.S)
+    if m and m.group(1).strip() == sig.strip():
+        sys.stdout.write(prev)
+        raise SystemExit(0)
+
+lines = ["# stack-profile — generated by scripts/detect-stack (CB-097).",
+         "# Tokens gate the `stack:` field of policies/skill-selection.yaml.",
+         "# Regenerate with --force after adding a dependency.",
+         "root: %s" % root, "tokens:"]
+lines += ["  - %s" % t for t in sorted(found)] or ["  []"]
+lines.append("manifests:")
+lines += ["  - %s" % m[0] for m in manifests] or ["  []"]
+lines.append("# signature:")
+lines += ["#   " + l for l in sig.splitlines()]
+lines.append("# /signature")
+text = "\n".join(lines) + "\n"
+if out_path:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text, encoding="utf-8")
+sys.stdout.write(text)
+PY

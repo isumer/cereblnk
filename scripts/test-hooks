@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""test-hooks — repeatable acceptance run for the four testable guards.
+
+Drives delegation-guard, secret-guard, edit-boundary, and run-guard
+with synthetic hook input in a throwaway project (CLAUDE_PROJECT_DIR),
+asserting BOTH the exit code and, for blocks, a stderr/stdout
+substring. Covers success, block, bypass, and stale-state paths.
+Requires bash + python3 on PATH (the hooks' own runtime contract).
+
+Usage: scripts/test-hooks        Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile, time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+H = ROOT / "plugins/cereblnk/hooks/scripts"
+
+def run(script, stdin, proj):
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+    return subprocess.run(["bash", str(H / script)], input=stdin,
+                          capture_output=True, text=True, env=env, cwd=str(proj))
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-hooks: bash not on PATH — skipping (hooks require bash)"); return 0
+    fails, ran = [], 0
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        flags = proj / ".claude/cereblnk/flags"; flags.mkdir(parents=True)
+        runctx = proj / ".claude/cereblnk/context/R-T"; runctx.mkdir(parents=True)
+        (runctx / "plan.md").write_text("task_id: T-1\ntask_id: T-2\n")
+        conductor = json.dumps({"tool_input": {"file_path": "a.md", "content": "x"}})
+        bypass_try = json.dumps({"tool_input": {"file_path": "a.md",
+                                 "content": 'docs mention "agent_id" and "agent_type"'}})
+        subagent = json.dumps({"agent_id": "abc", "tool_input": {"file_path": "a.md"}})
+
+        def case(name, script, stdin, want_rc, want_sub=""):
+            nonlocal ran; ran += 1
+            r = run(script, stdin, proj)
+            if r.returncode != want_rc:
+                fails.append(f"{name}: rc={r.returncode}, want {want_rc} ({(r.stderr or r.stdout).strip()[:80]})")
+            elif want_sub and want_sub not in (r.stderr + r.stdout):
+                fails.append(f"{name}: missing expected message {want_sub!r}")
+
+        # DelegationGuard
+        case("delegation: no run -> allow", "delegation-guard.sh", conductor, 0)
+        (flags / "run-active").touch()
+        case("delegation: armed conductor -> block", "delegation-guard.sh", conductor, 2, "surface specialist")
+        case("delegation: content-bypass attempt -> block", "delegation-guard.sh", bypass_try, 2, "surface specialist")
+        case("delegation: subagent -> allow", "delegation-guard.sh", subagent, 0)
+
+        # CB-106: the conductor owns its own control surface. Blocking it
+        # from writing the plan told it to delegate the plan — a category
+        # error the block message contradicted in its own sentence
+        # ("the conductor holds plan, digests, and verdicts only").
+        def edit(path):
+            return json.dumps({"tool_name": "Edit", "tool_input": {"file_path": path}})
+
+        cbd = proj / ".claude/cereblnk"
+        owned = [
+            ("plan.md", str(cbd / "context/implement-2026-08-03/plan.md")),
+            ("plan.md on Windows",
+             r"C:\Users\me\.claude\cereblnk\context\implement-2026-08-03\plan.md"),
+            ("state.md", str(cbd / "state.md")),
+            ("run flag", str(cbd / "flags/run-active")),
+            ("telemetry", str(cbd / "telemetry/context.log")),
+        ]
+        for label, path in owned:
+            case(f"delegation: conductor owns {label} -> allow",
+                 "delegation-guard.sh", edit(path), 0)
+
+        # The exemption must not become a hole. A Response Block is a
+        # subagent's output; a conductor writing one fabricates it.
+        for label, path in (
+            ("task ledger block", str(cbd / "context/implement-2026-08-03/T-3.yaml")),
+            ("authored spec", str(cbd / "memory/specs/design.md")),
+            ("real source", str(proj / "src/Main.java")),
+        ):
+            case(f"delegation: {label} still blocked",
+                 "delegation-guard.sh", edit(path), 2, "surface specialist")
+        case("delegation: unparseable while armed -> block", "delegation-guard.sh", "not-json", 2)
+
+        # CB-099: staleness bounds. An aged flag whose run ledger is also
+        # cold is a dead run, and must not brick editing forever.
+        stale = time.time() - 9 * 3600
+        os.utime(flags / "run-active", (stale, stale))
+        case("delegation: aged flag but live ledger -> block",
+             "delegation-guard.sh", conductor, 2, "surface specialist")
+        for q in (runctx / "plan.md", runctx, runctx.parent):
+            os.utime(q, (stale, stale))
+        case("delegation: aged flag, cold ledger -> allow (never bricks)",
+             "delegation-guard.sh", conductor, 0)
+        now = time.time()
+        for q in (runctx / "plan.md", runctx, runctx.parent):
+            os.utime(q, (now, now))
+        # CB-099: the block names its own handoff, and never a bypass
+        r = run("delegation-guard.sh",
+                json.dumps({"tool_input": {"file_path": "svc/Payment.java"}}), proj)
+        ran += 1
+        msg = r.stderr + r.stdout
+        if "NEXT ACTION: spawn backend-agent" not in msg:
+            fails.append("delegation: block does not name the specialist")
+        ran += 1
+        if "Remove" in msg or "run-active" in msg.split("NEXT ACTION")[0]:
+            fails.append("delegation: block still advertises its own bypass")
+
+        # disarm-and-continue: deleting the flag mid-run does not free the
+        # conductor, because a run does not end by disarming its guard
+        (flags / "run-active").unlink()
+        case("delegation: flag deleted while ledger live -> still block",
+             "delegation-guard.sh", conductor, 2, "was removed while the run ledger")
+        (flags / "conductor-override").touch()
+        case("delegation: explicit human override -> allow",
+             "delegation-guard.sh", conductor, 0)
+        (flags / "conductor-override").unlink()
+        (flags / "run-active.witness").unlink()
+        (flags / "run-active").touch()
+
+        # the nudged variant arms the guard too, and ages the same way
+        (flags / "run-active").rename(flags / "run-active.nudged")
+        case("delegation: nudged flag with live ledger -> block",
+             "delegation-guard.sh", conductor, 2, "surface specialist")
+        (flags / "run-active.nudged").unlink()
+
+        # Follow-up window (CB-087): run-completed keeps the guard armed
+        (flags / "run-completed").touch()
+        case("delegation: follow-up window -> block", "delegation-guard.sh", conductor, 2, "re-enter routing")
+        case("delegation: subagent in window -> allow", "delegation-guard.sh", subagent, 0)
+        # TTL-bounded: an aged flag is ignored (fail-open, never bricks)
+        old = time.time() - 9 * 3600
+        os.utime(flags / "run-completed", (old, old))
+        case("delegation: stale completed flag -> allow", "delegation-guard.sh", conductor, 0)
+        (flags / "run-completed").unlink()
+
+        # SecretGuard (always on)
+        secret = json.dumps({"tool_input": {"notebook_path": "n.ipynb",
+                             "new_source": 'pat = "github_pat_11ABCDEFGH0123456789abcdefghij"'}})
+        case("secret: PAT in notebook cell -> block", "secret-guard.sh", secret, 2, "likely secret")
+        case("secret: clean content -> allow", "secret-guard.sh",
+             json.dumps({"tool_input": {"content": "const x = 1;"}}), 0)
+
+        # EditBoundary
+        (flags / "boundary").write_text("src\n")
+        (proj / "src").mkdir()
+        inside = json.dumps({"tool_input": {"file_path": str(proj / "src/a.js")}})
+        outside = json.dumps({"tool_input": {"notebook_path": str(proj / "other/b.ipynb")}})
+        case("boundary: inside -> allow", "edit-boundary.sh", inside, 0)
+        case("boundary: notebook outside -> block", "edit-boundary.sh", outside, 2, "outside the declared")
+        (flags / "boundary").unlink()
+
+        # RunGuard v2 (progress-aware, bounded)
+        (flags / "run-active").touch()   # re-arm: CB-087 block above disarmed it
+        (runctx / "T-1.yaml").touch()
+        case("run-guard: nudge 1 with progress", "run-guard.sh", "{}", 0, '"decision":"block"')
+        (runctx / "T-2.yaml").touch()
+        case("run-guard: nudge 2 after growth", "run-guard.sh", "{}", 0, "nudge 2/3")
+        r = run("run-guard.sh", "{}", proj); ran += 1   # no growth -> disarm, no block json
+        if '"decision":"block"' in r.stdout or (flags / "run-active").exists():
+            fails.append("run-guard: stagnation should disarm and allow the stop")
+        case("run-guard: stop_hook_active bypass", "run-guard.sh",
+             json.dumps({"stop_hook_active": True}), 0)
+
+        # DigestCapHook (CB-094). The cap is a contract; these assert the
+        # paths that matter: a return that fits, one that does not, the
+        # nudge ceiling, and every fail-open route. A guard that blocks
+        # when it cannot measure is worse than one that does not run, so
+        # the fail-open cases are not filler.
+        def transcript(text):
+            t = proj / "t.jsonl"
+            t.write_text(json.dumps({"message": {"role": "assistant",
+                                                 "content": [{"type": "text", "text": text}]}}) + "\n")
+            return str(t)
+
+        def digest_input(text, agent="backend-agent", path=None):
+            return json.dumps({"agent_type": agent,
+                               "transcript_path": path if path is not None else transcript(text)})
+
+        short = "\n".join(f"line {i}" for i in range(1, 9))
+        long_ = "\n".join(f"line {i}" for i in range(1, 26))
+
+        case("digest-cap: within cap -> allow", "digest-cap.sh", digest_input(short), 0)
+        case("digest-cap: over cap -> block", "digest-cap.sh", digest_input(long_), 2,
+             "the cap is 10")
+        case("digest-cap: block names what to return", "digest-cap.sh",
+             digest_input(long_, agent="qa-agent"), 2, "one-sentence decision")
+        case("digest-cap: blank lines do not count", "digest-cap.sh",
+             digest_input("\n\n".join(f"line {i}" for i in range(1, 10))), 0)
+        case("digest-cap: stop_hook_active -> allow", "digest-cap.sh",
+             json.dumps({"agent_type": "backend-agent", "stop_hook_active": True}), 0)
+        case("digest-cap: missing transcript -> fail open", "digest-cap.sh",
+             digest_input(long_, agent="docs-agent", path=""), 0)
+        case("digest-cap: unparseable input -> fail open", "digest-cap.sh", "not-json", 0)
+        case("digest-cap: no agent in input -> fail open", "digest-cap.sh",
+             json.dumps({"transcript_path": transcript(long_)}), 0)
+
+        # Nudge ceiling: backend-agent was blocked once above. A second
+        # block is allowed, the third must let the stop through — an agent
+        # that will not shorten is a question for the user, not a loop.
+        case("digest-cap: nudge 2 still blocks", "digest-cap.sh", digest_input(long_), 2)
+        case("digest-cap: nudge ceiling reached -> allow", "digest-cap.sh",
+             digest_input(long_), 0)
+
+        # ContextMonitorHook (CB-102). The hook turns an assumed number
+        # into a measured one, so the cases that matter are the arithmetic
+        # and the silence: never block, never speak below the checkpoint,
+        # and count cached tokens as occupancy.
+        def check(name, ok, detail=""):
+            nonlocal ran; ran += 1
+            if not ok:
+                fails.append(f"{name}: {detail}")
+
+        def usage_transcript(**usage):
+            t = proj / "u.jsonl"
+            t.write_text(json.dumps({"message": {"role": "assistant",
+                                                 "content": [{"type": "text", "text": "ok"}],
+                                                 "usage": usage}}) + "\n")
+            return str(t)
+
+        def mon(path, session="S-1"):
+            return run("context-monitor.sh",
+                       json.dumps({"session_id": session,
+                                   "hook_event_name": "UserPromptSubmit",
+                                   "transcript_path": path}), proj)
+
+        # capacity 168000, checkpoint 117600 per scripts/context-budget
+        r = mon(usage_transcript(input_tokens=5000))
+        check("context-monitor: below checkpoint is silent",
+              r.returncode == 0 and r.stdout.strip() == "",
+              f"rc={r.returncode} out={r.stdout[:60]!r}")
+
+        tel = proj / ".claude/cereblnk/telemetry/context.log"
+        check("context-monitor: samples every turn", tel.is_file(),
+              "no telemetry line written below the checkpoint")
+        if tel.is_file():
+            body = tel.read_text()
+            check("context-monitor: sample carries the numbers",
+                  "occupancy=5000" in body and "capacity=168000" in body, body[:120])
+
+        # Cache-warm turn: counting only input_tokens would read this as
+        # nearly empty, which is the opposite of true.
+        r = mon(usage_transcript(input_tokens=1200, cache_read_input_tokens=130000))
+        check("context-monitor: cached tokens count as occupancy",
+              r.returncode == 0 and "131200" in r.stdout, r.stdout[:120])
+        check("context-monitor: warns via additionalContext, never blocks",
+              r.returncode == 0 and "additionalContext" in r.stdout,
+              f"rc={r.returncode} out={r.stdout[:80]!r}")
+
+        for label, arg in (("no usage field", usage_transcript()),
+                           ("missing transcript", ""),
+                           ("unparseable input", None)):
+            r = (run("context-monitor.sh", "not-json", proj) if arg is None else mon(arg))
+            check(f"context-monitor: {label} -> silent",
+                  r.returncode == 0 and r.stdout.strip() == "",
+                  f"rc={r.returncode} out={r.stdout[:60]!r}")
+
+        # HistoryArchiveHook (CB-105). Runtime state belongs under CB_DIR
+        # with everything else; this wrote beside it for one release. The
+        # migration case matters more than the happy path — a user with
+        # archives must not silently lose track of them.
+        def archive(project, tpath):
+            return run("history-archive.sh",
+                       json.dumps({"transcript_path": tpath, "trigger": "auto",
+                                   "session_id": "abcdef123456"}), project)
+
+        hp = proj / "hist-src.jsonl"
+        hp.write_text('{"message":{"role":"assistant"}}\n')
+        archive(proj, str(hp))
+        hist = proj / ".claude/cereblnk/history"
+        check("history-archive: writes under CB_DIR",
+              hist.is_dir() and len(list(hist.glob("*.jsonl"))) == 1,
+              f"exists={hist.is_dir()}")
+        check("history-archive: does not create the legacy directory",
+              not (proj / ".claude/history").is_dir(), "legacy path recreated")
+
+        with tempfile.TemporaryDirectory() as ltd:
+            lp = pathlib.Path(ltd) / "p"
+            legacy = lp / ".claude/history"
+            legacy.mkdir(parents=True)
+            (legacy / "20260101-auto-old.jsonl").write_text("older archive\n")
+            src = lp / "s.jsonl"
+            src.write_text('{"message":{"role":"assistant"}}\n')
+            r = archive(lp, str(src))
+            moved = sorted(x.name for x in (lp / ".claude/cereblnk/history").glob("*.jsonl"))
+            check("history-archive: migrates existing archives once",
+                  len(moved) == 2 and "20260101-auto-old.jsonl" in moved, str(moved))
+            check("history-archive: legacy directory is gone after the move",
+                  not legacy.is_dir(), "legacy directory survived")
+            check("history-archive: the move is announced",
+                  "moved existing archives" in r.stderr, r.stderr[:100])
+
+        check("history-archive: missing transcript never blocks compaction",
+              archive(proj, "").returncode == 0, "non-zero exit on a missing transcript")
+
+        # ScratchGuardHook (CB-107). A run left debug.txt, debug2.txt and
+        # medium.txt at the repository root. The signal is shape, not
+        # name — a pattern list would have caught two of the three.
+        def write_to(path, project=None):
+            return run("scratch-guard.sh",
+                       json.dumps({"tool_name": "Write",
+                                   "tool_input": {"file_path": path}}),
+                       project or proj)
+
+        (proj / "src").mkdir(exist_ok=True)
+        (proj / "README.md").write_text("# fixture\n")
+        subprocess.run(["git", "init", "-q"], cwd=str(proj), capture_output=True)
+        subprocess.run(["git", "add", "README.md"], cwd=str(proj), capture_output=True)
+
+        check("scratch-guard: no active run -> allow",
+              write_to(str(proj / "debug.txt")).returncode == 0, "blocked outside a run")
+
+        (flags / "run-active").touch()
+        check("scratch-guard: new root file blocked",
+              write_to(str(proj / "debug.txt")).returncode == 2, "root scratch allowed")
+        r = write_to("medium.txt")
+        check("scratch-guard: a bare name is still root-level",
+              r.returncode == 2, "relative path escaped the check")
+        check("scratch-guard: names where notes belong",
+              "scratch" in r.stderr, r.stderr[:90])
+        check("scratch-guard: a subdirectory is real work",
+              write_to(str(proj / "src/Main.java")).returncode == 0, "blocked src/")
+        check("scratch-guard: a tracked root file is the project deciding",
+              write_to(str(proj / "README.md")).returncode == 0, "blocked a tracked file")
+        check("scratch-guard: CB_DIR is not the repository root",
+              write_to(str(proj / ".claude/cereblnk/state.md")).returncode == 0,
+              "blocked runtime state")
+        check("scratch-guard: nudge ceiling releases",
+              write_to(str(proj / "debug9.txt")).returncode == 0, "guard never yields")
+
+    if fails:
+        print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
+        print(f"test-hooks: {len(fails)}/{ran} failed", file=sys.stderr); return 1
+    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, scratch-guard)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

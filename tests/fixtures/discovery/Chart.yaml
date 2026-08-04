@@ -1,0 +1,4 @@
+apiVersion: v2
+name: orders
+version: 1.0.0
+description: Deployed with kubectl or helm upgrade

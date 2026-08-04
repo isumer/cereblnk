@@ -1,0 +1,72 @@
+---
+name: cb-refactor
+description: Behavior-preserving restructuring — invariant checklist before changes, re-verified after; auto-engages the edit boundary for the declared directory
+argument-hint: <target path> <restructuring goal>
+---
+
+# RefactoringWorkflow (/cb-refactor)
+
+**Trigger intent:** restructure something without changing behavior.
+A request smuggling in behavior changes is split out to
+/cb-implement
+first — a refactor with feature changes is neither.
+
+## Boundary auto-engagement
+
+Before any edit, run
+`mkdir -p .claude/cereblnk/flags && echo "<target path>" > .claude/cereblnk/flags/boundary`.
+The EditBoundaryHook now blocks writes
+outside the declared directory for the session (hooks/README.md; note
+honestly: blocks tools, not shell side-effects). On completion, remove
+the flag and tell the user.
+
+## Agent topology
+
+```
+Orchestrator → refactoring-agent (leads; writes the invariant checklist)
+            → qa-agent           (checklist executability: which test
+                                  or check covers each invariant; gaps
+                                  get a test BEFORE the refactor starts)
+            → refactoring-agent  (executes, surgical diffs)
+            → verifier-agent     (invariants re-verified post-change,
+                                  independently)
+            → challenger-agent   (level 3 — this workflow is high risk:
+                                  attacks with the interleaving/timing/
+                                  init-order scenario the checklist missed)
+            → synthesizer-agent
+```
+
+Budgets: Refactoring 8K · QA 6K · Verifier 4K · Challenger 4K ·
+Synthesis 6K.
+
+## The invariant contract
+
+- The checklist is written and shown before the first edit. It names
+  observable behaviors: outputs, side-effect order, error contracts,
+  and the performance envelope where relevant) + the concrete check per item.
+- An invariant with no executable check gets one first, or the
+  refactor scope shrinks to what is checkable.
+- After: every item re-verified, results as `known` facts. Any
+  invariant that cannot be re-verified downgrades the whole verdict.
+
+## Output
+
+DECISION (behavior preserved: yes/no/except) → EVIDENCE (per-invariant
+before/after) → REASONING → RISK (unchecked behaviors, boundary hook
+gaps) → CONFIDENCE.
+
+## Execution discipline
+
+`policies/run-discipline.md` binds this run in full. Ledger and
+digests, conductor-context budget, synchronous stages, path anchoring,
+flag lifecycle, context-error recovery.
+
+## Run flag (RunGuardHook wiring)
+
+Arm at execution start:
+`mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"`.
+Here `$CB_DIR` is `<project root>/.claude/cereblnk`.
+Remove it before ANY turn that ends awaiting the user.
+Remove it at final synthesis.
+Full lifecycle semantics live in `policies/run-discipline.md` §5.
+That is the authoritative copy. This section does not restate it.

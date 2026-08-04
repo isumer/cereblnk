@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""test-select-rules (CB-109) — the gate must subtract only what it can prove.
+
+A glob answers what kind of file this is. It cannot answer whether the
+framework is part of the project, and for 102 of the tree's rule files
+that second question already had an answer nobody read.
+
+The cases that matter are the two directions of being wrong. Gating too
+little leaves the old behaviour. Gating too much drops a real
+constraint, which is the worse failure and the reason the absent-profile
+path returns everything.
+
+Asserts:
+  S-1  no profile -> every glob match is returned, gate not applied
+  S-2  a framework absent from the profile is gated out
+  S-3  a framework present in the profile survives
+  S-4  language and format rules are never gated — a .sql file means
+       SQL is present and there is nothing further to prove
+  S-5  cross-cutting rules directly under a category are never gated
+  S-6  common/ is always returned, whatever the profile says
+  S-7  --explain names the token each dropped rule was waiting for
+
+Exit: 0 all pass · 1 any case failed
+"""
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SCRIPT = ROOT / "plugins/cereblnk/scripts/select-rules"
+
+PROFILE = """root: {root}
+tokens:
+  - java
+  - spring-boot
+  - typescript
+manifests:
+  - pom.xml
+"""
+
+
+def run(cwd, *args):
+    return subprocess.run([sys.executable, str(SCRIPT), *args],
+                          cwd=str(cwd), capture_output=True, text=True)
+
+
+def main():
+    fails = []
+
+    def check(name, ok, detail=""):
+        if not ok:
+            fails.append(f"  FAIL  {name}" + (f" — {detail}" if detail else ""))
+
+    with tempfile.TemporaryDirectory() as td:
+        bare = pathlib.Path(td) / "bare"
+        bare.mkdir()
+        r = run(bare, "src/components/Widget.tsx")
+        check("S-1 no profile applies no gate",
+              "absent — no gate applied" in r.stdout and "gated out" not in r.stdout,
+              r.stdout[:120])
+        baseline = r.stdout.count("\n  - ")
+
+        gated = pathlib.Path(td) / "gated"
+        (gated / ".claude/cereblnk").mkdir(parents=True)
+        (gated / ".claude/cereblnk/stack-profile.yaml").write_text(
+            PROFILE.format(root=str(gated)), encoding="utf-8")
+
+        r = run(gated, "--explain", "src/components/Widget.tsx")
+        out = r.stdout
+        check("S-2 an absent framework is gated out",
+              "frameworks/react/patterns.md" not in out.split("gated_out:")[0],
+              "react survived a profile that never declared it")
+        check("S-3 a present framework survives",
+              "languages/typescript/patterns.md" in out.split("gated_out:")[0],
+              "typescript was gated despite being in the profile")
+        check("S-5 cross-cutting rules are never gated",
+              "frontend/rendering.md" in out.split("gated_out:")[0],
+              "a category-level rule was gated")
+        check("S-7 --explain names the missing token",
+              "needs 'react'" in out, "no token named for a dropped rule")
+        check("gate actually subtracts",
+              out.count("\n  - ") < baseline + len(out.split("gated_out:")[1:]),
+              "nothing was removed")
+
+        r = run(gated, "src/main/resources/db/schema.sql")
+        check("S-4 format rules survive without a token",
+              "languages/sql/" in r.stdout, "a language rule was gated")
+
+        for cwd, label in ((bare, "no profile"), (gated, "with profile")):
+            r = run(cwd, "src/main/java/Order.java")
+            check(f"S-6 common/ is returned ({label})",
+                  r.stdout.count("- common/") >= 5, r.stdout[-120:])
+
+    if fails:
+        print("test-select-rules:")
+        print("\n".join(fails))
+        print(f"test-select-rules: {len(fails)} case(s) failed", file=sys.stderr)
+        return 1
+    print("test-select-rules: all cases pass")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

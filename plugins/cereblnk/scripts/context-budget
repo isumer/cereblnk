@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""context-budget (CB-094) — the budget is computed, never assumed.
+
+The model window is not a constant. A run that was sized for 128K met
+96K and died at 64001 input tokens, one over the ceiling. Any number
+written into a policy is wrong on the day the window changes, so this
+script derives every figure at run start from what is actually
+configured.
+
+Inputs, in order of precedence. Every variable below is one Claude
+Code already defines — an earlier version of this script invented
+`CB_MODEL_WINDOW`, which nothing sets, so it fell back to a default
+every time and reported that default as though it were configuration.
+
+  1. CLI flags:  --window N --output-reserve N --checkpoint-pct N
+  2. Environment / settings `env` block, in this order:
+       CLAUDE_CODE_AUTO_COMPACT_WINDOW  the context capacity in tokens
+       CLAUDE_CODE_MAX_OUTPUT_TOKENS    the output reservation
+       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE  the compaction trigger percent
+  3. Documented fallbacks, printed as `assumed` so nobody mistakes a
+     default for a measurement.
+
+A settings-file value wins over the same variable in the shell, which
+is how Claude Code itself resolves them.
+
+Outputs a small YAML block the conductor states at run start and
+writes to the run ledger:
+
+  input_capacity   window minus the output reservation
+  checkpoint_at    the point to compact and resume from the ledger
+  wave_size        agents that may run in one wave at this capacity
+  digest_lines     the per-return cap (run-discipline §1)
+
+Nothing here is a hard limit — the API is. This makes the arithmetic
+visible before the run instead of after the failure.
+
+Usage:  context-budget [--window N] [--output-reserve N] [--agents N]
+                       [--cb-dir PATH] [--format yaml|line]
+Exit:   0 always (a planning aid never blocks) · 2 on bad arguments
+"""
+import argparse, json, os, pathlib, sys
+
+# Fractions, not token counts. These survive a window change; absolute
+# numbers do not.
+#
+# What actually exhausts the conductor is cumulative, not per-wave.
+# Five agents returning ten-line digests cost under a thousand tokens
+# together, yet a five-agent run died at 64001 on a 64K capacity — so
+# the digests were never the binding constraint. The session was. The
+# figures below therefore describe when to checkpoint, and how much
+# parallelism a given capacity tolerates, rather than pretending to
+# model token flow.
+CHECKPOINT_AT = 0.70        # of capacity, unless the platform states its own
+CAPACITY_PER_AGENT = 16_000 # calibrated from one observed failure, not a model
+MIN_WAVE = 2
+MAX_WAVE = 8
+MAX_DIGEST_LINES = 10       # run-discipline §1; a ceiling, never a target
+
+FALLBACK_WINDOW = 200_000   # the documented default for standard models
+FALLBACK_RESERVE = 32_000
+
+
+def from_settings(cb_dir: pathlib.Path) -> dict:
+    """Read the env block of the project's settings.json, if present."""
+    settings = cb_dir.parent / "settings.json"
+    if not settings.is_file():
+        return {}
+    try:
+        env = json.loads(settings.read_text()).get("env", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return {k: v for k, v in env.items() if isinstance(v, (str, int))}
+
+
+def resolve(name: str, cli, env_keys, settings, fallback):
+    """Resolve one figure, in Claude Code's own precedence order.
+
+    A settings-file `env` entry wins over the same variable in the
+    shell, because Claude Code writes each entry into the process
+    environment at startup and again when the file changes, replacing
+    what the shell exported. Reading the shell first would report a
+    value the session is not actually using.
+    """
+    if cli is not None:
+        return int(cli), "given"
+    for key in env_keys:
+        if settings.get(key):
+            return int(settings[key]), "settings"
+        if os.environ.get(key):
+            return int(os.environ[key]), "environment"
+    return fallback, "assumed"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("--window", type=int)
+    ap.add_argument("--output-reserve", type=int)
+    ap.add_argument("--agents", type=int, help="agents the plan wants to run")
+    ap.add_argument("--checkpoint-pct", type=int,
+                    help="compact at this percent of capacity (1-100)")
+    ap.add_argument("--cb-dir", default=os.environ.get("CB_DIR", ".claude/cereblnk"))
+    ap.add_argument("--format", choices=("yaml", "line"), default="yaml")
+    args = ap.parse_args()
+
+    settings = from_settings(pathlib.Path(args.cb_dir))
+
+    window, window_src = resolve(
+        "window", args.window,
+        ["CLAUDE_CODE_AUTO_COMPACT_WINDOW"], settings, FALLBACK_WINDOW)
+    reserve, reserve_src = resolve(
+        "reserve", args.output_reserve,
+        ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"], settings, FALLBACK_RESERVE)
+    pct, pct_src = resolve(
+        "checkpoint", args.checkpoint_pct,
+        ["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"], settings,
+        int(CHECKPOINT_AT * 100))
+
+    if window <= 0 or reserve < 0 or reserve >= window:
+        print(f"context-budget: window={window} reserve={reserve} is not usable",
+              file=sys.stderr)
+        return 2
+
+    if not 1 <= pct <= 100:
+        print(f"context-budget: checkpoint percent={pct} is outside 1-100",
+              file=sys.stderr)
+        return 2
+
+    capacity = window - reserve
+    checkpoint = int(capacity * pct / 100)
+    wave_size = min(MAX_WAVE, max(MIN_WAVE, capacity // CAPACITY_PER_AGENT))
+
+    requested = args.agents
+    waves = None
+    if requested:
+        waves = -(-requested // wave_size)  # ceiling division
+
+    if args.format == "line":
+        note = "" if window_src != "assumed" else " (window assumed)"
+        print(f"capacity={capacity} checkpoint_at={checkpoint} "
+              f"wave_size={wave_size} digest_lines<={MAX_DIGEST_LINES}{note}")
+        return 0
+
+    print(f"""context_budget:
+  window: {window}            # source: {window_src}
+  output_reserve: {reserve}   # source: {reserve_src}
+  input_capacity: {capacity}
+  checkpoint_at: {checkpoint}   # {pct}% of capacity, source: {pct_src}
+  wave_size: {wave_size}        # agents that may run in one wave
+  digest_lines_max: {MAX_DIGEST_LINES}""")
+    if requested:
+        print(f"  agents_requested: {requested}\n  waves: {waves}")
+    # The window and the reserve are facts about the environment: an
+    # assumed one is a guess and says so. The checkpoint percentage is
+    # a policy choice, so its default is a default, not a guess.
+    missing = [name for name, src in
+               (("CLAUDE_CODE_AUTO_COMPACT_WINDOW", window_src),
+                ("CLAUDE_CODE_MAX_OUTPUT_TOKENS", reserve_src))
+               if src == "assumed"]
+    if missing:
+        print(f"  labelled: assumed — set {' and '.join(missing)} to "
+              f"measure instead of guessing")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

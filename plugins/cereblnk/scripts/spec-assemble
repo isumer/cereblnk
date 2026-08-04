@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# spec-assemble (CB-086) — assembly is a script, not an agent.
+#
+# Merges owner-written section files into the spec head in fixed
+# order, enforcing the rules no single window should have to hold:
+#   A-1  all seven sections present and non-empty
+#   A-2  every section carries at least one epistemic label
+#   A-3  the diagrams section contains at least one fenced block
+#   A-4  old head is archived to ../history/ (never overwritten)
+#   A-5  spec_version increments; W-2 header written
+#
+# Usage: spec-assemble <sections_dir> <out_spec.md>
+# Env:   RUN_ID (header), CB_WRITTEN_BY (default: architect-agent)
+# Exit:  0 assembled · 1 validation failure (each A-id printed) · 2 usage
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ $# -eq 2 ] || { echo "usage: spec-assemble <sections_dir> <out_spec.md>" >&2; exit 2; }
+export SECTIONS="$1" OUT="$2"
+export RUN_ID="${RUN_ID:-unset}" CB_WRITTEN_BY="${CB_WRITTEN_BY:-architect-agent}"
+
+$PYBIN << 'PY'
+import os, pathlib, re, shutil, sys, datetime
+
+ORDER = ["architecture", "data-flow", "state-transitions", "failure-modes",
+         "trust-boundaries", "diagrams", "test-matrix"]
+TITLES = ["Architecture", "Data flow", "State transitions", "Failure modes",
+          "Trust boundaries", "Diagrams", "Test matrix"]
+LABEL = re.compile(r"\b(Known|Derived|Estimated|Assumed|Speculative)\b")
+
+sections_dir = pathlib.Path(os.environ["SECTIONS"])
+out = pathlib.Path(os.environ["OUT"])
+bad = 0
+
+parts = []
+for key, title in zip(ORDER, TITLES):
+    f = sections_dir / f"{key}.md"
+    if not f.is_file() or not f.read_text().strip():
+        print(f"A-1 missing or empty section: {key}.md"); bad += 1; continue
+    body = f.read_text().strip()
+    if not LABEL.search(body):
+        print(f"A-2 no epistemic label in section: {key}.md"); bad += 1
+    if key == "diagrams" and "```" not in body:
+        print(f"A-3 diagrams section has no fenced block"); bad += 1
+    parts.append((title, body))
+
+if bad:
+    print(f"spec-assemble: {bad} violations — nothing written"); sys.exit(1)
+
+# A-5: version = old head's version + 1
+old_version = 0
+if out.is_file():
+    m = re.search(r"^spec_version:\s*(\d+)", out.read_text(), re.M)
+    old_version = int(m.group(1)) if m else 1
+
+# A-4: archive old head before writing (head's predecessor is sacred)
+if out.is_file():
+    hist = out.parent.parent / "history" if out.parent.name in ("specs", "plans") \
+           else out.parent / "history"
+    hist.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(out, hist / f"spec-{out.stem}-v{old_version}.md")
+
+header = (f"written_by: {os.environ['CB_WRITTEN_BY']}\n"
+          f"run_id: {os.environ['RUN_ID']}\n"
+          f"date: {datetime.date.today().isoformat()}\n"
+          f'acp_version: "1.0"\n'
+          f"spec_version: {old_version + 1}\n")
+body = "\n\n".join(f"## {t}\n\n{b}" for t, b in parts)
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(header + "\n" + body + "\n")
+print(f"spec-assemble: wrote {out} (spec_version {old_version + 1}, "
+      f"{len(parts)} sections" + (f", v{old_version} archived" if old_version else "") + ")")
+PY
