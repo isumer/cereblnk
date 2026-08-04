@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# acp-lint (CB-081) — mechanical validation of ACP Response/Verification
+# Blocks per policies/acp-validation-checklist.md. Turns the checklist's
+# weakest D-class items into M-class: a weak conductor does not need to
+# remember V-1..V-7/V-10 — it runs this and reads the exit code.
+# Dependency-free ($PYBIN stdlib, regex-structural like plan-lint; no
+# YAML library required or used).
+# Exit 0 = block admissible; exit 1 = violations (one per line, named
+# with their checklist ID); exit 2 = usage error.
+# Scope, honestly: V-8 (gate completeness) and V-9 (cross-agent
+# evidence attachment) need run-level context and STAY with the
+# orchestrator; this linter covers the per-block subset.
+set -euo pipefail
+# shellcheck source=../lib/cbenv.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ $# -ge 1 ] || { echo "usage: acp-lint <response-block.yaml>" >&2; exit 2; }
+[ -f "$1" ] || { echo "acp-lint: no such file: $1" >&2; exit 2; }
+export BLOCK="$1"
+$PYBIN << 'PY'
+import os, re, sys
+
+text = open(os.environ["BLOCK"]).read()
+V = []
+
+# ---- V-1: structured ACP block, required top-level fields ----
+def top(key):
+    m = re.search(rf'^{key}\s*:\s*(.*)$', text, re.M)
+    return m.group(1).strip() if m else None
+
+kind = top("kind")
+if kind not in ("response", "verification", "challenge"):
+    V.append(f"V-1: kind must be response|verification|challenge (got: {kind!r})")
+for key in ("acp_version", "task_id", "role", "status", "decision", "confidence"):
+    if top(key) is None:
+        V.append(f"V-1: missing top-level field: {key}")
+status = (top("status") or "").split("#")[0].strip()
+if status and status not in ("completed", "blocked", "escalated"):
+    V.append(f"V-1: status must be completed|blocked|escalated (got: {status!r})")
+if kind in ("verification", "challenge"):
+    if top("target_task") is None: V.append("V-1: verification/challenge block missing target_task")
+    verdict = (top("verdict") or "").split("#")[0].strip()
+    if verdict not in ("confirmed", "refuted", "weakened", "inconclusive"):
+        V.append(f"V-1: verdict must be confirmed|refuted|weakened|inconclusive (got: {verdict!r})")
+
+# ---- carve out the facts: section and its five label chunks ----
+fm = re.search(r'^facts\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
+chunks = {}
+if not fm:
+    V.append("V-2: no facts: section")
+else:
+    fbody = fm.group(1)
+    labels = list(re.finditer(r'^  (known|derived|estimated|assumed|speculative)\s*:\s*(\[\s*\])?\s*(#.*)?$', fbody, re.M))
+    found = {m.group(1) for m in labels}
+    for lbl in ("known", "derived", "estimated", "assumed", "speculative"):
+        if lbl not in found:
+            V.append(f"V-2: facts section missing label list: {lbl}")
+    for i, m in enumerate(labels):
+        start = m.end()
+        end = labels[i+1].start() if i+1 < len(labels) else len(fbody)
+        chunks[m.group(1)] = "" if m.group(2) else fbody[start:end]
+
+def items(lbl):
+    body = chunks.get(lbl, "")
+    parts = re.split(r'^\s*-\s*id\s*:', body, flags=re.M)[1:]
+    ids = re.findall(r'^\s*-\s*id\s*:\s*(\S+)', body, re.M)
+    return list(zip(ids, parts))
+
+# ---- V-3: every known fact carries a CTX evidence reference ----
+for fid, it in items("known"):
+    if not re.search(r'evidence\s*:\s*\[[^\]]*CTX-', it):
+        V.append(f"V-3: known fact {fid} has no CTX evidence reference")
+
+# ---- V-4: every derived fact names its sources ----
+for fid, it in items("derived"):
+    if not re.search(r'from\s*:\s*\[[^\]]*F-', it):
+        V.append(f"V-4: derived fact {fid} has no from:[F-*] source list")
+
+# estimated needs a stated basis (02 §4.1)
+for fid, it in items("estimated"):
+    if not re.search(r'basis\s*:\s*\S', it):
+        V.append(f"V-2: estimated fact {fid} has no basis:")
+
+# ---- V-5: decision does not rest on speculative facts ----
+decision_m = re.search(r'^decision\s*:\s*(>?\s*\n(?:[ \t]+.*\n?)*|.*$)', text, re.M)
+decision_text = decision_m.group(0) if decision_m else ""
+for fid, _ in items("speculative"):
+    if re.search(rf'\b{re.escape(fid)}\b', decision_text):
+        V.append(f"V-5: decision references speculative fact {fid}")
+
+# ---- V-6: load-bearing assumed facts named in decision text ----
+# Mechanical subset: if the decision cites an assumed fact ID, fine (named);
+# deeper dependence detection stays with VerifierAgent.
+
+# ---- V-7: budget honored ----
+br = re.search(r'^budget_report\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
+if not br:
+    V.append("V-7: missing budget_report")
+else:
+    rec = re.search(r'tokens_received\s*:\s*(\d+)', br.group(1))
+    use = re.search(r'tokens_used\s*:\s*(\d+)', br.group(1))
+    if not (rec and use):
+        V.append("V-7: budget_report missing tokens_received/tokens_used")
+    elif int(use.group(1)) > int(rec.group(1)) and status != "blocked":
+        V.append(f"V-7: budget overrun ({use.group(1)}>{rec.group(1)}) without status: blocked")
+
+# ---- V-10: confidence discipline ----
+cm = re.search(r'^confidence\s*:\s*([0-9.]+)', text, re.M)
+if not cm:
+    V.append("V-10: confidence is not a bare calibrated number")
+else:
+    c = float(cm.group(1))
+    if not (0.0 <= c <= 1.0):
+        V.append(f"V-10: confidence {c} outside 0.00-1.00")
+    if c > 0.90 and items("assumed"):
+        V.append(f"V-10: confidence {c} > 0.90 with assumed facts present "
+                 f"({', '.join(f for f,_ in items('assumed'))}) — cap at 0.90 or resolve the assumptions")
+if top("confidence_basis") is None:
+    V.append("V-10: missing confidence_basis")
+
+if V:
+    print("\n".join(V), file=sys.stderr)
+    sys.exit(1)
+print(f"acp-lint: {os.environ['BLOCK']} admissible "
+      f"(kind={kind}, {sum(len(items(l)) for l in chunks)} facts)")
+PY

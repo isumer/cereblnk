@@ -1,0 +1,48 @@
+# Evidence Index Entry — persistent traceability record
+# Location at runtime: .claude/cereblnk/memory/evidence/E-<seq>.yaml
+# Governed by: policies/memory-policy.md §4 (rules E-1, E-2)
+# Semantics: 100% existing ACP fields — the full
+# Claim → Evidence → Verification → Confidence chain, no new ontology.
+#
+# Field provenance map (E-1: nothing invented at index time):
+#   fact_id, claim, label, evidence   ← Response Block facts.*
+#   produced_by, task_id, run_id      ← Response Block role / task_id, Task Block run_id
+#   verified_by, verdict              ← Verification Block role / verdict
+#   confidence, confidence_basis      ← Response Block confidence fields
+#   header (written_by/date/…)        ← memory-policy W-2
+#
+# ConsistencyAgent consumes these entries for cross-run contradiction
+# checks; MemoryBuilderAgent enforces append-only (E-2) and
+# promotion rules (P-2..P-5).
+#
+# ---- Fully worked example ----
+# Source: the worked SecurityAgent Response Block in (task T-014)
+# and the worked Verification Block in this directory's
+# acp-verification-block.template.yaml (V-014). Every value below is
+# copied from those blocks — zero new data.
+written_by: MergeAgent
+run_id: R-2026-07-16-001
+date: 2026-07-16
+acp_version: "1.0"
+
+entry_id: E-0001
+fact_id: F-1
+claim: "AuthFilter no longer calls validateExpiry() on refresh path"
+label: known
+evidence: [CTX-114#L42-58]
+produced_by: SecurityAgent
+task_id: T-014
+
+verified_by: VerifierAgent
+verification_task: V-014
+verdict: confirmed
+
+confidence: 0.78
+confidence_basis: >
+  High on F-1/F-2 (direct evidence). Discounted for assumption F-4.
+
+# Cross-run bookkeeping (written by MemoryBuilderAgent on later runs;
+# empty at creation):
+seen_in_runs: [R-2026-07-16-001]
+contradicted_by: []          # entry IDs; non-empty blocks repository promotion (P-3)
+superseded_by: null          # P-5 semantics; never edited in place

@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""check-agent-skills — the agent<->skill graph has a checker (CB-097).
+
+Nothing read agents/ before this script existed: a skill could be wired
+to a misspelled name, or to no agent at all, and every suite stayed
+green. 22 of 77 skills were in that state when this was written. The
+project's own rule is that a rule without a checker is a wish.
+
+Rules enforced:
+  A-1  every agent frontmatter `skills:` entry resolves to a real skill
+  A-2  preload stays inside the budget: <= MAX_PRELOAD skills and
+       <= MAX_PRELOAD_TOKENS per agent (frontmatter preload is injected
+       on EVERY spawn, so it is charged against the agent's budget
+       before it reads anything — 03 section 2)
+  A-3  every domain skill is REACHABLE: preloaded by an agent, or
+       carried by a rule in policies/skill-selection.yaml
+  A-4  every map rule names an existing skill and existing roles
+  A-5  every discovery target resolves to an existing skill
+  A-6  entry-point skills (cb- prefixed) are neither preloaded nor mapped
+
+Usage: scripts/check-agent-skills [repo_root]
+Exit:  0 clean · 1 violations found
+"""
+import pathlib
+import re
+import sys
+
+MAX_PRELOAD = 2
+MAX_PRELOAD_TOKENS = 3000
+
+
+def load_cbmap(root):
+    sys.path.insert(0, str(root / "plugins/cereblnk/scripts/lib"))
+    import cbmap
+    return cbmap, cbmap.load(root / "plugins/cereblnk/policies/skill-selection.yaml")
+
+
+def frontmatter(path):
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return {}
+    end = text.find("\n---", 3)
+    block = text[3:end if end > 0 else len(text)]
+    out = {}
+    for line in block.splitlines():
+        m = re.match(r"^([\w-]+):\s*(.*)$", line)
+        if m:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def parse_list(raw):
+    raw = raw.strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [s.strip().lstrip("- ").strip() for s in raw.split(",") if s.strip()]
+
+
+def main(argv):
+    root = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
+        pathlib.Path(__file__).resolve().parent.parent
+    plugin = root / "plugins/cereblnk"
+    skills_root = plugin / "skills"
+    agents_root = plugin / "agents"
+    bad = []
+
+    skills = {}          # dir name -> SKILL.md path
+    entry_points = set()
+    for sk in sorted(skills_root.glob("*/*/SKILL.md")):
+        name = sk.parent.name
+        skills[name] = sk
+        fm = frontmatter(sk)
+        if fm.get("name", "").startswith("cb-"):
+            entry_points.add(name)
+    for sk in sorted(skills_root.glob("*/SKILL.md")):
+        fm = frontmatter(sk)
+        nm = fm.get("name", sk.parent.name)
+        if nm.startswith("cb-"):
+            entry_points.add(sk.parent.name)
+
+    agents = {}          # agent name -> (path, [preloaded skills])
+    for ag in sorted(agents_root.glob("*/*.md")):
+        if ag.name == "README.md":
+            continue
+        fm = frontmatter(ag)
+        name = fm.get("name") or ag.stem
+        pre = parse_list(fm.get("skills", ""))
+        agents[name] = (ag, pre)
+
+    # A-1 / A-2
+    preloaded = set()
+    for name, (path, pre) in sorted(agents.items()):
+        rel = path.relative_to(root)
+        for s in pre:
+            if s not in skills:
+                bad.append("A-1 %s: preloads unknown skill %r" % (rel, s))
+            else:
+                preloaded.add(s)
+        if len(pre) > MAX_PRELOAD:
+            bad.append("A-2 %s: preloads %d skills (max %d) — stack-shaped "
+                       "skills belong in skill-selection.yaml, not frontmatter"
+                       % (rel, len(pre), MAX_PRELOAD))
+        words = sum(len(skills[s].read_text(encoding="utf-8").split())
+                    for s in pre if s in skills)
+        tokens = int(words * 4 / 3)
+        if tokens > MAX_PRELOAD_TOKENS:
+            bad.append("A-2 %s: preload is ~%d tokens (max %d) — charged "
+                       "against this agent's budget on every spawn"
+                       % (rel, tokens, MAX_PRELOAD_TOKENS))
+
+    cbmap, (rules, errors) = load_cbmap(root)
+    for e in errors:
+        bad.append("A-4 skill-selection.yaml: %s" % e)
+
+    mapped = set()
+    for r in rules:
+        if r["skill"] not in skills:
+            bad.append("A-4 skill-selection.yaml line %d: unknown skill %r"
+                       % (r["line"], r["skill"]))
+        else:
+            mapped.add(r["skill"])
+        for role in r["roles"]:
+            if role not in agents:
+                bad.append("A-4 %s: unknown role %r" % (r["skill"], role))
+        for token, target in cbmap.discovery_pairs(r):
+            if target not in skills:
+                bad.append("A-5 %s: discovery target %r does not exist"
+                           % (r["skill"], target))
+            if not token:
+                bad.append("A-5 %s: discovery entry without a trigger" % r["skill"])
+
+    # A-3
+    for name in sorted(skills):
+        if name in entry_points:
+            continue
+        if name not in preloaded and name not in mapped:
+            bad.append("A-3 %s: unreachable — no agent preloads it and no "
+                       "rule in skill-selection.yaml selects it" % name)
+
+    # A-6
+    for name in sorted(entry_points):
+        if name in preloaded:
+            bad.append("A-6 %s: entry-point skill preloaded by an agent" % name)
+        if name in mapped:
+            bad.append("A-6 %s: entry-point skill present in the selection map" % name)
+
+    print("check-agent-skills: %d agents, %d skills (%d entry points), "
+          "%d mapped, %d preloaded"
+          % (len(agents), len(skills), len(entry_points), len(mapped), len(preloaded)))
+    if bad:
+        for b in bad:
+            print("  " + b)
+        print("check-agent-skills: %d violation(s)" % len(bad))
+        return 1
+    print("check-agent-skills: clean")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

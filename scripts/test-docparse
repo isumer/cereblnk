@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""test-docparse — golden-file acceptance run for the docparse scripts.
+
+Every content fixture under tests/fixtures/docparse/ is parsed with
+docparse.py --format md and compared byte-for-byte against its
+committed .golden.md. Path cases assert BOTH the exit code and a
+required stderr substring (a tool that fails silently, or succeeds for
+the wrong reason, still fails the run). Exit codes are read from the
+subprocess directly — never through a shell pipe.
+
+Usage: scripts/test-docparse [--bless]
+  --bless  regenerate all goldens from current parser output
+           (review the diff before committing — a bless IS a claim)
+Exit: 0 all pass · 1 any failure
+"""
+import pathlib, subprocess, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+DP = ROOT / "plugins/cereblnk/scripts/docparse/docparse.py"
+FX = ROOT / "tests/fixtures/docparse"
+CONTENT_EXT = {".docx", ".xlsx", ".pptx", ".pdf"}
+
+def run(args):
+    return subprocess.run([sys.executable, str(DP)] + args,
+                          capture_output=True, text=True)
+
+def main():
+    bless = "--bless" in sys.argv
+    fails, ran = [], 0
+    fixtures = sorted(p for p in FX.iterdir()
+                      if p.suffix in CONTENT_EXT and "broken" not in p.name
+                      and "scanned" not in p.name)
+    for f in fixtures:
+        golden = f.with_suffix("").with_suffix("")  # strip once
+        golden = FX / (f.stem + ".golden.md")
+        r = run([str(f), "--format", "md"])
+        ran += 1
+        if bless:
+            golden.write_text(r.stdout); continue
+        if r.returncode != 0:
+            fails.append(f"{f.name}: expected rc=0, got {r.returncode} ({r.stderr.strip()[:80]})"); continue
+        if not golden.exists():
+            fails.append(f"{f.name}: missing golden {golden.name} (run --bless once, review, commit)"); continue
+        if r.stdout != golden.read_text():
+            fails.append(f"{f.name}: output diverges from {golden.name} (diff manually or re-bless deliberately)")
+    if bless:
+        print(f"test-docparse: blessed {ran} goldens — review the diff before committing"); return 0
+
+    # Path cases: (name, args, want_rc, want_substring_in_stderr)
+    cases = [
+        ("scanned pdf -> OCR hint, rc 3", [str(FX/"f5-scanned-like.pdf")], 3, "no text layer"),
+        ("corrupt zip -> rc 1",           [str(FX/"broken.docx")],         1, "not a valid Office"),
+        ("unsupported ext -> rc 2",       [str(ROOT/"tests/fixtures/xmltools/order.xsd")], 2, "unsupported type"),
+        ("missing file -> rc 2",          [str(FX/"does-not-exist.docx")], 2, "no such file"),
+    ]
+    for name, args, want_rc, want_sub in cases:
+        r = run(args); ran += 1
+        if r.returncode != want_rc:
+            fails.append(f"{name}: rc={r.returncode}, want {want_rc}")
+        elif want_sub not in (r.stderr + r.stdout):
+            fails.append(f"{name}: missing expected message {want_sub!r}")
+    if fails:
+        print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
+        print(f"test-docparse: {len(fails)}/{ran} failed", file=sys.stderr); return 1
+    print(f"test-docparse: {ran} checks passed ({len(fixtures)} goldens + {len(cases)} path cases)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

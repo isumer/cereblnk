@@ -1,0 +1,70 @@
+# Run Summary — one per workflow run
+# Location at runtime: .claude/cereblnk/telemetry/R-<date>-<seq>.yaml
+# (plus one line appended to .claude/cereblnk/telemetry/runs.log)
+# Written by: the orchestrator, at run end. Class: D (write rule) over
+# M (real files). Analysis tooling stays F-class — this defines ONLY
+# the data format and the write rule (05 the execution-mechanism map: telemetry D/F).
+#
+# All budget figures come from ACP budget_report fields;
+# nothing is estimated at summary time.
+#
+# Greppability contract: the documented one-liner below must keep
+# working — field names and the "over_budget:" marker are stable.
+#
+# Documented one-liner (total over/under-budget agents in a run —
+# anchored so documentation lines never count):
+#   grep -c '^    over_budget: true' R-<id>.yaml    # over-budget count
+#   grep -c '^    over_budget: false' R-<id>.yaml   # within-budget count
+#   grep -h '^  trigger:' R-*.yaml | sort | uniq -c # fast-path aborts by trigger
+#
+# The abort tally is how the fast path stays honest. A trigger that
+# never fires was mis-specified; a trigger that fires on most runs
+# means the pre-score is routing badly, not that the rule is working.
+#
+# ---- Fully worked example ----
+run_id: R-2026-07-16-001
+workflow: PRReviewWorkflow
+risk: high
+verification_level: 3
+started: 2026-07-16T14:02:00Z
+finished: 2026-07-16T14:19:00Z
+
+agents:
+  - role: PlannerAgent
+    task_id: T-010
+    budget_tokens: 4000
+    tokens_used: 3100
+    over_budget: false
+    status: completed
+  - role: SecurityAgent
+    task_id: T-014
+    budget_tokens: 8000
+    tokens_used: 6200
+    over_budget: false
+    status: completed
+  - role: VerifierAgent
+    task_id: V-014
+    budget_tokens: 4000
+    tokens_used: 2100
+    over_budget: false
+    status: completed
+
+gates:
+  verifier: confirmed        # verdicts
+  challenger: weakened       # counter-scenario survived → in RISK
+  consistency: confirmed
+
+protocol_violations: []      # e.g. "T-016: unlabeled claim — block discarded, re-issued"
+
+# Null unless the run started on the fast path and aborted out of it
+# (risk-model.md, fast-path abort). Trigger is one of:
+# level-3-surface | scope-growth | claim-not-rederivable |
+# confidence-below-floor. Populated form:
+#   fast_path_abort:
+#     trigger: level-3-surface
+#     task_id: T-003
+#     rerouted_to: 3          # verification level the run continued at
+fast_path_abort: null
+
+synthesis_confidence: 0.78
+ledger_blocks_written: 0   # must equal tasks executed (budget-policy rule 4)

@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""test-xmltools — repeatable acceptance run for the xmltools scripts.
+
+Replaces the one-shot, build-time verification of CB-067 with a check
+anyone (and CI) can re-run. Each case asserts BOTH the exit code and a
+required substring of the output, so a tool that fails silently or
+succeeds for the wrong reason still fails the run.
+
+Usage: scripts/test-xmltools
+Exit: 0 all pass · 1 any failure
+"""
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+TOOLS = ROOT / "plugins/cereblnk/scripts/xmltools"
+FIX = ROOT / "tests/fixtures/xmltools"
+
+CASES = [
+    ("valid instance accepted",
+     ["xsd_validate.py", "order.xsd", "order-valid.xml"], 0, "VALID:"),
+    ("range violation cited with line",
+     ["xsd_validate.py", "order.xsd", "order-invalid.xml"], 1,
+     "out of range for positiveInteger"),
+    ("enumeration violation cited",
+     ["xsd_validate.py", "order.xsd", "order-invalid.xml"], 1,
+     "not in enumeration"),
+    ("content-model violation cited",
+     ["xsd_validate.py", "order.xsd", "order-invalid.xml"], 1,
+     "content does not match model"),
+    ("malformed instance rejected at line:col",
+     ["xsd_validate.py", "order.xsd", "order-malformed.xml"], 1,
+     "NOT WELL-FORMED"),
+    ("unsupported construct refused BY NAME (fail-closed)",
+     ["xsd_validate.py", "unsupported.xsd", "order-valid.xml"], 2,
+     "xs:import"),
+    ("mixed content + nested choice accepted",
+     ["xsd_validate.py", "mixed.xsd", "mixed-valid.xml"], 0, "VALID:"),
+    ("well-formedness summary",
+     ["xml_parse.py", "order-valid.xml"], 0, "WELL-FORMED:"),
+    ("outline renders structure",
+     ["xml_parse.py", "--outline", "order-valid.xml"], 0, "item"),
+    ("parse rejects malformed with position",
+     ["xml_parse.py", "order-malformed.xml"], 1, "NOT WELL-FORMED"),
+    ("generated draft is labeled ESTIMATED",
+     ["xsd_generate.py", "order-valid.xml"], 0, "ESTIMATED"),
+    ("optionality inferred from a varying sample",
+     ["xsd_generate.py", "people.xml"], 0, 'name="email" type="xs:string" minOccurs="0"'),
+]
+
+
+def run(args):
+    proc = subprocess.run([sys.executable, str(TOOLS / args[0])] + args[1:],
+                          cwd=FIX, capture_output=True, text=True)
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def main():
+    failures = []
+    for name, args, want_code, want_text in CASES:
+        code, out = run(args)
+        if code != want_code:
+            failures.append(f"{name}: exit {code}, expected {want_code}")
+        elif want_text not in out:
+            failures.append(f"{name}: output missing {want_text!r}")
+
+    # round-trip: a generated draft must be consumable by the validator
+    code, draft = run(["xsd_generate.py", "order-valid.xml"])
+    tmp = FIX / "_roundtrip.xsd"
+    try:
+        tmp.write_text(draft)
+        code, out = run(["xsd_validate.py", "_roundtrip.xsd",
+                         "order-valid.xml"])
+        if code != 0 or "VALID:" not in out:
+            failures.append("round-trip: generated draft rejected its own "
+                            "sample")
+    finally:
+        tmp.unlink(missing_ok=True)
+
+    total = len(CASES) + 1
+    if failures:
+        print(f"FAIL: {len(failures)}/{total} xmltools case(s)")
+        for f in failures:
+            print(f"  {f}")
+        return 1
+    print(f"OK: {total}/{total} xmltools cases pass")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

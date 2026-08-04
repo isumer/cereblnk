@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# run-status (CB-086) — status from files, not from the conversation.
+#
+# Reads $CB_DIR/state.md (+ the plan and inbox it points to) and
+# prints at most three lines. Works from a second terminal while the
+# conductor is blocked mid-run — that is its reason to exist.
+#
+# Usage: run-status [cb_dir]     (default: cbenv-resolved $CB_DIR)
+# Exit:  0 always (a status tool never blocks anything) · 2 usage-only
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+DIR="${1:-${CB_DIR:-}}"
+[ -n "$DIR" ] || { echo "usage: run-status [cb_dir] (no project root resolved)" >&2; exit 2; }
+export DIR
+
+$PYBIN << 'PY'
+import os, pathlib, re
+
+d = pathlib.Path(os.environ["DIR"])
+state = d / "state.md"
+if not state.is_file():
+    print(f"run-status: no active run state ({state} missing)")
+    raise SystemExit(0)
+
+t = state.read_text()
+def field(k):
+    m = re.search(rf"^{k}:\s*(.+)$", t, re.M)
+    return m.group(1).strip() if m else "?"
+
+run_id, stage = field("run_id"), field("stage")
+spec, plan = field("spec"), field("plan")
+print(f"run: {run_id} · stage: {stage} · spec {spec.split('·')[-1].strip() if '·' in spec else spec}"
+      f" / plan {plan.split('·')[-1].strip() if '·' in plan else plan}")
+
+# plan progress (same task-header grammar as plan-status / plan-format)
+plan_path = d / plan.split("·")[0].strip() if plan != "?" else None
+if plan_path and plan_path.is_file():
+    pt = plan_path.read_text()
+    tasks = re.findall(r"^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:\s*(.+)$", pt, re.M)
+    if tasks:
+        done = sum(1 for s, _, _ in tasks if s.lower() == "x")
+        nxt = next(((n, title) for s, n, title in tasks if s.lower() != "x"), None)
+        line = f"progress: {done}/{len(tasks)} checked"
+        if nxt:
+            line += f" · next: Task {nxt[0]} — {nxt[1].strip()}"
+        print(line)
+
+# unresolved inbox items (input-policy §3): unchecked boxes; correction
+# and invalidation classes block the loop, clarification never does.
+inbox = d / "context" / run_id / "inbox.md"
+n = blocking = 0
+if inbox.is_file():
+    for line in inbox.read_text().splitlines():
+        if re.match(r"^\s*-\s*\[ \]", line):
+            n += 1
+            if re.search(r"class:\s*(correction|invalidation)\b", line):
+                blocking += 1
+print(f"inbox: {n} unresolved ({blocking} blocking)")
+PY

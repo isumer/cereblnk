@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<order xmlns="http://example.com/order" id="-5" status="cancelled">
+  <item qty="lots">Widget</item>
+  <customer>Acme</customer>
+  <extra>x</extra>
+</order>

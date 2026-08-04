@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# ground-check — mechanical grounding validation (grounding-policy G-2).
+# Extracts every path#Lstart[-Lend] reference from a Response Block and
+# verifies the file exists and the line range is inside it.
+# Usage: ground-check <block.yaml> [repo-root]   Exit 0 ok / 1 dangling / 2 usage
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh" 2>/dev/null || PYBIN=python3
+[ $# -ge 1 ] || { echo "usage: ground-check <block.yaml> [root]" >&2; exit 2; }
+export GC_BLOCK="$1" GC_ROOT="${2:-.}"
+$PYBIN << 'PY'
+import os, re, sys, pathlib
+text = open(os.environ["GC_BLOCK"]).read()
+root = pathlib.Path(os.environ["GC_ROOT"])
+refs = re.findall(r'([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)#L(\d+)(?:-L?(\d+))?', text)
+fails = []
+for path, a, b in refs:
+    f = root / path
+    if not f.is_file():
+        fails.append(f"G-2: cited file does not exist: {path}"); continue
+    n = sum(1 for _ in open(f, errors='ignore'))
+    lo, hi = int(a), int(b or a)
+    if lo < 1 or hi > n or lo > hi:
+        fails.append(f"G-2: {path}#L{a}-{b or a} outside file ({n} lines)")
+if fails:
+    print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
+    print(f"ground-check: {len(fails)} dangling reference(s)", file=sys.stderr); sys.exit(1)
+print(f"ground-check: {len(refs)} reference(s) verified against {root}")
+PY

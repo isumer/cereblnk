@@ -1,0 +1,8 @@
+Go:     func TestOrders(t *testing.T) {}  // uses database/sql
+Rust:   #[test] fn parses() {}
+Swift:  import XCTest
+Dart:   import 'package:flutter_test/flutter_test.dart';
+Ruby:   RSpec.describe Order do end   # ActiveRecord model
+PHP:    use PHPUnit\Framework\TestCase;
+C#:     [Test] public void Parses() {}
+Kotlin: import org.springframework.boot.runApplication

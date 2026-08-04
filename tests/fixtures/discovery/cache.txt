@@ -1,0 +1,8 @@
+Redis session store, written by the auth service:
+  SETEX session:9f2 3600 "{\"uid\":42}"
+
+Elasticsearch query issued by the catalogue reader:
+  POST /products/_search {"query":{"match_all":{}}}
+
+Nexus is the artifact target for release builds.
+Release artifacts are published to https://nexus.acme.internal/repository/maven-releases/

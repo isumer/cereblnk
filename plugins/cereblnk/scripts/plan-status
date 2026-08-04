@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# plan-status (CB-051) — reports execution state from a plan's checkboxes.
+# The resume path after a dead session: state is the file, not memory.
+# Dependency-free. Usage: plan-status <plan.md>
+set -euo pipefail
+# shellcheck source=../lib/cbenv.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ $# -ge 1 ] || { echo "usage: plan-status <plan.md>" >&2; exit 2; }
+[ -f "$1" ] || { echo "plan-status: no such file: $1" >&2; exit 2; }
+export PLAN="$1"
+$PYBIN << 'PY'
+import os, re, sys
+
+text = open(os.environ["PLAN"]).read()
+task_hdr = re.compile(r'^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:\s*(.+)$', re.M)
+tasks = list(task_hdr.finditer(text))
+if not tasks:
+    print("plan-status: no tasks found"); sys.exit(0)
+
+def risk_of(m, i):
+    start = m.end(); end = tasks[i+1].start() if i+1 < len(tasks) else len(text)
+    rm = re.search(r'^\s*-\s*risk\s*:\s*(HIGH|MED|LOW)\b', text[start:end], re.M | re.I)
+    return rm.group(1).upper() if rm else "?"
+
+done = [m for m in tasks if m.group(1).lower() == 'x']
+todo = [(i, m) for i, m in enumerate(tasks) if m.group(1).lower() != 'x']
+
+print(f"plan: {os.path.basename(os.environ['PLAN'])}")
+print(f"progress: {len(done)}/{len(tasks)} tasks checked")
+if todo:
+    i, nxt = todo[0]
+    print(f"next: Task {nxt.group(2)} — {nxt.group(3).strip()}  [risk: {risk_of(nxt, i)}]")
+    remaining_high = sum(1 for i, m in todo if risk_of(m, i) == "HIGH")
+    print(f"remaining: {len(todo)} task(s), {remaining_high} HIGH-risk")
+else:
+    print("next: none — all tasks checked; run the recomposition_check")
+PY

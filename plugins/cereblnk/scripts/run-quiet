@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# run-quiet (CB-085) — the tool-output gate.
+#
+# Runs a shell command, writes FULL output to a run-scoped log, and
+# prints only a bounded digest (max 20 lines). The executing agent
+# never reads the raw stream; if it needs more than the digest, it
+# greps the log — it never cats it (run-discipline §7).
+#
+# Usage:  run-quiet <task_id> <command> [args...]
+# Log:    $CB_RUN_LOG_DIR/<task_id>.log
+#         (default: $CB_DIR/context/$RUN_ID/logs, else ./.cb-logs)
+# Exit:   the wrapped command's exit code, always propagated.
+#
+# Digest contents, in order (each section only when non-empty):
+#   1. header      exit code · log path · total line count
+#   2. tests       failing "Tests run:" lines from surefire reports
+#   3. compile     deduplicated file:line error lines
+#   4. fallback    last 5 log lines (only on failure, only if 2+3 empty)
+set -u
+
+[ $# -ge 2 ] || { echo "usage: run-quiet <task_id> <command> [args...]" >&2; exit 64; }
+task_id="$1"; shift
+
+log_dir="${CB_RUN_LOG_DIR:-}"
+if [ -z "$log_dir" ]; then
+  if [ -n "${CB_DIR:-}" ] && [ -n "${RUN_ID:-}" ]; then
+    log_dir="$CB_DIR/context/$RUN_ID/logs"
+  else
+    log_dir="./.cb-logs"
+  fi
+fi
+mkdir -p "$log_dir" || exit 73
+log="$log_dir/$task_id.log"
+
+"$@" >"$log" 2>&1
+rc=$?
+
+total=$(wc -l <"$log" | tr -d ' ')
+echo "exit=$rc · log=$log · lines=$total"
+
+emitted=1  # header line
+emit() {  # bounded print: never exceed 20 digest lines total
+  while IFS= read -r line; do
+    [ "$emitted" -ge 20 ] && { echo "… digest capped at 20 lines — grep the log"; return 1; }
+    echo "$line"; emitted=$((emitted+1))
+  done
+  return 0
+}
+
+# 2. Surefire: failing test classes, from report files — not stdout.
+sf=$(find . -path '*/target/surefire-reports/*.txt' -newer "$log_dir" -o \
+       -path '*/target/surefire-reports/*.txt' 2>/dev/null | head -200)
+if [ -n "$sf" ]; then
+  # shellcheck disable=SC2086
+  fails=$(grep -H "Tests run:" $sf 2>/dev/null \
+          | grep -v "Failures: 0, Errors: 0" | head -10)
+  if [ -n "$fails" ]; then
+    echo "failing tests:"; emitted=$((emitted+1))
+    printf '%s\n' "$fails" | sed 's|.*/surefire-reports/||; s|\.txt:| · |' | emit
+  fi
+fi
+
+# 3. Compile errors: file:line, deduplicated. Maven/javac and gcc-style.
+errs=$(grep -E '(\[ERROR\].*\.(java|kt|ts|tsx|js):|^[^ ]+\.(java|kt|c|cpp|go|rs|ts|tsx):[0-9]+)' "$log" \
+       | sed 's/^\[ERROR\] *//' | sort -u | head -10)
+if [ -n "$errs" ]; then
+  echo "compile errors:"; emitted=$((emitted+1))
+  printf '%s\n' "$errs" | cut -c1-160 | emit
+fi
+
+# 4. Fallback: on failure with nothing structured found, last 5 lines.
+if [ $rc -ne 0 ] && [ -z "${fails:-}" ] && [ -z "$errs" ]; then
+  echo "tail:"; emitted=$((emitted+1))
+  tail -5 "$log" | cut -c1-160 | emit
+fi
+
+exit $rc

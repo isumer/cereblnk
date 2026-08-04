@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""verify — the single deterministic acceptance entry for this repo.
+
+Runs every scripted checker in one pass and reports one line per
+suite. This is the mechanical half of the verification story; workflow
+behavior (prompt-driven) is NOT covered here and never will be — it can
+only be established by running the workflows. Claiming workflow
+correctness from this script's green would be Part II trap #8.
+
+Suites (each asserts exit codes AND expected output, incl. failure and
+unsupported paths where the tool has them):
+  check-skill-relations   skill graph integrity
+  test-xmltools           xml/xsd tools, fixtures
+  test-docparse           office/pdf golden files + path cases
+  test-hooks              four guards, full path matrix
+  test-run-quiet          tool-output gate contract (CB-085)
+  skill-frontmatter       every skill loads: fm present, names sane (CB-088)
+  rules-layer             constraint files load and resolve (CB-092)
+  test-context-budget     capacity follows the window (CB-094)
+  budget-literals         no window size written as a fact (CB-094)
+  test-lifecycle-scripts  spec-assemble/run-status/ensure-gitignore (CB-086)
+  test-skill-selection    task-scoped skill floor + hooks (CB-097)
+  check-agent-skills      agent<->skill graph: no dangling, no orphan,
+                          preload inside budget (CB-097)
+  test-artifact-gate      R-2 loss gate + R-3 history preservation (CB-091)
+  acp-lint fixtures       canonical block passes; 5-violation block
+                          reports all five checklist IDs
+  select-agents triples   CB-044 dry-run expectations
+  check-readme            the front page's command list and counts match
+                          the tree it describes (CB-104)
+  test-select-rules       the stack gate subtracts only what it can
+                          prove; absent profile subtracts nothing (CB-109)
+  test-discovery         cascade triggers name evidence that real files
+                          contain, not plausible-looking strings (CB-098)
+  test-leakage            the leakage checker's own failure paths (CB-108)
+  leakage scan            reference strings in tracked files; SKIPs when
+                          no wordlist is configured — a skip is never a
+                          pass, and the skip is printed (CB-108)
+
+Usage: scripts/verify        Exit: 0 all green · 1 any failure
+"""
+import pathlib, subprocess, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
+
+def sh(cmd, stdin=None):
+    return subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+
+def main():
+    results, bad = [], 0
+    def suite(name, ok, detail="", skipped=False):
+        nonlocal bad
+        # A skip is reported, never counted as green. A suite that cannot
+        # run must say so out loud — silence here is how an unenforced
+        # check survives a release.
+        if skipped:
+            results.append(f"  SKIP  {name}" + (f" — {detail}" if detail else ""))
+            return
+        results.append(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f" — {detail}" if detail and not ok else ""))
+        bad += 0 if ok else 1
+
+    for name in ("check-skill-relations", "test-xmltools", "test-docparse", "test-hooks", "test-run-quiet", "test-lifecycle-scripts", "test-artifact-gate", "test-context-budget",
+                 "test-skill-selection", "test-discovery", "test-select-rules"):
+        r = sh([sys.executable, str(S / name)])
+        suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
+
+    lk_unit = sh([sys.executable, str(S / "test-leakage")])
+    suite("test-leakage", lk_unit.returncode == 0,
+          (lk_unit.stderr or lk_unit.stdout).strip().splitlines()[-1][:100]
+          if lk_unit.returncode else "")
+
+    lk = sh([sys.executable, str(S / "check-leakage")])
+    suite("leakage scan", lk.returncode == 0,
+          "no wordlist — set CB_LEAKAGE_WORDLIST to enable"
+          if lk.returncode == 3
+          else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
+          skipped=(lk.returncode == 3))
+
+    rm = sh([sys.executable, str(S / "check-readme")])
+    suite("check-readme", rm.returncode == 0,
+          (rm.stdout or rm.stderr).strip().splitlines()[0][:100] if rm.returncode else "")
+
+    bl = sh([sys.executable, str(S / "check-budget-literals")])
+    suite("budget-literals", bl.returncode == 0,
+          bl.stdout.strip().splitlines()[-1] if bl.stdout else "")
+
+    ags = sh([sys.executable, str(S / "check-agent-skills")])
+    suite("check-agent-skills", ags.returncode == 0,
+          ags.stdout.strip().splitlines()[-1] if ags.stdout else "")
+
+    r_ok = sh([sys.executable, str(S / "check-rules")])
+    suite("rules-layer", r_ok.returncode == 0, r_ok.stdout.strip().splitlines()[-1] if r_ok.stdout else "")
+
+    fm_ok = sh([sys.executable, str(S / "check-skill-frontmatter")])
+    fm_bad = sh([sys.executable, str(S / "check-skill-frontmatter"),
+                 str(ROOT / "tests/fixtures/frontmatter/bad-skills")])
+    suite("skill-frontmatter", fm_ok.returncode == 0 and fm_bad.returncode == 1
+          and "F-1" in fm_bad.stdout and "F-3" in fm_bad.stdout,
+          f"ok rc={fm_ok.returncode}, bad rc={fm_bad.returncode}")
+
+    g_ok = sh(["bash", str(S / "ground-check"), str(ROOT / "tests/fixtures/grounding/ok-block.yaml"), str(ROOT)])
+    g_bad = sh(["bash", str(S / "ground-check"), str(ROOT / "tests/fixtures/grounding/bad-block.yaml"), str(ROOT)])
+    suite("ground-check fixtures", g_ok.returncode == 0 and g_bad.returncode == 1,
+          f"ok rc={g_ok.returncode}, bad rc={g_bad.returncode}")
+
+    r = sh(["bash", str(S / "authoring-lint"), "manifest"])
+    suite("authoring-lint manifest", r.returncode == 0,
+          (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
+
+    good = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/good-block.yaml")])
+    bad_b = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/bad-block.yaml")])
+    ids = ("V-3", "V-4", "V-5", "V-7", "V-10")
+    suite("acp-lint fixtures",
+          good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids),
+          f"good rc={good.returncode}, bad rc={bad_b.returncode}, ids={[i for i in ids if i not in bad_b.stderr]} missing")
+
+    triples = [
+        (["src/components/Button.tsx"], "frontend-agent", "gate_level: 1"),
+        (["db/migrations/V7__x.sql"], "database-agent", "gate_level: 3"),
+        (["src/main/java/AuthFilter.java"], "security-agent", "gate_level: 3"),
+        # CB-103: an authored spec belongs to the writer, a README to the
+        # reviewer. Both are .md; only the path separates them.
+        (["memory/specs/export-format.md"], "technicalwriter-agent", "gate_level: 1"),
+        # A spec ABOUT auth still raises the floor — the writer owns the
+        # document, security-agent owns the surface it describes.
+        (["memory/specs/auth-conversion.md"], "security-agent", "gate_level: 3"),
+        (["README.md"], "docs-agent", "gate_level: 1"),
+    ]
+    ok = True; why = []
+    for paths, agent, level in triples:
+        r = sh(["bash", str(PS / "select-agents")] + paths)
+        if r.returncode != 0 or agent not in r.stdout or level not in r.stdout:
+            ok = False; why.append(paths[0])
+        # The wrong specialist must not merely be outranked, it must be absent.
+        if paths[0].startswith("memory/specs/") and "docs-agent" in r.stdout:
+            ok = False; why.append(paths[0] + " (docs-agent still selected)")
+    suite("select-agents triples", ok, f"mismatch on {why}")
+
+    print("verify:"); print("\n".join(results))
+    if bad:
+        print(f"verify: {bad} suite(s) failed", file=sys.stderr); return 1
+    print("verify: all suites green (deterministic layer only — workflow behavior is not covered)")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

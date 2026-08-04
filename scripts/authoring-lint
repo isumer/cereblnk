@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# authoring-lint — genre-aware style checker for plugin artifacts.
+# Usage: authoring-lint <judgment|recipe|constraint|directive|manifest> <file>...
+#   manifest mode: walks the plugin tree and derives each file's genre
+#     from its position — no list to keep in sync
+# Exit 0 all pass; 1 violations (named); 2 usage.
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh" 2>/dev/null || PYBIN=python3
+[ $# -ge 1 ] || { echo "usage: authoring-lint <genre|manifest> <file>..." >&2; exit 2; }
+MODE="$1"; shift
+AL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export AL_MODE="$MODE" AL_FILES="$*" AL_ROOT
+$PYBIN << 'PY'
+import os, re, statistics, sys, pathlib
+def measure(p):
+    t = open(p, encoding='utf-8', errors='ignore').read()
+    lines = t.splitlines()
+    # YAML frontmatter is metadata, not prose. A skills: list or a
+    # description: line carries no judgment and must not be measured
+    # against the sentence cap — counting it penalised agents for
+    # declaring many skills, which is the opposite of the intent.
+    if lines and lines[0].strip() == '---':
+        for i, l in enumerate(lines[1:], start=1):
+            if l.strip() == '---':
+                lines = lines[i+1:]; break
+    inc=False; code=0; prose=[]
+    for l in lines:
+        if l.strip().startswith('```'): inc = not inc; continue
+        if inc: code += 1; continue
+        s = l.strip()
+        if not s or s.startswith(('#','|','---','>')): continue
+        # A list item is its own scanning unit. Without a terminal
+        # period the join below would fuse every bullet in a section
+        # into one enormous "sentence" and the cap would measure
+        # nothing. Each bullet is measured on its own.
+        if s.startswith(("- ", "* ")) and not s.endswith((".", ":", "!", "?")):
+            s += "."
+        prose.append(s)
+    sents = [s for s in re.split(r'(?<=[.!?])\s+', ' '.join(prose)) if len(s.split()) > 2]
+    wps = statistics.mean(len(s.split()) for s in sents) if sents else 0
+    total = max(len(lines), 1)
+    return total, code*100//total, round(wps, 1)
+# directive: agent definitions. Inline ACP blocks are the artifact, not
+# decoration, so the code ceiling is high — calibrated 2026-07-25 from
+# all 28 agents (median 21.5%, max 27.4%) the way recipe was calibrated
+# from its first real file. NO FLOOR: the same measurement reported a
+# minimum of 0%, and an agent that references protocols/ instead of
+# embedding a block is legitimate. A 10% floor was set first and the
+# lint rejected two core agents for it — the floor was the error, not
+# the agents. Prose still carries judgment, so the 12w cap holds.
+# constraint: 20-60% recalibrated 2026-07-25 against the first real
+# artifact AND the reference corpus, which spans 3-59% (its common
+# layer 3%, coding-style files 31-34%, patterns files 59%). The old
+# 35% floor described only the patterns subset. Our own genre rule
+# lowers the ratio further by design: anti-patterns are NAMED, never
+# written out, so a Cereblnk constraint file carries roughly half the
+# code of a corpus that shows both forms. The 20% floor still stops a
+# constraint file from degenerating into prose.
+BANDS = {"judgment": (0,5,12.0), "recipe": (60,100,None), "constraint": (20,60,15.0),
+         "directive": (0,32,12.0),
+         # constraint-neutral: the technology-neutral layers. Measured
+         # evidence says this is a second density, not the same genre:
+         # a reference corpus's common file sits near 3% code while its
+         # language files run 31-59%. A neutral rule has no language to
+         # write in, and padding pseudocode to clear a floor is exactly
+         # the ceremony the density rule removes. Ceiling kept: a common
+         # file heavy with code has drifted into language territory.
+         "constraint-neutral": (0,40,15.0)}
+mode = os.environ["AL_MODE"]; files = os.environ["AL_FILES"].split()
+jobs = []
+if mode == "manifest":
+    # Genre is derived from position, not looked up in a list. The list
+    # was 297 hand-maintained lines restating what the tree already
+    # said: every constraint file declares `genre:` in its own
+    # frontmatter (check-rules R-3 requires it), and the rest follow
+    # from where they sit. A second source of truth has to be kept in
+    # sync, and this one had already drifted — skills/think/SKILL.md was
+    # never added, so it was silently unlinted.
+    #
+    #   rules/**                        constraint
+    #   skills/**/PATTERNS.md           recipe
+    #   skills/<name>/SKILL.md          directive  (entry point)
+    #   skills/<group>/<name>/SKILL.md  judgment   (domain skill)
+    #   agents/**                       directive
+    #
+    # policies/, protocols/ and top-level READMEs are prose about the
+    # system rather than artifacts of a genre, and stay out.
+    root = pathlib.Path(os.environ["AL_ROOT"])
+    plugin = root / "plugins/cereblnk"
+    for f in sorted(plugin.rglob("*.md")):
+        rel = f.relative_to(root)
+        parts = rel.parts
+        if "rules" in parts:
+            genre = "constraint"
+        elif "agents" in parts:
+            genre = "directive"
+        elif "skills" in parts:
+            if f.name == "PATTERNS.md":
+                genre = "recipe"
+            elif f.name == "SKILL.md":
+                i = parts.index("skills")
+                genre = "directive" if len(parts) - i == 3 else "judgment"
+            else:
+                continue
+        else:
+            continue
+        jobs.append((genre, str(rel)))
+else:
+    jobs = [(mode, f) for f in files]
+fails = []
+for genre, f in jobs:
+    if genre not in BANDS: fails.append(f"{f}: unknown genre {genre}"); continue
+    f = str(pathlib.Path(os.environ["AL_ROOT"]) / f) if not os.path.isabs(f) and mode=="manifest" else f
+    if not os.path.exists(f): fails.append(f"{f}: missing"); continue
+    # A neutral rule has no language to write in. The band follows that
+    # fact, not the folder's name: a file declares `density: neutral`,
+    # and the common layer is neutral by definition. Keying this on the
+    # word "common" was the first attempt and it failed the moment the
+    # architecture layer arrived with the same property.
+    if genre == "constraint":
+        head = open(f, encoding="utf-8", errors="ignore").read(400)
+        if re.search(r"^density:\s*neutral\s*$", head, re.M) or \
+           re.search(r"^category:\s*common\s*$", head, re.M):
+            genre = "constraint-neutral"
+    lo, hi, cap = BANDS[genre]; L, pct, wps = measure(f)
+    if not (lo <= pct <= hi): fails.append(f"{f}: code {pct}% outside {genre} band {lo}-{hi}%")
+    if cap and wps > cap: fails.append(f"{f}: avg sentence {wps}w exceeds {genre} cap {cap}w")
+    if genre == "judgment" and L > 220: fails.append(f"{f}: {L} lines exceeds judgment cap 220")
+if fails:
+    print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
+    print(f"authoring-lint: {len(fails)} violation(s) in {len(jobs)} file(s)", file=sys.stderr); sys.exit(1)
+print(f"authoring-lint: {len(jobs)} file(s) within genre bands")
+PY

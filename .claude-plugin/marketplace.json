@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cereblnk-marketplace",
+  "description": "Distribution marketplace for Cereblnk, an adaptive multi-agent engineering platform for Claude Code.",
+  "owner": {
+    "name": "isumer"
+  },
+  "plugins": [
+    {
+      "name": "cereblnk",
+      "displayName": "Cereblnk",
+      "description": "Adaptive multi-agent engineering platform: runtime-orchestrated specialist agents, evidence-driven verification, and context budgeting.",
+      "source": "./plugins/cereblnk",
+      "category": "development",
+      "keywords": ["multi-agent", "code-review", "verification", "orchestration", "engineering"],
+      "repository": "https://github.com/isumer/cereblnk"
+    }
+  ]
+}

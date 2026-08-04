@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""artifact-gate (CB-091) — the reconstruction checkers, as code.
+
+memory-policy R-2 and R-3 named their checkers but ran on trust. This
+makes them mechanical. Reconstruction is how enrichment enters an
+artifact; an unchecked reconstruction is how a constraint quietly
+disappears — summary drift (09 Part II #9) at the worst layer.
+
+  spec <old> <new>   R-2 loss gate
+    G-1  every labeled statement in v(n) appears in v(n+1) or is
+         marked `superseded_by:` with a rationale
+    G-2  spec_version strictly increases
+    G-3  no section present in v(n) is missing from v(n+1)
+
+  plan <old> <new>   R-3 history preservation
+    G-4  a task checked in v(n) still exists in v(n+1)
+    G-5  its title and body are unchanged (history is not rewritten)
+    G-6  it is still checked, unless explicitly marked REWORK
+
+Exit: 0 clean · 1 violations (each with its G-id) · 2 usage
+"""
+import pathlib, re, sys
+
+LABEL = r"(?:Known|Derived|Estimated|Assumed|Speculative)"
+# A labeled statement: the label, then the claim text up to end of line.
+LABELED = re.compile(rf"\b({LABEL})\b\s*[:\-—]\s*(.+)$", re.M)
+SECTION = re.compile(r"^##\s+(.+?)\s*$", re.M)
+TASK = re.compile(r"^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:\s*(.+?)$(.*?)(?=^###|\Z)",
+                  re.M | re.S)
+
+def norm(s):
+    """Compare on meaning-bearing text, not on rewrapping."""
+    return " ".join(s.split()).rstrip(".").lower()
+
+def read(p):
+    f = pathlib.Path(p)
+    if not f.is_file():
+        print(f"artifact-gate: no such file: {p}", file=sys.stderr)
+        sys.exit(2)
+    return f.read_text()
+
+def check_spec(old_t, new_t):
+    bad = 0
+    superseded = {norm(m) for m in re.findall(r"superseded_by:.*?·\s*(.+)$", new_t, re.M)}
+    new_claims = {norm(c) for _, c in LABELED.findall(new_t)}
+    new_blob = norm(new_t)
+
+    for label, claim in LABELED.findall(old_t):
+        n = norm(claim)
+        if n in new_claims or n in superseded or n in new_blob:
+            continue
+        print(f"G-1 dropped {label} statement without superseded_by: {claim.strip()[:90]}")
+        bad += 1
+
+    def version(t):
+        m = re.search(r"^spec_version:\s*(\d+)", t, re.M)
+        return int(m.group(1)) if m else None
+    ov, nv = version(old_t), version(new_t)
+    if ov is None or nv is None:
+        print("G-2 spec_version missing in one of the versions"); bad += 1
+    elif nv <= ov:
+        print(f"G-2 spec_version did not increase: {ov} -> {nv}"); bad += 1
+
+    old_sec = {norm(s) for s in SECTION.findall(old_t)}
+    new_sec = {norm(s) for s in SECTION.findall(new_t)}
+    for s in sorted(old_sec - new_sec):
+        print(f"G-3 section present in old version is missing: {s}"); bad += 1
+    return bad
+
+def check_plan(old_t, new_t):
+    bad = 0
+    new_tasks = {tid: (state, title, body) for state, tid, title, body in TASK.findall(new_t)}
+    for state, tid, title, body in TASK.findall(old_t):
+        if state.lower() != "x":
+            continue                       # unstarted tasks may be re-derived
+        if tid not in new_tasks:
+            print(f"G-4 checked Task {tid} disappeared from the new plan"); bad += 1
+            continue
+        nstate, ntitle, nbody = new_tasks[tid]
+        # A REWORK annotation ANNOTATES history; it does not rewrite it.
+        # G-6's honest path must not trip G-5.
+        nbody_cmp = "\n".join(l for l in nbody.splitlines() if "REWORK" not in l.upper())
+        if norm(title) != norm(ntitle) or norm(body) != norm(nbody_cmp):
+            print(f"G-5 checked Task {tid} was rewritten (history is not editable)"); bad += 1
+        if nstate.lower() != "x" and "REWORK" not in nbody.upper():
+            print(f"G-6 checked Task {tid} was silently unchecked without REWORK"); bad += 1
+    return bad
+
+def main():
+    if len(sys.argv) != 4 or sys.argv[1] not in ("spec", "plan"):
+        print("usage: artifact-gate spec|plan <old> <new>", file=sys.stderr)
+        return 2
+    kind, old, new = sys.argv[1], read(sys.argv[2]), read(sys.argv[3])
+    bad = check_spec(old, new) if kind == "spec" else check_plan(old, new)
+    print(f"artifact-gate {kind}: " + ("clean" if bad == 0 else f"{bad} VIOLATIONS"))
+    return 1 if bad else 0
+
+if __name__ == "__main__":
+    sys.exit(main())

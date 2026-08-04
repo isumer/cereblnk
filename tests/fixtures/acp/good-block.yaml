@@ -1,0 +1,39 @@
+acp_version: "1.0"
+kind: response
+task_id: T-014
+role: SecurityAgent
+status: completed
+decision: >
+  The change introduces a token-expiry bypass when clock skew exceeds 30s.
+facts:
+  known:
+    - id: F-1
+      claim: "AuthFilter no longer calls validateExpiry() on refresh path"
+      evidence: [CTX-114#L42-58]
+  derived:
+    - id: F-2
+      claim: "Expired tokens on the refresh path are accepted"
+      from: [F-1]
+  estimated:
+    - id: F-3
+      claim: "Exploit window is roughly the configured skew tolerance (~30s)"
+      basis: "config value in CTX-115#L12"
+  assumed:
+    - id: F-4
+      claim: "No upstream gateway re-validates expiry"
+  speculative: []
+unknowns:
+  - "Whether the API gateway performs its own JWT validation"
+risks:
+  - severity: high
+    description: "Authentication bypass on refresh endpoint"
+    falsified_by: "Evidence that gateway validates expiry (resolves F-4)"
+confidence: 0.78
+confidence_basis: >
+  High on F-1/F-2 (direct evidence). Discounted for assumption F-4.
+next_action: >
+  Verify gateway JWT config before finalizing severity.
+artifacts: []
+budget_report:
+  tokens_received: 8000
+  tokens_used: 6200

@@ -1,0 +1,6 @@
+<databaseChangeLog>
+  <changeSet id="7" author="acme">
+    <sql>ALTER TABLE orders ADD COLUMN note VARCHAR(200)</sql>
+    <rollback>ALTER TABLE orders DROP COLUMN note</rollback>
+  </changeSet>
+</databaseChangeLog>

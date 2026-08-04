@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# security-findings-lint (CB-048) — validates a security-findings YAML
+# artifact against policies/security-finding-contract.md.
+# Dependency-free beyond $PYBIN stdlib. Exit 0 = admit; exit 1 = block
+# (violations printed to stderr, one per line). Usage:
+#   security-findings-lint <artifact.yaml>
+set -euo pipefail
+# shellcheck source=../lib/cbenv.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ $# -ge 1 ] || { echo "usage: security-findings-lint <artifact.yaml>" >&2; exit 2; }
+ART="$1"
+[ -f "$ART" ] || { echo "security-findings-lint: no such file: $ART" >&2; exit 2; }
+export ART
+$PYBIN << 'PY'
+import os, sys
+try:
+    import yaml
+except ImportError:
+    sys.stderr.write("security-findings-lint: pyyaml required\n"); sys.exit(2)
+
+art = os.environ["ART"]
+try:
+    doc = yaml.safe_load(open(art)) or {}
+except yaml.YAMLError as e:
+    sys.stderr.write(f"V0: artifact is not valid YAML: {e}\n"); sys.exit(1)
+
+V = []  # violations
+SEV = {"CRITICAL": 5, "HIGH": 4, "MEDIUM": 3, "LOW": 2, "INFO": 1}
+LABELS = {"known", "derived", "estimated", "assumed", "speculative"}
+NEEDS_TEST = {"speculative", "assumed"}
+
+# Artifact-level
+if not str(doc.get("authorized_scope", "")).strip():
+    V.append("A1: authorized_scope statement missing (ethics: authorized targets only)")
+walked = doc.get("surfaces_walked")
+if not isinstance(walked, list) or not walked:
+    V.append("A2: surfaces_walked list missing (absence-of-control findings need a mapped surface)")
+
+findings = doc.get("findings")
+if not isinstance(findings, list) or not findings:
+    V.append("A3: no findings list")
+    findings = []
+
+def has(f, k):
+    return str(f.get(k, "")).strip() != ""
+
+for i, f in enumerate(findings):
+    fid = f.get("id", f"#{i+1}")
+    sev = str(f.get("severity", "")).upper()
+    if sev not in SEV:
+        V.append(f"{fid}: severity missing/invalid ('{f.get('severity')}')")
+    label = str(f.get("label", "")).lower()
+    if label not in LABELS:
+        V.append(f"{fid}: label missing/invalid (must be an ACP label)")
+    if not has(f, "surface"):
+        V.append(f"{fid}: surface missing (map the finding to evidence/where the control is absent)")
+    if not has(f, "exploit_precondition"):
+        V.append(f"{fid}: exploit_precondition missing")
+    if not has(f, "fix"):
+        V.append(f"{fid}: fix missing")
+    if not has(f, "falsified_by"):
+        V.append(f"{fid}: falsified_by missing")
+    # L-1: speculative/assumed exploitability must name a dynamic test in proof
+    proof = str(f.get("proof", "")).strip()
+    if not proof:
+        V.append(f"{fid}: proof missing")
+    elif label in NEEDS_TEST and not any(
+        kw in proof.lower() for kw in ("test", "probe", "request", "curl", "payload", "exploit", "poc", "verify")
+    ):
+        V.append(f"{fid}: label '{label}' requires a NAMED dynamic test in proof (contract L-1)")
+
+# Ordering: impact x exploitability proxy = severity rank, highest first
+ranks = [SEV.get(str(f.get("severity", "")).upper(), 0) for f in findings]
+if ranks != sorted(ranks, reverse=True):
+    V.append("A4: findings not ordered by severity (highest first) — impact x exploitability, 09 Procedure 3")
+
+if V:
+    for v in V:
+        sys.stderr.write("security-findings-lint BLOCK: " + v + "\n")
+    sys.exit(1)
+print(f"security-findings-lint OK: {len(findings)} finding(s), scope stated, ordering valid")
+sys.exit(0)
+PY

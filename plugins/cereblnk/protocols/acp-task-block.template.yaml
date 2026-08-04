@@ -1,0 +1,40 @@
+# ACP Task Block — Runtime → Agent
+# Every agent receives exactly one Task Block and nothing else.
+#
+# Field rules:
+# - role:                must end in "Agent"
+# - risk:                low | medium | high; never silently downgraded
+#                        (violation checker: SynthesizerAgent, gate-policy.md §4)
+# - verification_level:  1 | 2 | 3, must match risk per policies/gate-policy.md
+# - budget_tokens:       from policies/budget-policy.md; agent must report usage
+# - context_refs:        CTX-* bundles from the Context OS — never raw repo paths
+# - acceptance:          must be testable; a task with an untestable acceptance
+#                        criterion is rejected by the PlannerAgent
+# - acceptance_cmd:      OPTIONAL but strongly preferred wherever the criterion
+#                        is commandable (test invocation, grep, build step).
+#                        A weak executor cannot judge a sentence; it CAN run a
+#                        command and read the exit code — lift the plan's
+#                        verify: line here whenever it is executable.
+#
+# ---- Fully worked example (validates against) ----
+acp_version: "1.0"
+kind: task
+task_id: T-014
+run_id: R-2026-07-16-001
+role: SecurityAgent
+objective: >
+  Determine whether the JWT validation change in AuthFilter introduces
+  an authentication bypass.
+constraints:
+  - Do not evaluate performance implications (out of this agent's expertise)
+  - Production system, zero-downtime requirement
+risk: high
+budget_tokens: 8000
+verification_level: 3
+context_refs:
+  - ref: CTX-114   # compressed evidence bundle: AuthFilter diff
+  - ref: CTX-115   # compressed evidence bundle: SecurityConfig
+acceptance: >
+  A pass/fail conclusion on auth bypass with every supporting claim
+  labeled Known or Derived and linked to evidence.
+acceptance_cmd: "grep -n 'validateExpiry' src/main/java/**/AuthFilter.java"

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<order xmlns="http://example.com/order" id="42" status="open">
+  <customer>Acme GmbH</customer>
+  <item qty="3" price="9.90">Widget</item>
+  <item qty="1">Gadget</item>
+  <note>rush</note>
+</order>

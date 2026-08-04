@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""test-artifact-gate (CB-091) — the loss gate must catch real drift.
+
+Positive: a faithful reconstruction passes.
+Negative, one per rule: silent drop (G-1), version not bumped (G-2),
+section vanished (G-3), checked task deleted (G-4), checked task
+rewritten (G-5), checked task silently unchecked (G-6).
+Plus: an explicit superseded_by drop passes, and a REWORK uncheck
+passes — the gate must not punish the honest paths.
+"""
+import pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+GATE = ROOT / "plugins/cereblnk/scripts/artifact-gate"
+
+SPEC_V1 = """spec_version: 1
+
+## Architecture
+Known: orders module owns pricing.
+Assumed: no external caller writes to the ledger.
+
+## Trust boundaries
+Known: gateway validates JWT before routing.
+"""
+
+SPEC_V2_GOOD = """spec_version: 2
+
+## Architecture
+Known: orders module owns pricing.
+Assumed: no external caller writes to the ledger.
+Derived: pricing changes stay inside one deploy unit.
+
+## Trust boundaries
+Known: gateway validates JWT before routing.
+"""
+
+SPEC_V2_DROP = """spec_version: 2
+
+## Architecture
+Known: orders module owns pricing.
+
+## Trust boundaries
+Known: gateway validates JWT before routing.
+"""
+
+SPEC_V2_SUPERSEDED = """spec_version: 2
+
+## Architecture
+Known: orders module owns pricing.
+superseded_by: F-9 · no external caller writes to the ledger
+Rationale: gateway audit proved an internal writer exists.
+
+## Trust boundaries
+Known: gateway validates JWT before routing.
+"""
+
+PLAN_V1 = """### [x] Task 1: Wire pricing endpoint
+- risk: LOW
+- files: src/api/pricing.ts
+
+### [ ] Task 2: Add validation
+- risk: MEDIUM
+"""
+
+PLAN_V2_GOOD = """### [x] Task 1: Wire pricing endpoint
+- risk: LOW
+- files: src/api/pricing.ts
+
+### [ ] Task 2: Add validation and audit log
+- risk: HIGH
+"""
+
+PLAN_V2_REWORK = """### [ ] Task 1: Wire pricing endpoint
+- risk: LOW
+- files: src/api/pricing.ts
+- REWORK: drafts must survive hard delete (inbox invalidation)
+
+### [ ] Task 2: Add validation
+- risk: MEDIUM
+"""
+
+def main():
+    bad = 0
+    def check(name, ok, detail=""):
+        nonlocal bad
+        print(f"  {'ok' if ok else 'FAIL'}  {name}" + (f" — {detail}" if detail and not ok else ""))
+        bad += 0 if ok else 1
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ag-test-"))
+    def run(kind, old_text, new_text):
+        (tmp / "old.md").write_text(old_text)
+        (tmp / "new.md").write_text(new_text)
+        return subprocess.run([sys.executable, str(GATE), kind,
+                               str(tmp / "old.md"), str(tmp / "new.md")],
+                              capture_output=True, text=True)
+    try:
+        r = run("spec", SPEC_V1, SPEC_V2_GOOD)
+        check("faithful spec passes", r.returncode == 0, r.stdout)
+
+        r = run("spec", SPEC_V1, SPEC_V2_DROP)
+        check("silent drop -> G-1", r.returncode == 1 and "G-1" in r.stdout, r.stdout)
+
+        r = run("spec", SPEC_V1, SPEC_V2_SUPERSEDED)
+        check("explicit superseded_by passes", r.returncode == 0, r.stdout)
+
+        r = run("spec", SPEC_V1, SPEC_V2_GOOD.replace("spec_version: 2", "spec_version: 1"))
+        check("version not bumped -> G-2", r.returncode == 1 and "G-2" in r.stdout, r.stdout)
+
+        no_section = SPEC_V2_GOOD.split("## Trust boundaries")[0]
+        r = run("spec", SPEC_V1, no_section)
+        check("section vanished -> G-3", r.returncode == 1 and "G-3" in r.stdout, r.stdout)
+
+        r = run("plan", PLAN_V1, PLAN_V2_GOOD)
+        check("unstarted task re-derived passes", r.returncode == 0, r.stdout)
+
+        r = run("plan", PLAN_V1, "### [ ] Task 2: Add validation\n- risk: MEDIUM\n")
+        check("checked task deleted -> G-4", r.returncode == 1 and "G-4" in r.stdout, r.stdout)
+
+        r = run("plan", PLAN_V1, PLAN_V2_GOOD.replace("Wire pricing endpoint",
+                                                      "Wire pricing and discount endpoint"))
+        check("checked task rewritten -> G-5", r.returncode == 1 and "G-5" in r.stdout, r.stdout)
+
+        silent = PLAN_V2_GOOD.replace("### [x] Task 1", "### [ ] Task 1")
+        r = run("plan", PLAN_V1, silent)
+        check("silent uncheck -> G-6", r.returncode == 1 and "G-6" in r.stdout, r.stdout)
+
+        r = run("plan", PLAN_V1, PLAN_V2_REWORK)
+        check("REWORK uncheck passes", r.returncode == 0, r.stdout)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("test-artifact-gate:", "all green" if bad == 0 else f"{bad} FAILURES")
+    return 1 if bad else 0
+
+if __name__ == "__main__":
+    sys.exit(main())

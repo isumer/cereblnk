@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""check-budget-literals (CB-094) — no window size written as a fact.
+
+The model window changed from one size to another between two runs of
+the same workflow. Any absolute token figure presented as *the*
+capacity is therefore wrong on some future day, and the failure it
+causes appears mid-run rather than in review.
+
+Rejects, in policies and commands: a token figure stated as the
+window, the capacity, or a budget ceiling. Allows: figures inside a
+worked example, a changelog entry, or a table of illustrations, all of
+which must sit under a heading or line naming them as such.
+
+Exit: 0 clean · 1 a literal presented as the capacity
+"""
+import pathlib, re, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SCAN = [ROOT / "plugins/cereblnk/policies", ROOT / "plugins/cereblnk/commands"]
+
+# A number near a capacity word, on the same line, is the failure shape.
+WORDS = r"(window|capacity|context length|budget ceiling|operational)"
+NUM = r"(\d{2,3}\s*[Kk]|\d{5,6})"
+CAPACITY = re.compile(rf"{NUM}[^\n]{{0,40}}\b{WORDS}\b|\b{WORDS}\b[^\n]{{0,40}}{NUM}",
+                      re.I)
+ALLOWED = re.compile(r"example|observed|illustrat|e\.g\.|for instance|\| *\d|source:",
+                     re.I)
+
+
+def main():
+    bad = 0
+    for root in SCAN:
+        for f in sorted(root.rglob("*.md")):
+            for n, line in enumerate(f.read_text().splitlines(), 1):
+                if not CAPACITY.search(line) or ALLOWED.search(line):
+                    continue
+                print(f"BL-1 {f.relative_to(ROOT)}:{n}: capacity stated as a "
+                      f"literal — compute it: {line.strip()[:70]}")
+                bad += 1
+    print("check-budget-literals: " + ("clean" if not bad else f"{bad} VIOLATIONS"))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
