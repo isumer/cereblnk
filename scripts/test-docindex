@@ -186,6 +186,64 @@ def main():
         check("nudges are capped", r.returncode == 0,
               "the floor never stops asking")
 
+        # --- citations resolve against the index (ACP A1) --------------
+        # A doc: reference is only worth writing if something can refuse
+        # it. Both halves are asserted: the pointer resolving, and the
+        # quote actually being on the lines the pointer names.
+        cited = json.loads(index(structural, "--json").stdout)
+        body = pathlib.Path(cited["text"]).read_text(
+            encoding="utf-8").splitlines()
+        phrase = next(x for x in body if x.strip() and not x.startswith("#"))
+
+        def ground(block_text):
+            b = pathlib.Path(td) / "block.yaml"
+            b.write_text(block_text, encoding="utf-8")
+            return subprocess.run(
+                ["bash", str(ROOT / "scripts/ground-check"), str(b), str(ROOT)],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+
+        did, n = cited["doc_id"], len(body)
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n')
+        check("resolvable doc citation passes", r.returncode == 0,
+              (r.stderr or "").strip()[:90])
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n + 500}]\n')
+        check("out-of-range doc citation fails", r.returncode == 1,
+              f"rc={r.returncode}")
+
+        r = ground('facts:\n  known:\n    - id: F-1\n'
+                   '      evidence: [doc:ffffffffffff#L1-2]\n')
+        check("unindexed doc_id fails", r.returncode == 1, f"rc={r.returncode}")
+        check("unindexed doc_id names the index",
+              "not in the index" in r.stderr, "no explanation given")
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n'
+                   f'      quote: "{phrase.strip()}"\n')
+        check("quote present on the cited lines passes", r.returncode == 0,
+              (r.stderr or "").strip()[:90])
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n'
+                   f'      quote: "a sentence this document never contained"\n')
+        check("absent quote fails G-3", r.returncode == 1, f"rc={r.returncode}")
+        check("absent quote is reported as G-3", "G-3" in r.stderr,
+              "a resolvable-but-unsupported citation passed as G-2")
+
+        # A quote must be checked against ITS OWN reference, not a
+        # neighbour's — otherwise two facts in one block launder each
+        # other's evidence.
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-1]\n'
+                   f'      quote: "{phrase.strip()}"\n'
+                   f'    - id: F-2\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n')
+        check("quotes are scoped to their own fact", r.returncode == 1,
+              "a quote matched against another fact's range")
+
     if fails:
         print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
         print(f"test-docindex: {len(fails)}/{ran} failed", file=sys.stderr)

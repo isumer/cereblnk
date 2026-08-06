@@ -1,0 +1,21 @@
+acp_version: "1.0"
+kind: task
+task_id: T-022
+run_id: R-2026-08-06-002
+role: LegalReviewAgent
+objective: >
+  Read the contract.
+constraints: []
+risk: high
+budget_tokens: 8000
+verification_level: 2
+context_refs: []
+documents:
+  - doc_id: not-a-doc-id
+    sections: [s001]
+  - doc_id: 1113d150a553
+    sections: []
+  - doc_id: aabbccddeeff
+    sections: [chapter-4]
+acceptance: >
+  Anything.

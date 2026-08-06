@@ -30,8 +30,41 @@ def top(key):
     return m.group(1).strip() if m else None
 
 kind = top("kind")
+
+# ---- T-1: Task Block documents: field (ACP A1) ----
+# A task may hand over indexed sections; it may never hand over a bare
+# path, which is an instruction to read the whole file.
+if kind == "task":
+    dm = re.search(r'^documents\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
+    if dm:
+        entries = re.split(r'^\s*-\s*doc_id\s*:', dm.group(1), flags=re.M)[1:]
+        ids = re.findall(r'^\s*-\s*doc_id\s*:\s*(\S+)', dm.group(1), re.M)
+        if not ids:
+            V.append("T-1: documents: present but lists no doc_id")
+        for did, body in zip(ids, entries):
+            did = did.strip().strip('"\'')
+            if not re.fullmatch(r'[0-9a-f]{12}', did):
+                V.append(f"T-1: doc_id {did!r} is not a 12-hex docindex id")
+            secs = re.search(r'sections\s*:\s*\[([^\]]*)\]', body)
+            if not secs:
+                V.append(f"T-1: document {did} names no sections — a document "
+                         f"without sections is a whole-file read")
+            elif not secs.group(1).strip():
+                V.append(f"T-1: document {did} has an empty sections list")
+            else:
+                for tok in secs.group(1).split(","):
+                    tok = tok.strip().strip('"\'')
+                    if not re.fullmatch(r's\d{3,}', tok):
+                        V.append(f"T-1: document {did} section {tok!r} is not "
+                                 f"an outline section id (sNNN)")
+    if V:
+        print("\n".join(V), file=sys.stderr)
+        sys.exit(1)
+    print(f"acp-lint: {os.environ['BLOCK']} admissible (kind=task)")
+    sys.exit(0)
+
 if kind not in ("response", "verification", "challenge"):
-    V.append(f"V-1: kind must be response|verification|challenge (got: {kind!r})")
+    V.append(f"V-1: kind must be response|verification|challenge|task (got: {kind!r})")
 for key in ("acp_version", "task_id", "role", "status", "decision", "confidence"):
     if top(key) is None:
         V.append(f"V-1: missing top-level field: {key}")
@@ -67,10 +100,30 @@ def items(lbl):
     ids = re.findall(r'^\s*-\s*id\s*:\s*(\S+)', body, re.M)
     return list(zip(ids, parts))
 
-# ---- V-3: every known fact carries a CTX evidence reference ----
+# ---- V-3: every known fact carries an evidence reference ----
+# Two admissible forms: a Context OS bundle (CTX-114#L42-58) or an
+# indexed document (doc:1113d150a553#L1240-1298). Requiring CTX- alone
+# would reject a fact read straight out of the source it names.
 for fid, it in items("known"):
-    if not re.search(r'evidence\s*:\s*\[[^\]]*CTX-', it):
-        V.append(f"V-3: known fact {fid} has no CTX evidence reference")
+    if not re.search(r'evidence\s*:\s*\[[^\]]*(?:CTX-|doc:)', it):
+        V.append(f"V-3: known fact {fid} has no CTX or doc: evidence reference")
+
+# ---- V-3: a doc citation names lines, never a section id ----
+# Section boundaries are `known` only under a structural segmentation;
+# under derived/assumed a section id is this platform's own guess, and a
+# claim anchored to one is anchored to nothing the document said.
+for m in re.finditer(r'doc:([0-9a-f]{12})(#L(\d+)-(\d+))?', text):
+    if not m.group(2):
+        V.append(f"V-3: doc:{m.group(1)} cited without a line range "
+                 f"(doc:<id>#L<start>-<end>)")
+    elif int(m.group(3)) > int(m.group(4)):
+        V.append(f"V-3: doc:{m.group(1)}#L{m.group(3)}-{m.group(4)} is an "
+                 f"inverted line range")
+for m in re.finditer(r'evidence\s*:\s*\[([^\]]*)\]', text):
+    for tok in m.group(1).split(","):
+        tok = tok.strip().strip('"\'')
+        if re.fullmatch(r'doc:[0-9a-f]{12}#s\d+', tok or ""):
+            V.append(f"V-3: {tok} cites a section id; cite the lines read")
 
 # ---- V-4: every derived fact names its sources ----
 for fid, it in items("derived"):
