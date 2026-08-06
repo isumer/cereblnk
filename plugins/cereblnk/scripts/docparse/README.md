@@ -33,3 +33,13 @@ node    parse_office.mjs deck.pptx --format md
 > `$PYBIN` is the interpreter resolved by `scripts/lib/cbenv.sh` — `python3` on POSIX, `python`/`py -3`
 > on Windows (where a bare `python3` hits the Microsoft Store
 > alias instead of an interpreter).
+
+## Indexing a long document
+
+`docparse` returns the whole document. For anything large enough that
+reading it whole is the problem, `scripts/docindex` extracts once
+(delegating here), writes the text and an outline under
+`.claude/cereblnk/docs/<doc_id>/`, and records how it segmented —
+`known` / `derived` / `assumed`. Callers read line ranges;
+`hooks/scripts/doc-floor.sh` blocks an unbounded read of an indexed
+document and hands back the outline.

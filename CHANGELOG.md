@@ -7,6 +7,59 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.1.0] — Documents become navigable
+
+`docparse` answers "what does this file say" by handing back the whole
+document. Past a few thousand tokens that is the wrong question: the
+agent needs to reach one clause, and could only get there by reading
+everything — on the first turn, and again on every turn after it.
+
+### Added
+
+- **`scripts/docindex`.** Extracts a document once, keyed by the sha256
+  of its own bytes, and writes a map beside the text under
+  `.claude/cereblnk/docs/<doc_id>/`: `text.md`, `outline.json` (section
+  → line range), `manifest.json`. An unchanged file re-resolves to its
+  existing index for free; a changed file cannot collide with its own
+  stale one, so there is no invalidation pass and no TTL. Plain-text
+  sources are taken verbatim; everything else is delegated to
+  `docparse`, whose exit codes pass through unchanged — "needs OCR"
+  stays distinguishable from "failed to parse".
+- **A segmentation ladder that reports which rung it used.**
+  `structural` (headings the extracted text carries) is labeled `known`;
+  `pattern` (Chapter / Bölüm / Madde / Section / numbered heads) is
+  `derived`; `window` (fixed line splits, when nothing was found) is
+  `assumed`. The label travels in the manifest and through
+  DocIntakeAgent unchanged. Under `assumed` a section id names an
+  arbitrary cut, and windowed sections carry no title rather than an
+  invented one — a caller must not mistake a guess for a heading the
+  document declared.
+- **DocFloorHook (PreToolUse:Read), always on.** Blocks an unbounded
+  read of an indexed document past the floor and returns the computed
+  handoff: doc_id, section count, outline path, and the largest sections
+  with their line ranges. It does not name the way around itself.
+  Bounded reads, small documents, unindexed paths and non-`Read` tools
+  pass untouched; two nudges per document, then it yields.
+- **`scripts/test-docindex`** (23rd verify suite). Asserts the layer
+  *and* its label per document class, that section ranges tile the file
+  without gap or overlap, that identity follows content, and both
+  directions of the floor including its nudge ceiling.
+
+### Changed
+
+- **`parse_office.py` preserves Word heading levels.** `w:pStyle`
+  (`Heading1`..`Heading9`, `Title`) now emits ATX headings in `md`
+  output; `txt` output is unchanged. Structure was being read out of the
+  file and discarded, which left the index guessing at boundaries the
+  document already stated. Localized style ids are not matched and
+  degrade to body text — a missed heading, never a wrong one.
+  `d2-headings.golden.md` was re-blessed for this: the fixture carried
+  `Heading1`/`Heading2` all along and the golden had been recording
+  their loss.
+- **DocIntakeAgent returns a map when a document exceeds its budget**
+  instead of `blocked`. Size is not a failure to read, and reporting it
+  as one described a solved problem as an unsolved one.
+
 ## [1.0.0] — First release
 
 An adaptive multi-agent engineering platform for Claude Code: a

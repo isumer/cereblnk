@@ -200,7 +200,7 @@ not something this repository has established.
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 12 hooks · 22 verify suites** (count them: `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
+176 constraint files · 13 hooks · 23 verify suites** (count them: `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
 fails the build when these drift. Versioning follows CHANGELOG.md semver;
@@ -210,7 +210,7 @@ Claims are labeled the way this platform labels facts:
 
 | Layer | Status | Evidence |
 |---|---|---|
-| Manifests, hooks, guard scripts, xmltools, docparse, skill graph, ACP/plan linters, agent selection | **Verified (scripted)** | `scripts/verify` — one deterministic pass, exit-code + expected-output + failure/unsupported paths, golden files for docparse |
+| Manifests, hooks, guard scripts, xmltools, docparse, docindex, skill graph, ACP/plan linters, agent selection | **Verified (scripted)** | `scripts/verify` — one deterministic pass, exit-code + expected-output + failure/unsupported paths, golden files for docparse |
 | Workflows, agents, dispatch routing (prompt-driven behavior) | **Implemented, manually validated** | `tests/*.md` scenarios executed by hand |
 
 Honest boundary: `scripts/verify` green does NOT verify workflow
