@@ -22,6 +22,7 @@ Usage: scripts/test-docindex     Exit: 0 all pass · 1 any failure
 """
 import json
 import os
+import re
 import pathlib
 import shutil
 import subprocess
@@ -68,13 +69,24 @@ def main():
         structural.write_text(
             "# Alpha\n\nbody one\n\n## Beta\n\nbody two\n", encoding="utf-8")
 
+        # The keyword is read from the shipped policy rather than
+        # written here: hardcoding one would test a literal this suite
+        # invented, and would say nothing about whether docindex is
+        # actually reading policies/document-sections.yaml.
+        policy = (ROOT / "plugins/cereblnk/policies/document-sections.yaml")
+        kw = re.search(r"^keywords\s*:\s*\[\s*([^,\]]+)",
+                       policy.read_text(encoding="utf-8"), re.M)
+        check("policy declares at least one section keyword", bool(kw),
+              "document-sections.yaml has no usable keywords: list")
+        word = kw.group(1).strip().strip("'\"") if kw else "Chapter"
+
         pattern = src / "pattern.txt"
         pattern.write_text(
-            "\n\n".join(f"Madde {i}\nHukum metni {i}." for i in range(1, 6)),
-            encoding="utf-8")
+            "\n\n".join(f"{word} {i}\nBody text for part {i}."
+                        for i in range(1, 6)), encoding="utf-8")
 
         flat = src / "flat.txt"
-        flat.write_text("\n".join(f"duz satir {i}" for i in range(1, 3001)),
+        flat.write_text("\n".join(f"plain line {i}" for i in range(1, 3001)),
                         encoding="utf-8")
 
         tiny = src / "tiny.txt"

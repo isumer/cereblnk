@@ -1,0 +1,34 @@
+# Document Section Headings (CB-112)
+#
+# The keyword list `scripts/docindex` uses when a document declares no
+# headings of its own. Consumed by scripts/lib/docindex.py, validated by
+# scripts/test-docindex.
+#
+# This is data, not code, for two reasons. Any keyword set is arbitrary
+# — a list hardcoded in the parser silently privileges whichever
+# languages its author happened to work in, and nothing marks the
+# omission of the rest. And extending the set is a decision about the
+# documents an installation actually holds, which belongs to whoever
+# holds them rather than to a release.
+#
+# Schema:
+#   keywords:  a heading is `<keyword> <number>`, where the number is
+#              Arabic or Roman. Matching is case-sensitive against the
+#              listed form and its all-caps variant, so `Section` also
+#              matches `SECTION` but not `section`.
+#   numbered:  when true, a bare numbered head (`3.`, `4.2.1 Scope`)
+#              is also treated as a section boundary.
+#
+# A match here is `derived`, never `known`: these patterns also match
+# ordinary prose, and the manifest carries that caveat to the caller.
+# When nothing matches, docindex falls back to fixed windows labeled
+# `assumed` — a missing keyword costs navigation quality, never
+# correctness.
+#
+# Adding a language: append its section words below. No code changes.
+# Removing every keyword is legal and leaves the numbered-head rule and
+# the window fallback intact.
+
+version: 1
+numbered: true
+keywords: [Chapter, Section, Part, Article, Annex, Appendix, Schedule, Clause, Exhibit]

@@ -11,8 +11,8 @@ label it earns:
 
   structural  ATX headings present in the extracted text        known
               (docx heading styles, pptx slides, xlsx sheets)
-  pattern     a section-heading regex matched the line starts   derived
-              (Chapter/Bölüm/Madde/Section/Part, numbered heads)
+  pattern     a section-heading keyword matched the line starts  derived
+              (policies/document-sections.yaml, numbered heads)
   window      fixed line windows — no structure was found       assumed
 
 A caller that reads `segmentation.label` learns whether the section
@@ -44,19 +44,52 @@ DOCPARSE = HERE.parent / "docparse" / "docparse.py"
 # Layer 1 — structure the extracted text actually carries.
 ATX = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
-# Layer 2 — section headings by shape. Multilingual on purpose: the
-# documents this exists for are contracts, regulations and specs, and
-# "Madde 7" is as much a section boundary as "Section 7". A match here
-# is `derived`, never `known` — these patterns also match ordinary
-# prose, and the manifest carries that caveat to the caller.
-PATTERNS = [
-    re.compile(
-        r"^\s*(?:CHAPTER|Chapter|BÖLÜM|Bölüm|KISIM|Kısım|SECTION|Section"
-        r"|PART|Part|ANNEX|Annex|APPENDIX|Appendix|EK)\s+"
-        r"(?:[0-9]+|[IVXLCDM]+)\b.*$"),
-    re.compile(r"^\s*(?:MADDE|Madde)\s+[0-9]+\b.*$"),
-    re.compile(r"^\s*[0-9]+(?:\.[0-9]+){0,3}\.?\s+\S.{0,80}$"),
-]
+# Layer 2 — section headings by shape. The keyword set is data, in
+# policies/document-sections.yaml, because any such set is arbitrary:
+# hardcoding one privileges whichever languages the author worked in and
+# marks nothing as missing. A match here is `derived`, never `known` —
+# these patterns also match ordinary prose, and the manifest carries
+# that caveat to the caller.
+POLICY = HERE.parent.parent / "policies" / "document-sections.yaml"
+
+# Used only if the policy file is absent or unreadable. Degrading to a
+# smaller keyword set costs navigation quality; refusing to index would
+# cost the document.
+FALLBACK_KEYWORDS = ["Chapter", "Section", "Part", "Article"]
+NUMBERED_HEAD = re.compile(r"^\s*[0-9]+(?:\.[0-9]+){0,3}\.?\s+\S.{0,80}$")
+
+
+def load_patterns(policy=POLICY):
+    """Keyword list -> compiled patterns. Parsed by line, not with a
+    YAML library: this package takes no third-party dependency, and the
+    file's schema is one flat list plus one flag."""
+    keywords, numbered = None, True
+    try:
+        for line in policy.read_text(encoding="utf-8").splitlines():
+            line = line.split("#", 1)[0].strip() if not line.startswith("#") else ""
+            m = re.match(r"^keywords\s*:\s*\[(.*)\]\s*$", line)
+            if m:
+                keywords = [k.strip().strip("'\"") for k in m.group(1).split(",")
+                            if k.strip()]
+            m = re.match(r"^numbered\s*:\s*(true|false)\s*$", line)
+            if m:
+                numbered = m.group(1) == "true"
+    except Exception:
+        keywords = None
+    if keywords is None:
+        keywords = FALLBACK_KEYWORDS
+    pats = []
+    if keywords:
+        alt = "|".join(sorted({re.escape(k) for k in keywords} |
+                              {re.escape(k.upper()) for k in keywords},
+                              key=len, reverse=True))
+        pats.append(re.compile(r"^\s*(?:%s)\s+(?:[0-9]+|[IVXLCDM]+)\b.*$" % alt))
+    if numbered:
+        pats.append(NUMBERED_HEAD)
+    return pats
+
+
+PATTERNS = load_patterns()
 
 # Sources that are already text: no container to open, so no parser.
 TEXT_EXT = {".md", ".markdown", ".txt", ".rst", ".adoc", ".text"}

@@ -16,6 +16,13 @@ everything — on the first turn, and again on every turn after it.
 
 ### Added
 
+- **`policies/document-sections.yaml`.** The section-keyword set used
+  when a document declares no headings, as data rather than as literals
+  in the parser. Any such set is arbitrary; hardcoding one privileges
+  whichever languages its author worked in and marks nothing as absent.
+  Extending it is an installation's decision about the documents it
+  holds, and needs no code change. A missing or empty list degrades to
+  numbered heads and the window fallback — never to a failed index.
 - **`scripts/docindex`.** Extracts a document once, keyed by the sha256
   of its own bytes, and writes a map beside the text under
   `.claude/cereblnk/docs/<doc_id>/`: `text.md`, `outline.json` (section
@@ -27,8 +34,8 @@ everything — on the first turn, and again on every turn after it.
   stays distinguishable from "failed to parse".
 - **A segmentation ladder that reports which rung it used.**
   `structural` (headings the extracted text carries) is labeled `known`;
-  `pattern` (Chapter / Bölüm / Madde / Section / numbered heads) is
-  `derived`; `window` (fixed line splits, when nothing was found) is
+  `pattern` (section keywords from `policies/document-sections.yaml`,
+  plus numbered heads) is `derived`; `window` (fixed line splits) is
   `assumed`. The label travels in the manifest and through
   DocIntakeAgent unchanged. Under `assumed` a section id names an
   arbitrary cut, and windowed sections carry no title rather than an
