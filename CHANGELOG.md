@@ -40,10 +40,34 @@ everything — on the first turn, and again on every turn after it.
   with their line ranges. It does not name the way around itself.
   Bounded reads, small documents, unindexed paths and non-`Read` tools
   pass untouched; two nudges per document, then it yields.
+- **Documents enter the protocol.** ACP Amendment A1 (02 v1.0 → v1.1)
+  adds the optional Task Block field `documents: [{doc_id, sections}]`
+  and the evidence form `doc:<doc_id>#L<start>-<end>`. A long source
+  used to reach an agent only as a path, and a path is an instruction to
+  read all of it. The citation names lines and never a section id:
+  section boundaries belong to the document only under a `structural`
+  segmentation, so citing one under `derived` or `assumed` would anchor
+  a claim to this platform's own guess.
+- **`ground-check` resolves and tests document citations.** `doc:`
+  references resolve through the index rather than the repository, and a
+  dangling one fails as `G-2`. A fact may carry `quote:` beside its
+  reference; when present the span must occur on the cited lines, and a
+  quote that does not is `G-3` — a reference that resolves but does not
+  say this. Quotes are scoped to their own fact, so two facts in one
+  block cannot launder each other's evidence. Whitespace is normalised
+  before matching: an extraction line break inside a sentence is an
+  artifact, not a discrepancy.
+- **`acp-lint` validates Task Blocks** (`T-1`): a malformed `doc_id`, an
+  empty `sections` list, a section id that is not an outline id, a
+  citation without a line range, an inverted range, and a citation that
+  names a section instead of lines. `V-3` now accepts `doc:` where it
+  required `CTX-` — without that, a fact read straight out of the named
+  source would have been inadmissible.
 - **`scripts/test-docindex`** (23rd verify suite). Asserts the layer
   *and* its label per document class, that section ranges tile the file
-  without gap or overlap, that identity follows content, and both
-  directions of the floor including its nudge ceiling.
+  without gap or overlap, that identity follows content, both directions
+  of the floor including its nudge ceiling, and both directions of
+  citation resolution.
 
 ### Changed
 
@@ -59,6 +83,15 @@ everything — on the first turn, and again on every turn after it.
 - **DocIntakeAgent returns a map when a document exceeds its budget**
   instead of `blocked`. Size is not a failure to read, and reporting it
   as one described a solved problem as an unsolved one.
+
+### Fixed
+
+- **`ground-check` was never loading `cbenv.sh`.** It sourced
+  `scripts/lib/cbenv.sh`, a path that does not exist — the repo-root
+  `scripts/` has no `lib/`. The `|| PYBIN=python3` fallback was
+  therefore the only branch that ever ran, and `$CB_DIR` was always
+  empty. Nothing depended on it before, so nothing failed; the first
+  thing that needed it was `doc:` resolution.
 
 ## [1.0.0] — First release
 

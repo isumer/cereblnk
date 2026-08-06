@@ -30,12 +30,11 @@ Selects the fitting skill and script:
 ## Long documents: return a map, not the document (binding)
 
 Extraction and delivery are separate decisions. A 300-page contract
-extracts cleanly and still cannot be handed back — it does not fit this
-agent's budget, and passing the path on only moves the cost to whoever
-opens it.
+extracts cleanly. It still cannot be handed back: it does not fit this
+budget. Passing the path on only moves the cost downstream.
 
-When the extracted text exceeds the budget, run
-`scripts/docindex <file>` and return the index instead:
+When extracted text exceeds the budget, run `scripts/docindex <file>`.
+Return the index instead:
 
 | Return | Content |
 |---|---|
@@ -43,20 +42,29 @@ When the extracted text exceeds the budget, run
 | `facts` | section ids, titles, line ranges, estimated tokens |
 | `confidence` | the manifest's `segmentation.label`, unchanged |
 
-The consumer then reads the sections it needs with `offset`/`limit`.
-DocFloor blocks an unbounded read of an indexed document, so a
-downstream agent that ignores the map is stopped and handed it.
+The consumer reads the sections it needs with `offset`/`limit`.
+DocFloor blocks an unbounded read of an indexed document. An agent that
+ignores the map is stopped and handed it.
 
-Carry `segmentation.label` through verbatim. `known` means the source
-declared its own sections; `derived` means a pattern matched lines that
-looked like headings; `assumed` means nothing was found and the text was
-cut into fixed windows. Under `assumed`, a section id names an arbitrary
-boundary — cite the lines read, never the section, and say which layer
-produced them. Relabelling any of these upward is the same defect as
-reporting an empty extraction as success.
+The orchestrator carries this forward as `documents: [{doc_id,
+sections}]` (ACP §2, Amendment A1). Never as a file path: a path says
+read all of it. A specialist cites what it read as
+`doc:<doc_id>#L<start>-<end>`, and may attach `quote:` from those lines.
+`scripts/ground-check` fails a range outside the document. It also fails
+a quote that is not on it.
 
-Indexing is not summarising. This agent never writes a description of a
-section in place of its text; the index points, the reader reads.
+Carry `segmentation.label` through verbatim:
+
+- `known` — the source declared its own sections.
+- `derived` — a pattern matched lines that looked like headings.
+- `assumed` — nothing was found; the text was cut into fixed windows.
+
+Under `assumed` a section id names an arbitrary boundary. Cite the lines
+read, never the section. Name the layer that produced them. Relabelling
+upward is the defect that reports an empty extraction as success.
+
+Indexing is not summarising. Never describe a section in place of its
+text. The index points; the reader reads.
 
 ## Dependency & offline discipline (binding)
 
@@ -83,8 +91,8 @@ read with the available tools — no text layer, unsupported filter,
 missing OCR engine. Report exactly which part failed, and why; never
 return a confident empty result.
 
-Size is not that failure. A document that reads fine and is merely too
-large is indexed and returned as a map — `blocked` there would report a
+Size is not that failure. A document that reads fine but runs long is
+indexed and returned as a map. Calling that `blocked` would report a
 solved problem as an unsolved one.
 
 ## Skills

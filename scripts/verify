@@ -25,7 +25,8 @@ unsupported paths where the tool has them):
                           preload inside budget (CB-097)
   test-artifact-gate      R-2 loss gate + R-3 history preservation (CB-091)
   acp-lint fixtures       canonical block passes; 5-violation block
-                          reports all five checklist IDs
+                          reports all five checklist IDs; task blocks
+                          with indexed documents, both ways (CB-112)
   select-agents triples   CB-044 dry-run expectations
   check-exec-bit          hooks and the verify entry point keep the mode
                           bit; a hook that cannot run fails silently
@@ -119,9 +120,18 @@ def main():
     good = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/good-block.yaml")])
     bad_b = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/bad-block.yaml")])
     ids = ("V-3", "V-4", "V-5", "V-7", "V-10")
+    # A Task Block carrying indexed documents is admissible; a malformed
+    # doc_id, an empty section list and a non-outline section id are not.
+    t_good = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/good-task-block.yaml")])
+    t_bad = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/bad-task-block.yaml")])
     suite("acp-lint fixtures",
-          good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids),
-          f"good rc={good.returncode}, bad rc={bad_b.returncode}, ids={[i for i in ids if i not in bad_b.stderr]} missing")
+          good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids)
+          and t_good.returncode == 0 and t_bad.returncode == 1
+          and t_bad.stderr.count("T-1") == 3,
+          f"good rc={good.returncode}, bad rc={bad_b.returncode}, "
+          f"task good rc={t_good.returncode}, task bad rc={t_bad.returncode} "
+          f"({t_bad.stderr.count('T-1')} T-1 of 3), "
+          f"ids={[i for i in ids if i not in bad_b.stderr]} missing")
 
     triples = [
         (["src/components/Button.tsx"], "frontend-agent", "gate_level: 1"),
