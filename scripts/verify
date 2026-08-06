@@ -12,6 +12,7 @@ unsupported paths where the tool has them):
   check-skill-relations   skill graph integrity
   test-xmltools           xml/xsd tools, fixtures
   test-docparse           office/pdf golden files + path cases
+  test-docindex           segmentation ladder + the read floor (CB-112)
   test-hooks              four guards, full path matrix
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
@@ -63,7 +64,8 @@ def main():
         bad += 0 if ok else 1
 
     for name in ("check-skill-relations", "test-xmltools", "test-docparse", "test-hooks", "test-run-quiet", "test-lifecycle-scripts", "test-artifact-gate", "test-context-budget",
-                 "test-skill-selection", "test-discovery", "test-select-rules"):
+                 "test-skill-selection", "test-discovery", "test-select-rules",
+                 "test-docindex"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 
