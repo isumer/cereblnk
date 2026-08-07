@@ -7,6 +7,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.2.0] — Something in the run finally executes
+
+Every gate in a run was static. VerifierAgent read code, ChallengerAgent
+attacked reasoning, ConsistencyAgent compared claims — none of them
+touched a running program. A specialist could write a module, never
+execute it, and close green: "it works" was unfalsifiable rather than
+verified, and the one failure mode that survives every static check —
+code that is correct and never wired in — passed straight through.
+
+### Added
+
+- `policies/surface-map.yaml` — resolves a changed path to a surface
+  (ui, api, db) by path segment, then by extension. Deliberately coarse:
+  a wrong label costs a redundant check, a missing one costs an
+  unverified close.
+- `hooks/scripts/exec-ledger.sh` (PostToolUse) — records two facts into
+  the run ledger: which surfaces a specialist edited, and which surface
+  check commands it ran. Observation only; a recording hook that can
+  fail a tool call would trade a verification record for a broken
+  session.
+- `hooks/scripts/exec-floor.sh` (SubagentStop) — exits 2 when a
+  specialist finishes without running a surface it changed, returning it
+  to work with the command it should have run. Nudge-capped and
+  fail-open, in `skill-floor.sh`'s shape.
+- `config/check-command.<surface>` — single-line, user-supplied, per
+  surface. A surface with no configured command is recorded as skipped
+  and allowed through: the gap stays visible in the ledger rather than
+  turning a project red for a command it was never given.
+- `scripts/test-exec-floor` — 14 checks over recording, blocking, the
+  satisfied path, the unconfigured skip, loop safety, and the nudge cap.
+  Added to the `verify` loop.
+
+### Changed
+
+- `docs/05_EXECUTION_REALITY_MAP.md` gains a surface execution floor row
+  (M). The map was silent on execution, which let the docker skill's
+  "run the container and send the real signals" and /cb-qa's F-class
+  execution ban coexist without the contradiction being visible.
+- README contents line: 15 hooks, 24 verify suites.
+
 ## [1.1.0] — Documents become navigable
 
 `docparse` answers "what does this file say" by handing back the whole

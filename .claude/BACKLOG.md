@@ -132,3 +132,4 @@ read.
 - [x] **CB-110** — Refactor scaffolding and the examples stub removed
 - [x] **CB-111** — Prior art described by class, never named
 - [x] **CB-112** — Document index: reach the right page without reading the book
+- [x] **CB-113** — Execution floor: a surface cannot close unverified
