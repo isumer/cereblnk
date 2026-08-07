@@ -29,6 +29,10 @@ patterns = [
     (r"git\s+clean\s+-\w*f", "git clean -f"),
     (r"\bdrop\s+(table|database|schema)\b", "SQL DROP"),
     (r"\btruncate\s+table\b", "SQL TRUNCATE"),
+    (r"docker\s+(compose|-c)?.*\bdown\b.*(-v|--volumes)", "compose down with volume removal"),
+    (r"docker\s+volume\s+(rm|prune)", "docker volume delete"),
+    (r"docker\s+system\s+prune", "docker system prune"),
+    (r"docker\s+(rm|rmi)\s+(-\w*\s+)*-\w*f", "forced docker remove"),
     (r"mkfs|dd\s+if=", "disk-level write"),
 ]
 for pat, label in patterns:
