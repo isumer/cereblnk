@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""test-docindex — acceptance run for the document index (CB-112).
+
+Two things are under test and they fail differently.
+
+`docindex` must put each document in the right segmentation layer. That
+is the claim the manifest makes to every downstream reader, and a
+document silently demoted from `known` to `assumed` — or worse,
+promoted — is a wrong epistemic label travelling with real content.
+Each case asserts the layer AND its label, not merely that a file was
+produced.
+
+`doc-floor.sh` must block an unbounded read of a large indexed document
+and allow everything else. Both directions are asserted: a guard tested
+only on its block path is a guard that may block everything.
+
+Fixtures are built here rather than committed. They are plain text with
+no interesting bytes, and a committed fixture whose only content is
+"Madde 1" would be a golden file that tests nothing about parsing.
+
+Usage: scripts/test-docindex     Exit: 0 all pass · 1 any failure
+"""
+import json
+import os
+import re
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+DI = ROOT / "plugins/cereblnk/scripts/docindex"
+HOOK = ROOT / "plugins/cereblnk/hooks/scripts/doc-floor.sh"
+FX = ROOT / "tests/fixtures/docparse"
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-docindex: bash not on PATH — skipping")
+        return 0
+    fails, ran = [], 0
+
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        (proj / ".claude").mkdir(parents=True)
+        src = pathlib.Path(td) / "src"
+        src.mkdir()
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+
+        def index(path, *extra):
+            return subprocess.run(["bash", str(DI), str(path), *extra],
+                                  capture_output=True, text=True,
+                                  env=env, cwd=str(proj))
+
+        def hook(payload):
+            return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload),
+                                  capture_output=True, text=True,
+                                  env=env, cwd=str(proj))
+
+        def check(name, cond, detail=""):
+            nonlocal ran
+            ran += 1
+            if not cond:
+                fails.append(f"{name}: {detail}")
+
+        # --- fixtures -------------------------------------------------
+        structural = src / "structural.md"
+        structural.write_text(
+            "# Alpha\n\nbody one\n\n## Beta\n\nbody two\n", encoding="utf-8")
+
+        # The keyword is read from the shipped policy rather than
+        # written here: hardcoding one would test a literal this suite
+        # invented, and would say nothing about whether docindex is
+        # actually reading policies/document-sections.yaml.
+        policy = (ROOT / "plugins/cereblnk/policies/document-sections.yaml")
+        kw = re.search(r"^keywords\s*:\s*\[\s*([^,\]]+)",
+                       policy.read_text(encoding="utf-8"), re.M)
+        check("policy declares at least one section keyword", bool(kw),
+              "document-sections.yaml has no usable keywords: list")
+        word = kw.group(1).strip().strip("'\"") if kw else "Chapter"
+
+        pattern = src / "pattern.txt"
+        pattern.write_text(
+            "\n\n".join(f"{word} {i}\nBody text for part {i}."
+                        for i in range(1, 6)), encoding="utf-8")
+
+        flat = src / "flat.txt"
+        flat.write_text("\n".join(f"plain line {i}" for i in range(1, 3001)),
+                        encoding="utf-8")
+
+        tiny = src / "tiny.txt"
+        tiny.write_text("one line only\n", encoding="utf-8")
+
+        # --- segmentation ladder --------------------------------------
+        for path, layer, label in ((structural, "structural", "known"),
+                                   (pattern, "pattern", "derived"),
+                                   (flat, "window", "assumed")):
+            r = index(path, "--json")
+            if r.returncode != 0:
+                check(f"index {path.name}", False,
+                      f"rc={r.returncode} {(r.stderr or '').strip()[:80]}")
+                continue
+            man = json.loads(r.stdout)
+            seg = man["segmentation"]
+            check(f"{path.name} -> {layer}", seg["layer"] == layer,
+                  f"got {seg['layer']}")
+            check(f"{path.name} -> {label}", seg["label"] == label,
+                  f"got {seg['label']}")
+
+        # A .docx carries its structure in heading styles; the index must
+        # read it as declared, not guess at it (CB-112 changed the parser
+        # so this is available at all).
+        r = index(FX / "d2-headings.docx", "--json")
+        check("docx headings -> structural",
+              r.returncode == 0 and
+              json.loads(r.stdout)["segmentation"]["layer"] == "structural",
+              f"rc={r.returncode} {(r.stderr or '').strip()[:80]}")
+
+        # --- section ranges cover the document, once ------------------
+        man = json.loads(index(pattern, "--json").stdout)
+        outline = json.loads(
+            pathlib.Path(man["outline"]).read_text(encoding="utf-8"))
+        secs = outline["sections"]
+        covered, gap = 0, False
+        for i, s in enumerate(secs):
+            covered += s["line_end"] - s["line_start"] + 1
+            if i and s["line_start"] != secs[i - 1]["line_end"] + 1:
+                gap = True
+        check("ranges are contiguous", not gap, "sections overlap or skip lines")
+        check("ranges cover every line", covered == man["lines"],
+              f"covered {covered} of {man['lines']}")
+
+        # --- identity and reuse ---------------------------------------
+        first = json.loads(index(flat, "--json").stdout)
+        again = index(flat)
+        check("unchanged source is reused", "reused" in again.stdout,
+              again.stdout.strip()[:80])
+        flat.write_text(flat.read_text(encoding="utf-8") + "\nappended\n",
+                        encoding="utf-8")
+        second = json.loads(index(flat, "--json").stdout)
+        check("changed source gets a new doc_id",
+              second["doc_id"] != first["doc_id"],
+              "a modified file resolved to its own stale index")
+
+        # --- failure paths --------------------------------------------
+        r = index(src / "nope.txt")
+        check("missing file -> rc 2", r.returncode == 2, f"rc={r.returncode}")
+        check("missing file says so", "no such file" in (r.stderr + r.stdout),
+              "no explanation on stderr")
+
+        r = index(FX / "f5-scanned-like.pdf")
+        check("no text layer -> rc 3 (not a generic failure)",
+              r.returncode == 3, f"rc={r.returncode}")
+
+        r = index(flat, "--window-lines", "0")
+        check("bad window size -> rc 2", r.returncode == 2, f"rc={r.returncode}")
+
+        # --- the floor ------------------------------------------------
+        big = json.loads(index(flat, "--json").stdout)
+        big_text = big["text"]
+        small = json.loads(index(tiny, "--json").stdout)
+
+        r = hook({"tool_name": "Read", "tool_input": {"file_path": big_text}})
+        check("unbounded read of a large doc is blocked", r.returncode == 2,
+              f"rc={r.returncode}")
+        check("block names the outline", "outline.json" in r.stderr,
+              "the message gives no computed handoff")
+        check("block names the segmentation label",
+              big["segmentation"]["label"] in r.stderr,
+              "the message hides how the sections were derived")
+
+        r = hook({"tool_name": "Read",
+                  "tool_input": {"file_path": big_text, "offset": 1, "limit": 40}})
+        check("bounded read is allowed", r.returncode == 0, f"rc={r.returncode}")
+
+        r = hook({"tool_name": "Read",
+                  "tool_input": {"file_path": small["text"]}})
+        check("small indexed doc is allowed whole", r.returncode == 0,
+              f"rc={r.returncode}")
+
+        r = hook({"tool_name": "Read",
+                  "tool_input": {"file_path": str(structural)}})
+        check("unindexed file is untouched", r.returncode == 0,
+              f"rc={r.returncode}")
+
+        r = hook({"tool_name": "Write",
+                  "tool_input": {"file_path": big_text, "content": "x"}})
+        check("non-Read tool is untouched", r.returncode == 0,
+              f"rc={r.returncode}")
+
+        r = hook({"tool_name": "Read", "tool_input": {}})
+        check("empty input fails open", r.returncode == 0, f"rc={r.returncode}")
+
+        # Nudge ceiling: the guard must give up rather than loop.
+        for _ in range(4):
+            r = hook({"tool_name": "Read", "tool_input": {"file_path": big_text}})
+        check("nudges are capped", r.returncode == 0,
+              "the floor never stops asking")
+
+        # --- citations resolve against the index (ACP A1) --------------
+        # A doc: reference is only worth writing if something can refuse
+        # it. Both halves are asserted: the pointer resolving, and the
+        # quote actually being on the lines the pointer names.
+        cited = json.loads(index(structural, "--json").stdout)
+        body = pathlib.Path(cited["text"]).read_text(
+            encoding="utf-8").splitlines()
+        phrase = next(x for x in body if x.strip() and not x.startswith("#"))
+
+        def ground(block_text):
+            b = pathlib.Path(td) / "block.yaml"
+            b.write_text(block_text, encoding="utf-8")
+            return subprocess.run(
+                ["bash", str(ROOT / "scripts/ground-check"), str(b), str(ROOT)],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+
+        did, n = cited["doc_id"], len(body)
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n')
+        check("resolvable doc citation passes", r.returncode == 0,
+              (r.stderr or "").strip()[:90])
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n + 500}]\n')
+        check("out-of-range doc citation fails", r.returncode == 1,
+              f"rc={r.returncode}")
+
+        r = ground('facts:\n  known:\n    - id: F-1\n'
+                   '      evidence: [doc:ffffffffffff#L1-2]\n')
+        check("unindexed doc_id fails", r.returncode == 1, f"rc={r.returncode}")
+        check("unindexed doc_id names the index",
+              "not in the index" in r.stderr, "no explanation given")
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n'
+                   f'      quote: "{phrase.strip()}"\n')
+        check("quote present on the cited lines passes", r.returncode == 0,
+              (r.stderr or "").strip()[:90])
+
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n'
+                   f'      quote: "a sentence this document never contained"\n')
+        check("absent quote fails G-3", r.returncode == 1, f"rc={r.returncode}")
+        check("absent quote is reported as G-3", "G-3" in r.stderr,
+              "a resolvable-but-unsupported citation passed as G-2")
+
+        # A quote must be checked against ITS OWN reference, not a
+        # neighbour's — otherwise two facts in one block launder each
+        # other's evidence.
+        r = ground(f'facts:\n  known:\n    - id: F-1\n'
+                   f'      evidence: [doc:{did}#L1-1]\n'
+                   f'      quote: "{phrase.strip()}"\n'
+                   f'    - id: F-2\n'
+                   f'      evidence: [doc:{did}#L1-{n}]\n')
+        check("quotes are scoped to their own fact", r.returncode == 1,
+              "a quote matched against another fact's range")
+
+    if fails:
+        print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
+        print(f"test-docindex: {len(fails)}/{ran} failed", file=sys.stderr)
+        return 1
+    print(f"test-docindex: {ran} checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

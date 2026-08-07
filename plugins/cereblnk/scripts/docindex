@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# docindex (CB-112) — make a long document navigable without reading it.
+#
+# docparse answers "what does this file say"; it hands back the whole
+# document. For anything past a few thousand tokens that is the wrong
+# question — the agent needs "where in this file is the part I need",
+# and today it can only find out by reading everything.
+#
+# So: extract once, keyed by the source's own hash, and write a map
+# beside the text. Callers read slices; nobody reads the whole file.
+#
+#   $CB_DIR/docs/<sha12>/text.md      docparse output, verbatim
+#   $CB_DIR/docs/<sha12>/outline.json section -> line range
+#   $CB_DIR/docs/<sha12>/manifest.json source, fidelity, how it segmented
+#
+# Identity is the sha256 of the source bytes, so a re-run on an
+# unchanged file costs nothing and a changed file can never collide
+# with its own stale index. No TTL, no invalidation pass.
+#
+# Usage: docindex <file> [--refresh] [--json] [--window-lines N]
+# Exit:  0 indexed (or reused) · 1 extraction failed · 2 usage /
+#        unsupported / no project root · 3 no text layer (try OCR)
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+cb_require_python
+
+[ -n "${CB_DIR:-}" ] || {
+  echo "docindex: no project root resolved — cannot place the index." >&2
+  exit 2
+}
+
+exec $PYBIN "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/docindex.py" \
+  --cb-dir "$CB_DIR" "$@"

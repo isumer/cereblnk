@@ -1,7 +1,7 @@
-Findings
+# Findings
 
 Two issues were confirmed.
 
-Actions
+## Actions
 
 Rotate the leaked token.
