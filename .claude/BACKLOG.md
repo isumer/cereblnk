@@ -133,3 +133,4 @@ read.
 - [x] **CB-111** — Prior art described by class, never named
 - [x] **CB-112** — Document index: reach the right page without reading the book
 - [x] **CB-113** — Execution floor: a surface cannot close unverified
+- [x] **CB-114** — Reachability: new code that nothing calls is not done

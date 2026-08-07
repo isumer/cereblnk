@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""test-reachability — acceptance run for the reachability check (CB-114).
+
+Two layers. The analyser is driven against a synthetic project covering
+the orphan case, the referenced case, framework-annotated declarations,
+non-source references, and the ignore list. The hook is driven with
+synthetic SubagentStop input covering blocking, the clean path, loop
+safety, cross-agent isolation, and the nudge cap.
+
+Requires bash + python3 on PATH (the hooks' own runtime contract).
+
+Usage: scripts/test-reachability   Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+H = ROOT / "plugins/cereblnk/hooks/scripts"
+REACH = ROOT / "plugins/cereblnk/scripts/reachability"
+
+
+def write(p, text):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+def build_project(base):
+    """A project with one of each interesting shape."""
+    write(base / "src/stomp.ts", "export function connectStomp() { return 1; }\n")
+    write(base / "src/Chat.tsx", "export function ChatPanel() { return 2; }\n")
+    write(base / "src/main.tsx", 'import { ChatPanel } from "./Chat";\nChatPanel();\n')
+    write(base / "src/api/UserController.java",
+          "@RestController\npublic class UserController {\n  public String hi() { return \"x\"; }\n}\n")
+    write(base / "src/LegacyWidget.tsx", "export function LegacyWidget() { return 3; }\n")
+    write(base / "src/routes.json", '{ "handlers": ["LegacyWidget"] }\n')
+    write(base / "src/util.py", "def compute_total():\n    return 0\n")
+    write(base / "node_modules/pkg/index.js", "export function connectStomp() {}\n")
+
+
+def analyse(base, *files):
+    r = subprocess.run([sys.executable, str(REACH), str(base)] + list(files),
+                       capture_output=True, text=True)
+    return r.returncode, r.stdout.strip().splitlines()
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-reachability: bash not on PATH — skipping")
+        return 0
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    # ---- analyser ---------------------------------------------------
+    with tempfile.TemporaryDirectory() as td:
+        base = pathlib.Path(td) / "proj"
+        build_project(base)
+
+        rc, out = analyse(base, "src/stomp.ts")
+        case("analyser: unreferenced export is reported", rc == 1 and any("connectStomp" in l for l in out),
+             "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/Chat.tsx")
+        case("analyser: referenced export is clean", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/api/UserController.java")
+        case("analyser: annotated declaration is exempt", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/LegacyWidget.tsx")
+        case("analyser: reference from non-source file counts", rc == 0 and not out,
+             "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/util.py")
+        case("analyser: unreferenced python def is reported",
+             rc == 1 and any("compute_total" in l for l in out), "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/nonexistent.ts")
+        case("analyser: missing file is inert", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        rc, out = analyse(base, "src/routes.json")
+        case("analyser: unsupported language is inert", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        # node_modules defines connectStomp too; it must not count as a reference
+        rc, out = analyse(base, "src/stomp.ts")
+        case("analyser: skipped directories are not searched", rc == 1, "rc=%d" % rc)
+
+        ign = base / ".claude/cereblnk/config/reachability-ignore"
+        write(ign, "connectStomp\n")
+        rc, out = analyse(base, "src/stomp.ts")
+        case("analyser: ignore list suppresses the report", rc == 0 and not out,
+             "rc=%d out=%r" % (rc, out))
+
+    # ---- hook -------------------------------------------------------
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        build_project(proj)
+        runctx = proj / ".claude/cereblnk/context/R-T"
+        runctx.mkdir(parents=True)
+        ledger = runctx / "edited-files.log"
+
+        def reset(lines=()):
+            if ledger.exists():
+                ledger.unlink()
+            if lines:
+                ledger.write_text("".join(lines), encoding="utf-8")
+            for f in runctx.glob("reach-floor.*.state"):
+                f.unlink()
+
+        def run_hook(stdin, extra=None):
+            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            if extra:
+                env.update(extra)
+            return subprocess.run(["bash", str(H / "reach-floor.sh")], input=stdin,
+                                  capture_output=True, text=True, env=env, cwd=str(proj))
+
+        def stop_in(agent="frontend-agent", active=False):
+            d = {"agent_type": agent}
+            if active:
+                d["stop_hook_active"] = True
+            return json.dumps(d)
+
+        reset(["1\tfrontend-agent\tsrc/stomp.ts\n"])
+        r = run_hook(stop_in())
+        case("hook: orphan blocks the stop", r.returncode == 2, "rc=%d" % r.returncode)
+        case("hook: message names the symbol", "connectStomp" in r.stderr, r.stderr.strip()[:90])
+
+        reset(["1\tfrontend-agent\tsrc/Chat.tsx\n"])
+        r = run_hook(stop_in())
+        case("hook: wired code passes", r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tbackend-agent\tsrc/stomp.ts\n"])
+        r = run_hook(stop_in())
+        case("hook: another agent's edit is not this agent's floor",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tfrontend-agent\tsrc/stomp.ts\n"])
+        r = run_hook(stop_in(active=True))
+        case("hook: stop_hook_active always allows", r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset([])
+        r = run_hook(stop_in())
+        case("hook: no ledger is inert", r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tfrontend-agent\tsrc/stomp.ts\n"])
+        rcs = [run_hook(stop_in(), {"CB_REACH_NUDGES": "2"}).returncode for _ in range(3)]
+        case("hook: nudge cap releases after the limit", rcs == [2, 2, 0], "rcs=%r" % rcs)
+
+    if fails:
+        print("test-reachability: %d/%d FAILED" % (len(fails), ran))
+        for f in fails:
+            print("  FAIL  %s" % f)
+        return 1
+    print("test-reachability: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
