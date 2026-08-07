@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""test-env-lifecycle — acceptance run for the runtime stage (CB-115).
+
+Drives scripts/env and EnvTeardownHook against a throwaway project.
+Docker is never required: the up and down commands are shell no-ops and
+the health endpoint is a stdlib HTTP server on an ephemeral port. A
+suite that needed a container runtime would make `verify` unrunnable on
+the machines most likely to run it.
+
+Covers the skip paths, the environment verdict, flag lifecycle, the
+teardown safety property (down uses the recorded command, never the
+current config), idempotence, staleness, and the hook.
+
+Usage: scripts/test-env-lifecycle   Exit: 0 all pass · 1 any failure
+"""
+import http.server
+import json
+import os
+import pathlib
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+ENV = ROOT / "plugins/cereblnk/scripts/env"
+HOOK = ROOT / "plugins/cereblnk/hooks/scripts/env-teardown.sh"
+
+
+def free_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    p = s.getsockname()[1]
+    s.close()
+    return p
+
+
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+
+def serve(port):
+    srv = http.server.HTTPServer(("127.0.0.1", port), Quiet)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    return srv
+
+
+def main():
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        cfgdir = proj / ".claude/cereblnk/config"
+        cfgdir.mkdir(parents=True)
+        flag = proj / ".claude/cereblnk/flags/env-active"
+        marker = proj / "down-ran.txt"
+
+        def env(action, extra=None):
+            e = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            if extra:
+                e.update(extra)
+            r = subprocess.run([sys.executable, str(ENV), action],
+                               capture_output=True, text=True, env=e, cwd=str(proj))
+            return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+        def write_cfg(**kw):
+            (cfgdir / "runtime.md").write_text(
+                "".join("%s: %s\n" % (k, v) for k, v in kw.items()), encoding="utf-8")
+
+        # no config at all
+        rc, out = env("preflight")
+        case("preflight: no config skips", rc == 3 and "SKIP" in out, "rc=%d %s" % (rc, out[:70]))
+
+        # missing required field
+        write_cfg(up="true")
+        rc, out = env("preflight")
+        case("preflight: missing fields skip", rc == 3 and "down" in out, "rc=%d %s" % (rc, out[:70]))
+
+        rc, out = env("bogus")
+        case("usage: unknown action", rc == 5, "rc=%d" % rc)
+
+        port = free_port()
+        url = "http://127.0.0.1:%d/" % port
+        write_cfg(up="true", down="touch %s" % marker, health=url, timeout="3", project="demo")
+
+        # nothing listening yet
+        rc, out = env("preflight")
+        case("preflight: clean is ready", rc == 0 and "READY" in out, "rc=%d %s" % (rc, out[:70]))
+
+        # health never answers -> environment verdict, flag still recorded
+        rc, out = env("up")
+        case("up: unhealthy is an ENVIRONMENT verdict", rc == 4 and "ENVIRONMENT" in out,
+             "rc=%d %s" % (rc, out[:90]))
+        case("up: verdict forbids application claims",
+             "evidence of nothing" in out, out[:90])
+        case("up: flag recorded even on failure", flag.is_file())
+
+        # already active -> skip
+        rc, out = env("preflight")
+        case("preflight: active flag skips", rc == 3, "rc=%d" % rc)
+
+        rc, out = env("status")
+        case("status: reports active", rc == 0 and "active project=demo" in out, out[:70])
+
+        # teardown safety: change the config, down must use the recorded command
+        write_cfg(up="true", down="echo NEVER-RUN-THIS", health=url, timeout="3", project="demo")
+        rc, out = env("down")
+        case("down: uses the recorded command, not current config",
+             rc == 0 and marker.is_file(), "rc=%d marker=%s" % (rc, marker.is_file()))
+        case("down: clears the flag", not flag.is_file())
+        rc, out = env("down")
+        case("down: is idempotent", rc == 3, "rc=%d" % rc)
+
+        # healthy path
+        marker.unlink(missing_ok=True)
+        srv = serve(port)
+        try:
+            write_cfg(up="true", down="touch %s" % marker, health=url, timeout="10",
+                      project="demo")
+            rc, out = env("preflight")
+            case("preflight: refuses a listener it did not start",
+                 rc == 3 and "not started here" in out, "rc=%d %s" % (rc, out[:80]))
+
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            rc, out = env("health")
+            case("health: answers healthy", rc == 0 and "HEALTHY" in out, "rc=%d %s" % (rc, out[:70]))
+
+            # seed failure is an environment verdict
+            write_cfg(up="true", down="true", health=url, timeout="10", seed="false")
+            rc, out = env("health")
+            case("health: failing seed is an ENVIRONMENT verdict",
+                 rc == 4 and "seed" in out, "rc=%d %s" % (rc, out[:80]))
+        finally:
+            srv.shutdown()
+
+        # stale flag
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.write_text("project: old\nstarted: 1\nttl: 5\ndown: true\n", encoding="utf-8")
+        rc, out = env("status")
+        case("status: reports a stale flag", rc == 0 and "STALE" in out, out[:70])
+
+        # ---- teardown hook ----
+        if shutil.which("bash") is None:
+            print("test-env-lifecycle: bash absent — hook checks skipped")
+        else:
+            marker.unlink(missing_ok=True)
+            flag.write_text("project: demo\nstarted: %d\nttl: 3600\ndown: touch %s\n"
+                            % (int(time.time()), marker), encoding="utf-8")
+            e = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            subprocess.run(["bash", str(HOOK)], input=json.dumps({}), capture_output=True,
+                           text=True, env=e, cwd=str(proj))
+            case("hook: reclaims a leaked environment",
+                 marker.is_file() and not flag.is_file(),
+                 "marker=%s flag=%s" % (marker.is_file(), flag.is_file()))
+
+            r = subprocess.run(["bash", str(HOOK)], input=json.dumps({}), capture_output=True,
+                               text=True, env=e, cwd=str(proj))
+            case("hook: no flag is inert", r.returncode == 0 and not r.stdout.strip(),
+                 "rc=%d" % r.returncode)
+
+    if fails:
+        print("test-env-lifecycle: %d/%d FAILED" % (len(fails), ran))
+        for f in fails:
+            print("  FAIL  %s" % f)
+        return 1
+    print("test-env-lifecycle: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

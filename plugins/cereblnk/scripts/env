@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""env — bring the system up, prove it answers, take it down again.
+
+Every gate before this one reads text. CB-113 made a specialist run its
+own surface; this runs the surfaces together, which is the only way to
+observe that two legs disagree.
+
+Attribution is the point, not convenience. When the environment never
+becomes healthy, that is an ENVIRONMENT verdict and the run must say
+nothing about the application: a smoke failure against a half-started
+stack is evidence of nothing. The exit codes carry that distinction so a
+workflow cannot blur it.
+
+Safety property, stated once because everything else depends on it:
+this NEVER takes down an environment it did not start. `up` records the
+project name and the exact down command in flags/env-active, `down` uses
+what the flag recorded rather than what config currently says, and
+preflight refuses to start when something already answers the health
+URL — that is somebody else's stack and `down -v` on it destroys data.
+
+Configuration: $CB_DIR/config/runtime.md, "key: value" per line.
+    up       command that starts the environment      (required)
+    down     command that stops and cleans it         (required)
+    health   URL polled until it answers 2xx/3xx      (required)
+    project  label recorded in the flag               (optional)
+    timeout  seconds to wait for health, default 90   (optional)
+    seed     command run once after health            (optional)
+
+Usage: env {preflight|up|health|down|status}
+
+Exit codes:
+    0  success
+    3  SKIP — nothing to do here (no config, or already running)
+    4  ENVIRONMENT failure — never became healthy; say nothing about
+       the application
+    5  usage error
+"""
+import os
+import pathlib
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+DEFAULT_TIMEOUT = 90
+POLL_INTERVAL = 2
+
+
+def cb_dir():
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or ""
+    if root:
+        return pathlib.Path(root) / ".claude/cereblnk"
+    d = pathlib.Path.cwd()
+    home = pathlib.Path.home()
+    while d != d.parent:
+        if d == home:
+            break
+        if (d / ".git").exists() or (d / ".claude").is_dir():
+            return d / ".claude/cereblnk"
+        d = d.parent
+    return pathlib.Path.cwd() / ".claude/cereblnk"
+
+
+def read_fields(path):
+    out = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            k = k.strip()
+            if k and k not in out:
+                out[k] = v.strip()
+    except OSError:
+        pass
+    return out
+
+
+def config(cb):
+    return read_fields(cb / "config/runtime.md")
+
+
+def flag_path(cb):
+    return cb / "flags/env-active"
+
+
+def health_ok(url, timeout=5):
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return 200 <= r.status < 400
+    except urllib.error.HTTPError as e:
+        return 200 <= e.code < 400
+    except Exception:
+        return False
+
+
+def shell(cmd, timeout=600):
+    try:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                           timeout=timeout)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except subprocess.TimeoutExpired:
+        return 124, "timed out after %ds" % timeout
+    except Exception as e:
+        return 1, str(e)
+
+
+def say(msg):
+    print(msg)
+
+
+def cmd_preflight(cb, cfg):
+    missing = [k for k in ("up", "down", "health") if not cfg.get(k)]
+    if not (cb / "config/runtime.md").is_file():
+        say("SKIP no config/runtime.md — the runtime stage is not configured for this project")
+        return 3
+    if missing:
+        say("SKIP config/runtime.md is missing required field(s): %s" % ", ".join(missing))
+        return 3
+    if flag_path(cb).is_file():
+        say("SKIP an environment started by this project is already active — run `env status`")
+        return 3
+    if health_ok(cfg["health"], timeout=3):
+        say("SKIP something already answers %s. That stack was not started here and "
+            "will not be touched: tearing down a listener we did not start can destroy "
+            "data that is not ours." % cfg["health"])
+        return 3
+    say("READY nothing is listening; the environment can be started")
+    return 0
+
+
+def cmd_up(cb, cfg):
+    rc = cmd_preflight(cb, cfg)
+    if rc != 0:
+        return rc
+    rc, out = shell(cfg["up"])
+    if rc != 0:
+        say("ENVIRONMENT the up command failed (exit %d)\n%s" % (rc, out[-2000:]))
+        return 4
+    flag_path(cb).parent.mkdir(parents=True, exist_ok=True)
+    flag_path(cb).write_text(
+        "project: %s\nstarted: %d\nttl: %s\ndown: %s\n"
+        % (cfg.get("project", "unnamed"), int(time.time()),
+           cfg.get("ttl", "3600"), cfg["down"]),
+        encoding="utf-8")
+    return cmd_health(cb, cfg)
+
+
+def cmd_health(cb, cfg):
+    url = cfg.get("health")
+    if not url:
+        say("SKIP no health field in config/runtime.md")
+        return 3
+    try:
+        limit = int(cfg.get("timeout", DEFAULT_TIMEOUT))
+    except ValueError:
+        limit = DEFAULT_TIMEOUT
+    deadline = time.time() + limit
+    while True:
+        if health_ok(url):
+            say("HEALTHY %s answered" % url)
+            seed = cfg.get("seed")
+            if seed:
+                rc, out = shell(seed)
+                if rc != 0:
+                    say("ENVIRONMENT the seed command failed (exit %d)\n%s" % (rc, out[-2000:]))
+                    return 4
+            return 0
+        if time.time() >= deadline:
+            break
+        time.sleep(POLL_INTERVAL)
+    say("ENVIRONMENT %s never answered within %ds. This is an environment verdict: "
+        "do not run smoke checks and do not report anything about the application — "
+        "a check against a stack that never started is evidence of nothing." % (url, limit))
+    return 4
+
+
+def cmd_down(cb, cfg):
+    f = flag_path(cb)
+    if not f.is_file():
+        say("SKIP no environment was started here — nothing to take down")
+        return 3
+    rec = read_fields(f)
+    down = rec.get("down")
+    if not down:
+        say("SKIP flag records no down command; removing the flag only")
+        f.unlink(missing_ok=True)
+        return 3
+    rc, out = shell(down)
+    f.unlink(missing_ok=True)
+    if rc != 0:
+        say("WARN the recorded down command exited %d; the flag was cleared anyway "
+            "so it cannot block a later run\n%s" % (rc, out[-1000:]))
+    else:
+        say("DOWN %s" % rec.get("project", "unnamed"))
+    return 0
+
+
+def cmd_status(cb, cfg):
+    f = flag_path(cb)
+    if not f.is_file():
+        say("inactive")
+        return 0
+    rec = read_fields(f)
+    try:
+        started = int(rec.get("started", "0"))
+        ttl = int(rec.get("ttl", "3600"))
+    except ValueError:
+        started, ttl = 0, 3600
+    age = int(time.time()) - started
+    stale = age > ttl
+    say("active project=%s age=%ds ttl=%ds%s"
+        % (rec.get("project", "unnamed"), age, ttl, " STALE" if stale else ""))
+    if stale:
+        say("STALE this flag outlived its ttl — the session that started it likely "
+            "died. Run `env down` to reclaim it.")
+    return 0
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ("-h", "--help"):
+        say(__doc__.strip())
+        return 5
+    action = argv[1]
+    table = {"preflight": cmd_preflight, "up": cmd_up, "health": cmd_health,
+             "down": cmd_down, "status": cmd_status}
+    if action not in table:
+        say("env: unknown action %r — expected one of %s"
+            % (action, ", ".join(sorted(table))))
+        return 5
+    cb = cb_dir()
+    return table[action](cb, config(cb))
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

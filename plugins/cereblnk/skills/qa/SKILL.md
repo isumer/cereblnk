@@ -6,11 +6,15 @@ argument-hint: [branch or diff range; defaults to current branch vs main]
 
 # QAWorkflow (/cb-qa)
 
-**Trigger intent:** "test what changed." Evidence-based only: tests +
-diff analysis. No browser/live-device EXECUTION — that mechanism is F-class until
-the execution-mechanism map confirms one. Browser tests may be written and their run command named. But a
-passes claim requires real CI output. Without it the result is `assumed` (assumed-until-
-CI). This workflow must not claim to have executed a browser test.
+**Trigger intent:** "test what changed." Evidence-based: tests, diff
+analysis, and the runtime stage below when it is configured.
+
+Two mechanisms, kept apart. Bringing the system up and polling its
+health is real, through the env script. Driving a browser or a live
+device is not. Browser tests may be written and their run command
+named. A passes claim for one requires real CI output. Without it the
+result is assumed. This workflow must not claim to have executed a
+browser test.
 
 ## Agent topology
 
@@ -46,6 +50,24 @@ Otherwise
 4. **Regression per confirmed fix.** Every fix confirmed in the diff
 gets a regression test. It fails before and passes after. Generated,
 run, and cited.
+5. **Runtime stage, when the project configures one.** The env
+   script under `plugins/cereblnk/scripts/` owns it. Ask its preflight
+   action first. Exit 3 is a skip and the stage ends there, reported as
+   a skip rather than a pass. Preflight refuses to start when something
+   already answers the health URL. That stack belongs to somebody else
+   and is never touched.
+
+   Then ask env to bring the system up. Exit 4 is an ENVIRONMENT
+   verdict. The stage stops. Report the environment and say nothing
+   about the application. A check against a stack that never started is
+   evidence of nothing, and reporting it as an application failure is
+   the error this separation exists to prevent.
+
+   On exit 0 the surfaces are up together. Run the checks that cross
+   them, which is the whole reason to pay for an environment: the paths
+   one surface alone cannot prove. Then ask env to take it down. The
+   teardown hook reclaims a leaked environment at session end, but the
+   stage takes it down itself and does not lean on the hook.
 
 ## Output
 
