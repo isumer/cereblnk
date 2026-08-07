@@ -5,3 +5,4 @@ __pycache__/
 # CB-108: the leakage wordlist is never committed — a tracked wordlist
 # publishes exactly the strings it exists to catch (check-leakage L-3).
 .leakage-wordlist
+*.iml
