@@ -200,7 +200,7 @@ not something this repository has established.
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 17 hooks · 26 verify suites** (count them: `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
+176 constraint files · 18 hooks · 27 verify suites** (count them: `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
 fails the build when these drift. Versioning follows CHANGELOG.md semver;
