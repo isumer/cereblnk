@@ -134,3 +134,4 @@ read.
 - [x] **CB-112** — Document index: reach the right page without reading the book
 - [x] **CB-113** — Execution floor: a surface cannot close unverified
 - [x] **CB-114** — Reachability: new code that nothing calls is not done
+- [x] **CB-115** — Runtime stage: environment lifecycle and health-gated attribution

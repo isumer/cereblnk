@@ -7,6 +7,54 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.2.2] — The surfaces come up together
+
+CB-113 made a specialist run its own surface and CB-114 made it wire
+what it wrote. Both are single-surface checks. Two legs can each pass
+and still disagree with each other, which is the failure that costs a
+migration: a client whose destination prefixes do not match the server's
+is correct on both sides and broken between them. Observing that
+requires the surfaces running at the same time.
+
+### Added
+
+- `plugins/cereblnk/scripts/env` — preflight, up, health, down, status.
+  Reads `config/runtime.md` and runs the project's own commands;
+  Cereblnk never writes a compose file for anyone.
+- `hooks/scripts/env-teardown.sh` (SessionEnd) — reclaims an environment
+  the session started and nothing took down. A compose project left up
+  holds ports and volumes, and the next run's preflight then reads the
+  leftover as somebody else's stack and skips: one forgotten teardown
+  silently disables the stage for every run after it.
+- `scripts/test-env-lifecycle` — 18 checks. Docker is never required:
+  up and down are shell no-ops and health is a stdlib HTTP server on an
+  ephemeral port. A suite needing a container runtime would make
+  `verify` unrunnable on the machines most likely to run it.
+
+### Changed
+
+- `/cb-qa` gains the runtime stage, and its execution sentence is split.
+  Bringing a system up and polling health is real; driving a browser is
+  not. The two were stated as one F-class ban, which is why the docker
+  skill's instruction to run the container and the workflow's ban on
+  execution could both stand without the contradiction being visible.
+- `DestructiveCommandHook` covers `compose down` with volume removal,
+  `docker volume rm/prune`, `docker system prune` and forced container
+  removal. SQL DROP was blocked while the command that deletes the
+  database's volume was not.
+- `docs/05_EXECUTION_REALITY_MAP.md` gains environment lifecycle,
+  health-gated attribution and teardown rows (M), and restates the
+  browser row as the separate F-class mechanism it is.
+- README contents line: 17 hooks, 26 verify suites.
+
+### Safety property
+
+Teardown never touches an environment this project did not start.
+Preflight refuses to start when something already answers the health
+URL, and `down` runs the command recorded in `flags/env-active` rather
+than whatever config says at teardown time. A config edited mid-run
+cannot redirect a volume-destroying command at somebody else's stack.
+
 ## [1.2.1] — Code nothing calls is not a finished change
 
 CB-113 made a specialist run what it changed. Running does not catch the
