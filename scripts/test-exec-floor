@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""test-exec-floor — acceptance run for ExecLedger and ExecFloor (CB-113).
+
+Drives both hooks with synthetic hook input in a throwaway project
+(CLAUDE_PROJECT_DIR), asserting exit codes, ledger contents, and the
+block message. Covers recording, blocking, the satisfied path, the
+unconfigured-surface skip, loop safety, and the nudge cap.
+
+Requires bash + python3 on PATH (the hooks' own runtime contract).
+
+Usage: scripts/test-exec-floor    Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+H = ROOT / "plugins/cereblnk/hooks/scripts"
+
+
+def run(script, stdin, proj, env_extra=None):
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+    if env_extra:
+        env.update(env_extra)
+    return subprocess.run(["bash", str(H / script)], input=stdin,
+                          capture_output=True, text=True, env=env, cwd=str(proj))
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-exec-floor: bash not on PATH — skipping")
+        return 0
+
+    fails, ran = [], 0
+
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        cfg = proj / ".claude/cereblnk/config"
+        cfg.mkdir(parents=True)
+        runctx = proj / ".claude/cereblnk/context/R-T"
+        runctx.mkdir(parents=True)
+        ledger = runctx / "exec.log"
+
+        def reset(log_lines=(), commands=None):
+            if ledger.exists():
+                ledger.unlink()
+            if log_lines:
+                ledger.write_text("".join(log_lines), encoding="utf-8")
+            for f in cfg.glob("check-command.*"):
+                f.unlink()
+            for surface, cmd in (commands or {}).items():
+                (cfg / ("check-command.%s" % surface)).write_text(cmd + "\n", encoding="utf-8")
+            for f in runctx.glob("exec-floor.*.state"):
+                f.unlink()
+
+        def case(name, ok, detail=""):
+            nonlocal ran
+            ran += 1
+            if not ok:
+                fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+        def edit_in(path, agent="frontend-agent"):
+            return json.dumps({"agent_type": agent, "tool_name": "Write",
+                               "tool_input": {"file_path": path, "content": "x"}})
+
+        def bash_in(cmd, agent="frontend-agent"):
+            return json.dumps({"agent_type": agent, "tool_name": "Bash",
+                               "tool_input": {"command": cmd}})
+
+        def stop_in(agent="frontend-agent", active=False):
+            d = {"agent_type": agent}
+            if active:
+                d["stop_hook_active"] = True
+            return json.dumps(d)
+
+        def lines():
+            return ledger.read_text(encoding="utf-8").splitlines() if ledger.exists() else []
+
+        # ---- ExecLedger: recording -------------------------------------
+        reset()
+        run("exec-ledger.sh", edit_in("src/components/Chat.tsx"), proj)
+        case("ledger: ui edit recorded",
+             any(l.split("\t")[2:] == ["edit", "ui"] for l in lines()),
+             "got %r" % lines())
+
+        reset()
+        run("exec-ledger.sh", edit_in("README.md"), proj)
+        case("ledger: unmapped path records nothing", lines() == [], "got %r" % lines())
+
+        reset(commands={"ui": "npm run build"})
+        run("exec-ledger.sh", bash_in("cd web && npm run build --silent"), proj)
+        case("ledger: matching command records exec",
+             any(l.split("\t")[2:] == ["exec", "ui"] for l in lines()),
+             "got %r" % lines())
+
+        reset(commands={"ui": "npm run build"})
+        run("exec-ledger.sh", bash_in("git status"), proj)
+        case("ledger: unrelated command records nothing", lines() == [], "got %r" % lines())
+
+        # ---- ExecFloor: blocking ---------------------------------------
+        reset(["1\tfrontend-agent\tedit\tui\n"], {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: unrun surface blocks", r.returncode == 2, "rc=%d" % r.returncode)
+        case("floor: message names the surface", "ui" in r.stderr, r.stderr.strip()[:80])
+        case("floor: message names the command", "npm run build" in r.stderr, r.stderr.strip()[:80])
+
+        reset(["1\tfrontend-agent\tedit\tui\n", "2\tfrontend-agent\texec\tui\n"],
+              {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: executed surface passes", r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tfrontend-agent\tedit\tui\n"], {})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: unconfigured surface allows", r.returncode == 0, "rc=%d" % r.returncode)
+        case("floor: unconfigured surface records skip",
+             any(l.split("\t")[2:] == ["skip", "ui"] for l in lines()), "got %r" % lines())
+
+        reset(["1\tbackend-agent\tedit\tapi\n"], {"api": "mvn test"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: other agent's edit is not this agent's floor",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tfrontend-agent\tedit\tui\n"], {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(active=True), proj)
+        case("floor: stop_hook_active always allows", r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset([], {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: no ledger is inert", r.returncode == 0, "rc=%d" % r.returncode)
+
+        # nudge cap: two blocks, then allow
+        reset(["1\tfrontend-agent\tedit\tui\n"], {"ui": "npm run build"})
+        rcs = [run("exec-floor.sh", stop_in(), proj, {"CB_EXEC_NUDGES": "2"}).returncode
+               for _ in range(3)]
+        case("floor: nudge cap releases after the limit",
+             rcs == [2, 2, 0], "rcs=%r" % rcs)
+
+    if fails:
+        print("test-exec-floor: %d/%d FAILED" % (len(fails), ran))
+        for f in fails:
+            print("  FAIL  %s" % f)
+        return 1
+    print("test-exec-floor: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
