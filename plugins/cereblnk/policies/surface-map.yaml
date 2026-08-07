@@ -1,0 +1,63 @@
+# Surface map — which surface a changed file belongs to.
+#
+# A surface is a leg of the system that can be run and observed on its
+# own: the UI, the API, the database layer. ExecLedgerHook resolves an
+# edited path to a surface with this file, and ExecFloorHook asks
+# whether that surface was executed before the specialist finished.
+#
+# Resolution, in order:
+#   1. path_contains — first surface with a matching segment wins
+#   2. extensions    — only when no path segment matched
+#   3. no match      — the edit carries no surface and the floor ignores it
+#
+# Paths are lowercased and separators normalised to "/" before matching.
+# Deliberately coarse: a wrong surface label costs a redundant check,
+# a missing one costs an unverified close.
+
+surfaces:
+  ui:
+    path_contains:
+      - /components/
+      - /pages/
+      - /views/
+      - /frontend/
+      - /client/
+      - /webapp/
+      - /ui/
+    extensions:
+      - .tsx
+      - .jsx
+      - .vue
+      - .svelte
+      - .css
+      - .scss
+
+  api:
+    path_contains:
+      - /controller
+      - /handler
+      - /resolver
+      - /routes/
+      - /api/
+      - /backend/
+      - /server/
+      - /service/
+    extensions:
+      - .java
+      - .kt
+      - .go
+      - .rb
+      - .cs
+      - .php
+
+  db:
+    path_contains:
+      - /migrations/
+      - /migration/
+      - /schema/
+      - /repository/
+      - /repositories/
+      - /entity/
+      - /entities/
+    extensions:
+      - .sql
