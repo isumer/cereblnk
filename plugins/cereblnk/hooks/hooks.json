@@ -1,5 +1,5 @@
 {
-  "description": "Cereblnk hard-enforcement hooks. DestructiveCommand, EditBoundary, and PostEditTest are opt-in per session via flag files under .claude/cereblnk/flags/ (/cb-careful, /cb-boundary); SecretGuard, HistoryArchive (PreCompact transcript backup to .claude/cereblnk/history/), SkillLedger (records skill loads into the run ledger) and SkillFloor (blocks a specialist that finishes without its required skills) and DigestCap (blocks a subagent whose return exceeds the computed digest line cap) and ContextMonitor (measures real window occupancy each turn; warns past the checkpoint, never blocks) and ScratchGuard (blocks a new untracked file at the repository root during a run and names where working notes belong) and DocFloor (blocks an unbounded Read of a large indexed document and hands back its outline) and ExecLedger (records which surfaces a specialist edited and which it ran) and ExecFloor (blocks a specialist that finishes without running a surface it changed) are always on.",
+  "description": "Cereblnk hard-enforcement hooks. DestructiveCommand, EditBoundary, and PostEditTest are opt-in per session via flag files under .claude/cereblnk/flags/ (/cb-careful, /cb-boundary); SecretGuard, HistoryArchive (PreCompact transcript backup to .claude/cereblnk/history/), SkillLedger (records skill loads into the run ledger) and SkillFloor (blocks a specialist that finishes without its required skills) and DigestCap (blocks a subagent whose return exceeds the computed digest line cap) and ContextMonitor (measures real window occupancy each turn; warns past the checkpoint, never blocks) and ScratchGuard (blocks a new untracked file at the repository root during a run and names where working notes belong) and DocFloor (blocks an unbounded Read of a large indexed document and hands back its outline) and ExecLedger (records which surfaces a specialist edited and which it ran) and ExecFloor (blocks a specialist that finishes without running a surface it changed) and ReachFloor (blocks a specialist that leaves new code nothing in the project calls) are always on.",
   "hooks": {
     "PreToolUse": [
       {
@@ -101,6 +101,10 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/exec-floor.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/reach-floor.sh\""
           },
           {
             "type": "command",
