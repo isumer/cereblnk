@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""test-contract-check — acceptance run for cross-surface contracts (CB-116).
+
+The scenario is the one that motivated the task: a REST API migrated to
+a message protocol, where each leg is internally correct and the two
+disagree. The UI sends on the new channel and never subscribes to the
+one the server publishes; both specialists would otherwise report
+complete.
+
+Covers reconciliation in both directions (the new channel present, the
+old path gone), per-surface isolation so parallel work is not
+serialised, the deferred escape hatch, the no-contract skip, and the
+hook including loop safety and the nudge cap.
+
+Usage: scripts/test-contract-check   Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CHECK = ROOT / "plugins/cereblnk/scripts/contract-check"
+HOOK = ROOT / "plugins/cereblnk/hooks/scripts/contract-floor.sh"
+
+CONTRACT = """contract: chat-stomp
+version: 1
+parties: ui, api
+
+## Channels
+| channel | direction | payload |
+| --- | --- | --- |
+| /topic/messages | server->client | MessageDto |
+| /app/send | client->server | SendCommand |
+
+## Migration
+| old | new | status |
+| --- | --- | --- |
+| POST /api/messages | /app/send | replaced |
+"""
+
+
+def write(p, text):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+def build(base, ui_body, api_body, contract=CONTRACT):
+    write(base / ".claude/cereblnk/memory/contracts/chat.md", contract)
+    write(base / "src/components/Chat.tsx", ui_body)
+    write(base / "server/controller/ChatController.java", api_body)
+
+
+UI_GOOD = ('export function wire() { stomp.subscribe("/topic/messages", f); '
+           'stomp.send("/app/send", {}); }\n')
+UI_MISSING_SUB = 'export function wire() { stomp.send("/app/send", {}); }\n'
+UI_OLD_LEFT = UI_GOOD + 'export function legacy() { fetch("/api/messages"); }\n'
+API_GOOD = ('@MessageMapping("/app/send")\npublic void in() {}\n'
+            '@SendTo("/topic/messages")\npublic String out() { return "x"; }\n')
+
+
+def check(base, *surfaces):
+    r = subprocess.run([sys.executable, str(CHECK), str(base)] + list(surfaces),
+                       capture_output=True, text=True)
+    return r.returncode, r.stdout.strip().splitlines()
+
+
+def main():
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    with tempfile.TemporaryDirectory() as td:
+        base = pathlib.Path(td) / "proj"
+
+        build(base, UI_GOOD, API_GOOD)
+        rc, out = check(base)
+        case("matched surfaces are clean", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        build(base, UI_MISSING_SUB, API_GOOD)
+        rc, out = check(base)
+        case("missing channel on one side is reported",
+             rc == 1 and any("ui" in l and "/topic/messages" in l for l in out),
+             "rc=%d out=%r" % (rc, out))
+
+        rc, out = check(base, "api")
+        case("the matched side closes alone — parallelism preserved",
+             rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        rc, out = check(base, "ui")
+        case("the unmatched side is still blocked alone", rc == 1, "rc=%d" % rc)
+
+        build(base, UI_OLD_LEFT, API_GOOD)
+        rc, out = check(base)
+        case("a replaced path left behind is reported",
+             rc == 1 and any("/api/messages" in l for l in out), "rc=%d out=%r" % (rc, out))
+
+        deferred = CONTRACT.replace("| POST /api/messages | /app/send | replaced |",
+                                    "| POST /api/messages | /app/send | deferred |")
+        build(base, UI_OLD_LEFT, API_GOOD, contract=deferred)
+        rc, out = check(base)
+        case("deferred rows are not enforced", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        shutil.rmtree(base / ".claude/cereblnk/memory/contracts")
+        rc, out = check(base)
+        case("no contract is a skip, not a pass", rc == 3, "rc=%d" % rc)
+
+        rc, out = check(base / "nope")
+        case("missing root is inert", rc == 3, "rc=%d" % rc)
+
+    # ---- hook ----
+    if shutil.which("bash") is None:
+        print("test-contract-check: bash absent — hook checks skipped")
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            proj = pathlib.Path(td) / "proj"
+            build(proj, UI_MISSING_SUB, API_GOOD)
+            runctx = proj / ".claude/cereblnk/context/R-T"
+            runctx.mkdir(parents=True)
+            ledger = runctx / "exec.log"
+
+            def reset(lines):
+                ledger.write_text("".join(lines), encoding="utf-8")
+                for f in runctx.glob("contract-floor.*.state"):
+                    f.unlink()
+
+            def run_hook(agent="frontend-agent", active=False, extra=None):
+                d = {"agent_type": agent}
+                if active:
+                    d["stop_hook_active"] = True
+                env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+                if extra:
+                    env.update(extra)
+                return subprocess.run(["bash", str(HOOK)], input=json.dumps(d),
+                                      capture_output=True, text=True, env=env, cwd=str(proj))
+
+            reset(["1\tfrontend-agent\tedit\tui\n"])
+            r = run_hook()
+            case("hook: unmatched surface blocks the stop", r.returncode == 2, "rc=%d" % r.returncode)
+            case("hook: message names the channel", "/topic/messages" in r.stderr,
+                 r.stderr.strip()[:90])
+
+            reset(["1\tbackend-agent\tedit\tapi\n"])
+            r = run_hook(agent="backend-agent")
+            case("hook: the matched surface closes", r.returncode == 0, "rc=%d" % r.returncode)
+
+            reset(["1\tfrontend-agent\tedit\tui\n"])
+            r = run_hook(active=True)
+            case("hook: stop_hook_active always allows", r.returncode == 0, "rc=%d" % r.returncode)
+
+            reset(["1\tfrontend-agent\tedit\tui\n"])
+            rcs = [run_hook(extra={"CB_CONTRACT_NUDGES": "2"}).returncode for _ in range(3)]
+            case("hook: nudge cap releases after the limit", rcs == [2, 2, 0], "rcs=%r" % rcs)
+
+            shutil.rmtree(proj / ".claude/cereblnk/memory/contracts")
+            reset(["1\tfrontend-agent\tedit\tui\n"])
+            r = run_hook()
+            case("hook: no contract means no floor", r.returncode == 0, "rc=%d" % r.returncode)
+
+    if fails:
+        print("test-contract-check: %d/%d FAILED" % (len(fails), ran))
+        for f in fails:
+            print("  FAIL  %s" % f)
+        return 1
+    print("test-contract-check: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
