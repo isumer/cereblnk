@@ -1,6 +1,6 @@
 # Agent Communication Protocol (ACP)
 
-> Status: Frozen v1.0
+> Status: Frozen v1.1 (Amendment A1 applied — see Appendix)
 > This document defines the ONLY format in which agents exchange information.
 > Depends on: 00_MANIFESTO.md, 01_RUNTIME_SPECIFICATION.md
 > No agent output in free-form text is ever accepted by another agent.
@@ -41,6 +41,9 @@ verification_level: 3
 context_refs:               # provided by Context OS, never raw files
   - ref: CTX-114            # compressed evidence bundle: AuthFilter diff
   - ref: CTX-115            # compressed evidence bundle: SecurityConfig
+documents:                  # indexed sources; sections, never whole files
+  - doc_id: 1113d150a553    # scripts/docindex; outline.json holds the map
+    sections: [s004, s005]  # the agent opens these line ranges, nothing more
 acceptance: >
   A pass/fail conclusion on auth bypass with every supporting claim
   labeled Known or Derived and linked to evidence.
@@ -127,6 +130,14 @@ Rules:
 - Evidence is referenced, never inlined in bulk: `CTX-114#L42-58`.
 - A claim without an evidence reference cannot be labeled `known`.
 - The Consensus Engine rejects any Response Block containing an unlabeled claim.
+- An indexed document is cited by `doc:<doc_id>#L<start>-<end>` — the
+  lines actually read, never the section id. A section id under a
+  `derived` or `assumed` segmentation names a boundary the document did
+  not declare, so citing one would attach a claim to a guess.
+- A doc-cited fact may carry `quote:` with a span copied from those
+  lines. When present it is checked against the source, which turns the
+  reference from a pointer into evidence. `scripts/ground-check`
+  resolves both forms and fails on a dangling one.
 
 ### 4.3 Confidence
 
@@ -192,3 +203,27 @@ re-issues the task:
 4. Decision resting on `speculative` facts.
 5. Budget overrun without a `blocked` status.
 6. Conclusion accepted from another agent without its evidence attached (Law 2).
+
+---
+
+## Appendix — Amendment Log
+
+**A1 (v1.0 → v1.1).**
+- §2 Task Block: adds the optional `documents:` field — a list of
+  `doc_id` plus the `sections` the agent is expected to open.
+- §4.2 Evidence references: adds the `doc:<doc_id>#L<start>-<end>`
+  citation form and the optional `quote:` companion field.
+- Reason: a long document could reach an agent only as a path, and a
+  path is an instruction to read all of it. Law 4 says knowledge is
+  shared, not context; handing over a whole contract shares context.
+  Naming sections in the Task Block, and lines in the citation, makes
+  the unit of exchange a slice. The line-not-section rule in the
+  citation form exists because `scripts/docindex` labels its
+  segmentation `known`, `derived` or `assumed`, and only the first is
+  a boundary the source itself declared.
+- Impact: `documents:` is optional, so every existing block stays
+  valid. `plugins/cereblnk/scripts/acp-lint` validates the new field
+  and accepts `doc:` where it previously required `CTX-`;
+  `scripts/ground-check` resolves `doc:` references against the index
+  and verifies any `quote:` against the cited lines. No agent file
+  changes shape.

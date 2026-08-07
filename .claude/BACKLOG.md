@@ -131,3 +131,4 @@ read.
 - [x] **CB-109** — Rules ignored the stack profile the project already computes
 - [x] **CB-110** — Refactor scaffolding and the examples stub removed
 - [x] **CB-111** — Prior art described by class, never named
+- [x] **CB-112** — Document index: reach the right page without reading the book

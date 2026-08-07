@@ -1,0 +1,20 @@
+acp_version: "1.0"
+kind: task
+task_id: T-021
+run_id: R-2026-08-06-001
+role: LegalReviewAgent
+objective: >
+  Determine whether the termination clause permits unilateral exit
+  inside the initial term.
+constraints:
+  - Do not evaluate commercial terms (out of expertise → Law 1)
+risk: high
+budget_tokens: 8000
+verification_level: 2
+context_refs: []
+documents:
+  - doc_id: 1113d150a553
+    sections: [s004, s005]
+acceptance: >
+  A yes/no conclusion with every supporting claim cited to the lines
+  read, not to a section id.

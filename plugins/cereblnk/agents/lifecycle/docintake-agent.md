@@ -27,6 +27,45 @@ Selects the fitting skill and script:
 | scanned PDF / image | `ocr` → `scripts/docparse/ocr_image.py` (system engine required) |
 | unsure | try extraction first; fall back to OCR only on a genuine no-text-layer result |
 
+## Long documents: return a map, not the document (binding)
+
+Extraction and delivery are separate decisions. A 300-page contract
+extracts cleanly. It still cannot be handed back: it does not fit this
+budget. Passing the path on only moves the cost downstream.
+
+When extracted text exceeds the budget, run `scripts/docindex <file>`.
+Return the index instead:
+
+| Return | Content |
+|---|---|
+| `artifacts` | the `doc_id` and the outline path |
+| `facts` | section ids, titles, line ranges, estimated tokens |
+| `confidence` | the manifest's `segmentation.label`, unchanged |
+
+The consumer reads the sections it needs with `offset`/`limit`.
+DocFloor blocks an unbounded read of an indexed document. An agent that
+ignores the map is stopped and handed it.
+
+The orchestrator carries this forward as `documents: [{doc_id,
+sections}]` (ACP §2, Amendment A1). Never as a file path: a path says
+read all of it. A specialist cites what it read as
+`doc:<doc_id>#L<start>-<end>`, and may attach `quote:` from those lines.
+`scripts/ground-check` fails a range outside the document. It also fails
+a quote that is not on it.
+
+Carry `segmentation.label` through verbatim:
+
+- `known` — the source declared its own sections.
+- `derived` — a pattern matched lines that looked like headings.
+- `assumed` — nothing was found; the text was cut into fixed windows.
+
+Under `assumed` a section id names an arbitrary boundary. Cite the lines
+read, never the section. Name the layer that produced them. Relabelling
+upward is the defect that reports an empty extraction as success.
+
+Indexing is not summarising. Never describe a section in place of its
+text. The index points; the reader reads.
+
 ## Dependency & offline discipline (binding)
 
 docx/xlsx/pptx and text-layer PDFs are extracted with ZERO third-party
@@ -47,10 +86,14 @@ engine); its unavailability is reported, never silently swallowed.
 
 ## Budget
 
-Default 5,000 tokens. Return `status: blocked` when a document cannot be read with the
-available tools. Report exactly which part failed, and why. No text
-layer, unsupported filter, missing OCR engine), never return
-a confident empty result.
+Default 5,000 tokens. Return `status: blocked` when a document cannot be
+read with the available tools — no text layer, unsupported filter,
+missing OCR engine. Report exactly which part failed, and why; never
+return a confident empty result.
+
+Size is not that failure. A document that reads fine but runs long is
+indexed and returned as a map. Calling that `blocked` would report a
+solved problem as an unsolved one.
 
 ## Skills
 

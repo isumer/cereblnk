@@ -13,7 +13,7 @@ Usage:
 
 Exit codes: 0 ok · 1 parse error · 2 usage/unsupported
 """
-import sys, os, zipfile, argparse
+import sys, os, re, zipfile, argparse
 import xml.etree.ElementTree as ET
 
 W  = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -26,6 +26,31 @@ def _text_of(el, ns_t):
     return "".join(t.text or "" for t in el.iter(ns_t))
 
 # ---------- DOCX ----------
+_HEADING_STYLE = re.compile(r"^heading[ _-]?([1-9])$", re.I)
+
+def _heading_level(el):
+    """Outline level of a <w:p> from its paragraph style, else 0.
+
+    Word records document structure in `w:pStyle`, not in the run text.
+    Dropping it loses the only structural signal a .docx carries, so
+    `docindex` would have to guess at section boundaries that the file
+    already states. Recognises the OOXML style ids `Heading1`..`Heading9`
+    and `Title`; a localized style id (Word writes e.g. `berschrift1`
+    under a German UI) is NOT matched and degrades to body text — a
+    missed heading, never a wrong one.
+    """
+    pPr = el.find(f"{{{W}}}pPr")
+    if pPr is None:
+        return 0
+    style = pPr.find(f"{{{W}}}pStyle")
+    if style is None:
+        return 0
+    val = (style.get(f"{{{W}}}val") or "").strip()
+    if val.lower() == "title":
+        return 1
+    m = _HEADING_STYLE.match(val)
+    return int(m.group(1)) if m else 0
+
 def parse_docx(zf, fmt):
     xml = ET.fromstring(zf.read("word/document.xml"))
     body = xml.find(f"{{{W}}}body")
@@ -38,7 +63,8 @@ def parse_docx(zf, fmt):
         if tag == "p":
             txt = _text_of(el, wt).strip()
             if txt:
-                out.append(txt)
+                level = _heading_level(el) if fmt == "md" else 0
+                out.append(("#" * min(level, 6) + " " + txt) if level else txt)
         elif tag == "tbl":
             rows = []
             for tr in el.findall(f"{{{W}}}tr"):

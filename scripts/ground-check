@@ -1,28 +1,111 @@
 #!/usr/bin/env bash
 # ground-check — mechanical grounding validation (grounding-policy G-2).
-# Extracts every path#Lstart[-Lend] reference from a Response Block and
-# verifies the file exists and the line range is inside it.
+#
+# Two reference forms, both resolved the same way: find the text, prove
+# the cited lines are in it.
+#
+#   path/to/file.ext#L42-58        a file in the repository
+#   doc:1113d150a553#L1240-1298    a document indexed by scripts/docindex
+#
+# A doc reference resolves through $CB_DIR/docs/<doc_id>/, so what is
+# checked is the extracted text the agent actually read, not the binary
+# it came from.
+#
+# When a fact carries `quote:` beside its reference, the quote must
+# occur within the cited lines. That is the check worth having: a
+# resolvable reference only proves the lines exist, while a quote that
+# is present proves the claim was read off them. G-2 catches the
+# dangling pointer; G-3 catches a confident paraphrase of a passage
+# that says something else.
+#
 # Usage: ground-check <block.yaml> [repo-root]   Exit 0 ok / 1 dangling / 2 usage
 set -euo pipefail
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh" 2>/dev/null || PYBIN=python3
+# cbenv lives with the plugin, not beside this script. The previous
+# `dirname/lib/cbenv.sh` never resolved, so the fallback below was the
+# only branch that ever ran and $CB_DIR was always empty — which is why
+# nothing here could resolve a doc: reference.
+_gc_env="$(cd "$(dirname "${BASH_SOURCE[0]}")/../plugins/cereblnk/scripts" && pwd)/lib/cbenv.sh"
+# shellcheck source=../plugins/cereblnk/scripts/lib/cbenv.sh
+[ -f "$_gc_env" ] && . "$_gc_env" 2>/dev/null || true
+: "${PYBIN:=python3}"
 [ $# -ge 1 ] || { echo "usage: ground-check <block.yaml> [root]" >&2; exit 2; }
-export GC_BLOCK="$1" GC_ROOT="${2:-.}"
+export GC_BLOCK="$1" GC_ROOT="${2:-.}" GC_DIR="${CB_DIR:-}"
 $PYBIN << 'PY'
 import os, re, sys, pathlib
-text = open(os.environ["GC_BLOCK"]).read()
+
+text = open(os.environ["GC_BLOCK"], encoding="utf-8", errors="replace").read()
 root = pathlib.Path(os.environ["GC_ROOT"])
-refs = re.findall(r'([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)#L(\d+)(?:-L?(\d+))?', text)
+cb_dir = os.environ.get("GC_DIR") or ""
+docs = (pathlib.Path(cb_dir) / "docs") if cb_dir else None
 fails = []
-for path, a, b in refs:
-    f = root / path
-    if not f.is_file():
-        fails.append(f"G-2: cited file does not exist: {path}"); continue
-    n = sum(1 for _ in open(f, errors='ignore'))
-    lo, hi = int(a), int(b or a)
-    if lo < 1 or hi > n or lo > hi:
-        fails.append(f"G-2: {path}#L{a}-{b or a} outside file ({n} lines)")
+checked = 0
+
+
+def lines_of(path):
+    with open(path, encoding="utf-8", errors="ignore") as fh:
+        return fh.read().splitlines()
+
+
+def resolve_doc(doc_id):
+    """Indexed document -> its extracted text. A missing index is a
+    failure, not a skip: a doc: reference nothing can resolve is exactly
+    the dangling pointer this checker exists to catch."""
+    if docs is None:
+        return None, "no project runtime directory resolved"
+    home = docs / doc_id
+    tp = home / "text.md"
+    if not tp.is_file():
+        return None, f"not in the index ({home})"
+    return tp, None
+
+
+# Split on the ACP fact boundary — the idiom acp-lint uses — so a quote
+# is paired with the reference in its own item and not a neighbour's.
+for item in re.split(r'^\s*-\s*id\s*:', text, flags=re.M):
+    refs = [("doc", m.group(1), int(m.group(2)), int(m.group(3)))
+            for m in re.finditer(r'doc:([0-9a-f]{12})#L(\d+)-(\d+)', item)]
+    for m in re.finditer(r'([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)#L(\d+)(?:-L?(\d+))?',
+                         item):
+        refs.append(("file", m.group(1), int(m.group(2)),
+                     int(m.group(3) or m.group(2))))
+    if not refs:
+        continue
+
+    qm = re.search(r'^\s*quote\s*:\s*(?:"([^"]*)"|\'([^\']*)\'|(\S.*?))\s*$',
+                   item, re.M)
+    quote = (qm.group(1) or qm.group(2) or qm.group(3)).strip() if qm else None
+
+    for kind, ident, lo, hi in refs:
+        checked += 1
+        if kind == "doc":
+            label = "doc:%s#L%d-%d" % (ident, lo, hi)
+            path, why = resolve_doc(ident)
+            if path is None:
+                fails.append(f"G-2: cited document {ident} {why}")
+                continue
+        else:
+            label = "%s#L%d-%d" % (ident, lo, hi)
+            path = root / ident
+            if not path.is_file():
+                fails.append(f"G-2: cited file does not exist: {ident}")
+                continue
+
+        body = lines_of(path)
+        if lo < 1 or hi > len(body) or lo > hi:
+            fails.append(f"G-2: {label} outside file ({len(body)} lines)")
+            continue
+
+        if quote:
+            span = "\n".join(body[lo - 1:hi])
+            # Whitespace is an extraction artifact, not evidence: a line
+            # break the PDF put mid-sentence must not fail a real quote.
+            if re.sub(r"\s+", " ", quote) not in re.sub(r"\s+", " ", span):
+                fails.append(f"G-3: quote is not present in {label} — the "
+                             f"reference resolves but does not say this")
+
 if fails:
     print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
-    print(f"ground-check: {len(fails)} dangling reference(s)", file=sys.stderr); sys.exit(1)
-print(f"ground-check: {len(refs)} reference(s) verified against {root}")
+    print(f"ground-check: {len(fails)} unsupported reference(s)", file=sys.stderr)
+    sys.exit(1)
+print(f"ground-check: {checked} reference(s) verified against {root}")
 PY
