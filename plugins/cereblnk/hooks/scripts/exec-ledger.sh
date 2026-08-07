@@ -21,10 +21,10 @@ set -uo pipefail
 RUN="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
 [ -n "$RUN" ] || exit 0
 
-MAP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/../policies/surface-map.yaml"
+LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib"
 
 INPUT="$(cat 2>/dev/null || true)"
-printf '%s' "$INPUT" | CB_RUN="$RUN" CB_MAP="$MAP" CB_CFG="$CB_DIR/config" $PYBIN -c '
+printf '%s' "$INPUT" | CB_RUN="$RUN" CB_LIB="$LIBDIR" CB_CFG="$CB_DIR/config" $PYBIN -c '
 import json, os, pathlib, re, sys, time
 
 try:
@@ -57,47 +57,17 @@ def record_path(path):
         pass
 
 
-def load_map():
-    """Minimal reader for surface-map.yaml. Two nested list keys per
-    surface; no dependency on a yaml module, which hooks cannot assume."""
-    out, surface, key = {}, None, None
-    p = pathlib.Path(os.environ["CB_MAP"])
-    try:
-        lines = p.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return out
-    for line in lines:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        m = re.match(r"^  ([\w-]+):\s*$", line)
-        if m:
-            surface, key = m.group(1), None
-            out.setdefault(surface, {"path_contains": [], "extensions": []})
-            continue
-        m = re.match(r"^    (path_contains|extensions):\s*$", line)
-        if m and surface:
-            key = m.group(1)
-            continue
-        m = re.match(r"^      -\s*(\S+)\s*$", line)
-        if m and surface and key:
-            out[surface][key].append(m.group(1).lower())
-    return out
+sys.path.insert(0, os.environ["CB_LIB"])
+try:
+    import surfaces as _surfaces
+except Exception:
+    _surfaces = None
+
+_SMAP = _surfaces.load() if _surfaces else {}
 
 
 def surface_of(path):
-    p = path.replace("\\", "/").lower()
-    if not p.startswith("/"):
-        p = "/" + p
-    smap = load_map()
-    for surface, rules in smap.items():
-        for seg in rules["path_contains"]:
-            if seg in p:
-                return surface
-    for surface, rules in smap.items():
-        for ext in rules["extensions"]:
-            if p.endswith(ext):
-                return surface
-    return ""
+    return _surfaces.surface_of(path, _SMAP) if _surfaces else ""
 
 
 if tool == "Bash":
