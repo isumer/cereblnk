@@ -46,6 +46,17 @@ def record(kind, surface):
         pass
 
 
+def record_path(path):
+    """Paths go to their own ledger. exec.log carries surfaces and
+    ReachFloorHook needs files; two readers, two shapes, no field that
+    means different things to each."""
+    try:
+        with (run / "edited-files.log").open("a", encoding="utf-8") as fh:
+            fh.write("%d\t%s\t%s\n" % (int(time.time()), agent, path))
+    except OSError:
+        pass
+
+
 def load_map():
     """Minimal reader for surface-map.yaml. Two nested list keys per
     surface; no dependency on a yaml module, which hooks cannot assume."""
@@ -122,6 +133,7 @@ if not paths:
 
 seen = set()
 for p in paths:
+    record_path(p)
     s = surface_of(p)
     if s and s not in seen:
         seen.add(s)

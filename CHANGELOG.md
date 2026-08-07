@@ -7,6 +7,41 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.2.1] — Code nothing calls is not a finished change
+
+CB-113 made a specialist run what it changed. Running does not catch the
+failure that survives everything else: code that is correct in isolation
+and never wired in. An exported function that is never called throws no
+exception and logs no error — it fails by silence. Review passes, the
+skill floor passes, the surface runs clean, and the specialist reports
+complete.
+
+### Added
+
+- `plugins/cereblnk/scripts/reachability` — reports a symbol declared in
+  a changed file whose identifier appears nowhere in the project outside
+  its own declaration line. Covers TypeScript, JavaScript, Python, Go,
+  Java and Kotlin declarations. Decorated and annotated declarations are
+  exempt: a framework may be the caller. References from any file count,
+  including route tables, configuration and tests — generous on purpose.
+- `hooks/scripts/reach-floor.sh` (SubagentStop) — exits 2 on a report,
+  naming each unreferenced symbol. Nudge-capped and fail-open, in
+  `skill-floor.sh`'s shape.
+- `config/reachability-ignore` — one symbol per line, for a deliberate
+  public surface with no in-repo consumer.
+- `scripts/test-reachability` — 16 checks across the analyser and the
+  hook. Added to the `verify` loop.
+
+### Changed
+
+- `ExecLedgerHook` also records edited paths to `edited-files.log`.
+  Surfaces and paths are separate ledgers with separate readers rather
+  than one file whose fields mean different things to each.
+- `docs/05_EXECUTION_REALITY_MAP.md` gains a reachability floor row (M),
+  stating the recall limit rather than implying coverage: transitive
+  orphans, where dead code references dead code, are not detected.
+- README contents line: 16 hooks, 25 verify suites.
+
 ## [1.2.0] — Something in the run finally executes
 
 Every gate in a run was static. VerifierAgent read code, ChallengerAgent
