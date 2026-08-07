@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""reachability — a symbol this run defined that nothing anywhere calls.
+
+The failure this exists for survives every static gate: code that is
+correct in isolation and never wired in. A client module whose connect
+function is written, exported, and never called passes review, passes
+the skill floor, and reports complete. Running the surface does not
+always catch it either — unwired code fails by silence, not by error.
+
+Precision over recall, deliberately. A symbol is reported only when its
+identifier appears NOWHERE in the project outside its own definition
+line. Anything referenced even once — by a route table, a config file, a
+string, a test — is left alone. That makes a report near-certain and a
+clean result weak evidence, which is the correct trade for a check that
+gets switched off the first time it cries wolf.
+
+Framework-called declarations are exempt: a decorator or annotation on
+or above the declaration means something outside the source may be the
+caller. Covers Spring, NestJS, pytest, and their relatives.
+
+Usage:
+    reachability <project-root> <edited-file> [<edited-file> ...]
+
+Output: one "path:line: symbol" per orphan, on stdout.
+Exit:   0 no orphans (or nothing analysable) · 1 orphans reported
+"""
+import os
+import pathlib
+import re
+import sys
+
+SKIP_DIRS = {".git", "node_modules", "dist", "build", "target", "out",
+             ".venv", "venv", "__pycache__", ".next", ".nuxt", ".gradle",
+             ".idea", ".claude", "vendor", "coverage"}
+TEXT_EXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
+            ".py", ".go", ".java", ".kt", ".rb", ".cs", ".php",
+            ".json", ".yaml", ".yml", ".xml", ".html", ".md", ".toml",
+            ".properties", ".gradle", ".sql", ".env", ".txt", ".cfg", ".ini"}
+MAX_FILE = 512 * 1024
+MAX_FILES = 4000
+
+# (extension set, pattern). Group "name" is the declared identifier.
+PATTERNS = [
+    ({".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"},
+     re.compile(r"^\s*export\s+(?:default\s+)?"
+                r"(?:async\s+)?(?:function|class|const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)")),
+    ({".py"},
+     re.compile(r"^(?:def|class)\s+(?P<name>[A-Za-z][\w]*)")),
+    ({".go"},
+     re.compile(r"^\s*(?:func|type)\s+(?P<name>[A-Z][\w]*)")),
+    ({".java", ".kt"},
+     re.compile(r"^\s*(?:public|internal)\s+(?:final\s+|abstract\s+|open\s+|data\s+)*"
+                r"(?:class|interface|enum|object)\s+(?P<name>[A-Z][\w]*)")),
+]
+
+
+def is_annotated(lines, idx):
+    """A decorator or annotation on or above the declaration means the
+    caller may live outside the source: framework, DI container, test
+    runner. Not our business."""
+    for j in range(max(0, idx - 3), idx + 1):
+        stripped = lines[j].strip()
+        if stripped.startswith("@"):
+            return True
+    return False
+
+
+def declared_symbols(path):
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    ext = path.suffix.lower()
+    pats = [p for exts, p in PATTERNS if ext in exts]
+    if not pats:
+        return []
+    out = []
+    for i, line in enumerate(lines):
+        for p in pats:
+            m = p.match(line)
+            if not m:
+                continue
+            name = m.group("name")
+            if len(name) < 3 or name in ("main", "default", "init", "setup"):
+                continue
+            if is_annotated(lines, i):
+                continue
+            out.append((name, i + 1))
+            break
+    return out
+
+
+def project_files(root):
+    n = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for fn in filenames:
+            p = pathlib.Path(dirpath) / fn
+            if p.suffix.lower() not in TEXT_EXT:
+                continue
+            try:
+                if p.stat().st_size > MAX_FILE:
+                    continue
+            except OSError:
+                continue
+            n += 1
+            if n > MAX_FILES:
+                return
+            yield p
+
+
+def load_ignore(root):
+    f = root / ".claude/cereblnk/config/reachability-ignore"
+    names = set()
+    if f.is_file():
+        try:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    names.add(line)
+        except OSError:
+            pass
+    return names
+
+
+def main(argv):
+    if len(argv) < 3:
+        print(__doc__.strip().splitlines()[-4], file=sys.stderr)
+        return 0
+    root = pathlib.Path(argv[1]).resolve()
+    if not root.is_dir():
+        return 0
+    ignore = load_ignore(root)
+
+    targets = []
+    for a in argv[2:]:
+        p = pathlib.Path(a)
+        if not p.is_absolute():
+            p = root / p
+        try:
+            p = p.resolve()
+        except OSError:
+            continue
+        if p.is_file():
+            targets.append(p)
+    if not targets:
+        return 0
+
+    wanted = {}          # name -> (path, line)
+    for t in targets:
+        for name, line in declared_symbols(t):
+            if name not in ignore:
+                wanted.setdefault(name, (t, line))
+    if not wanted:
+        return 0
+
+    counts = {n: 0 for n in wanted}
+    patterns = {n: re.compile(r"\b%s\b" % re.escape(n)) for n in wanted}
+
+    for f in project_files(root):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for name, rx in patterns.items():
+            if counts[name]:
+                continue
+            defpath, defline = wanted[name]
+            hits = len(rx.findall(text))
+            if not hits:
+                continue
+            if f == defpath:
+                # discount the declaration line itself
+                try:
+                    own = rx.findall(text.splitlines()[defline - 1])
+                except IndexError:
+                    own = []
+                hits -= len(own)
+            if hits > 0:
+                counts[name] = hits
+
+    orphans = sorted((wanted[n][0], wanted[n][1], n)
+                     for n, c in counts.items() if c == 0)
+    for path, line, name in orphans:
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            rel = path
+        print("%s:%d: %s" % (rel, line, name))
+    return 1 if orphans else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
