@@ -7,6 +7,56 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.2.3] — Two legs that each pass and still disagree
+
+The three floors before this one are single-surface questions: did you
+run it, is it reached, does it come up. A migration fails past all of
+them. Each leg is internally correct, each runs clean, and they disagree
+with each other — the client sends on the new channel and never
+subscribes to the one the server publishes. Both specialists report
+complete and the system does not work.
+
+The cause is that the contract existed only as prose spread across two
+sets of specs. Prose cannot be checked against code. A file can.
+
+### Added
+
+- `plugins/cereblnk/scripts/contract-check` — reconciles a contract
+  under `memory/contracts/` against each surface's own files. Both
+  directions: every channel the contract names must appear on the
+  surface, and every path it replaced must be gone. Presence of the new
+  without absence of the old is a half-done migration that reads as
+  finished.
+- `hooks/scripts/contract-floor.sh` (SubagentStop) — exits 2 when a
+  specialist closes a surface that does not match its contract, naming
+  the side and the channel.
+- `plugins/cereblnk/scripts/lib/surfaces.py` — the surface-map reader,
+  now shared. cbmap's reason: a checker that reads the map differently
+  from the recorder will disagree with it eventually, and the
+  disagreement will look like a bug in the project being checked.
+- `scripts/test-contract-check` — 14 checks. Added to the `verify` loop.
+
+### Changed
+
+- `APIDesignAgent` is given the authoring mandate: when an interface
+  spans more than one surface, the contract is written as an artifact
+  rather than as a paragraph inside two sets of specs.
+- `ExecLedgerHook` uses the shared surface reader instead of its own
+  copy of the parser.
+- `docs/05_EXECUTION_REALITY_MAP.md` gains cross-surface contract (M/D)
+  and cross-surface parallelism (M) rows.
+- README contents line: 18 hooks, 27 verify suites.
+
+### Parallelism is preserved deliberately
+
+Each party is judged only on its own files. The UI is asked whether the
+UI carries every channel, never whether the backend is finished, so two
+developers or two agents work at the same time and neither waits for the
+other. This is a closing gate rather than a starting gate for the same
+reason: the failure was never that a leg started early, it was that a
+leg finished unmatched. A row that is genuinely later work is marked
+`deferred` in the contract, with a reason.
+
 ## [1.2.2] — The surfaces come up together
 
 CB-113 made a specialist run its own surface and CB-114 made it wire

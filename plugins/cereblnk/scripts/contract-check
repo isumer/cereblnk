@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""contract-check — does this surface actually speak the contract.
+
+A migration fails in a place no single-surface gate can see. Each leg is
+internally correct, each leg runs clean, and they disagree with each
+other: the client subscribes to a destination the server never
+publishes, or the server moved and the client kept the old call. Both
+specialists report complete and the system does not work.
+
+The fix is not a stricter review. It is a contract that exists as an
+object rather than as prose scattered through two sets of specs, and a
+check that compares each side against it.
+
+Parallelism is preserved deliberately. A surface is judged only on its
+own files: the UI is asked whether the UI carries every channel, not
+whether the backend is finished. Two developers, or two agents, work at
+the same time and neither waits for the other. What neither may do is
+CLOSE while its own side is silent about a channel the contract names.
+
+Contract format, under .claude/cereblnk/memory/contracts/*.md:
+
+    contract: chat-stomp
+    version: 1
+    parties: ui, api
+
+    ## Channels
+    | channel | direction | payload |
+    | --- | --- | --- |
+    | /topic/messages | server->client | MessageDto |
+
+    ## Migration
+    | old | new | status |
+    | --- | --- | --- |
+    | POST /api/messages | /app/send | replaced |
+
+Channels must appear in every listed party's own files. Migration rows
+whose status is not `deferred` must have their old path GONE from every
+party. The two directions are duals: presence of the new and absence of
+the old. Checking only one lets a half-done migration pass.
+
+Usage: contract-check <project-root> [surface ...]
+Exit:  0 clean · 1 findings printed · 3 nothing to check
+"""
+import pathlib
+import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+import surfaces  # noqa: E402
+
+
+def parse_contract(path):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    head = {}
+    for line in text.splitlines():
+        m = re.match(r"^(contract|version|parties):\s*(.+?)\s*$", line)
+        if m:
+            head.setdefault(m.group(1), m.group(2))
+    if not head.get("contract"):
+        return None
+    parties = [p.strip() for p in head.get("parties", "").split(",") if p.strip()]
+
+    def rows(section):
+        out = []
+        m = re.search(r"^##\s+%s\s*$" % section, text, re.M | re.I)
+        if not m:
+            return out
+        for line in text[m.end():].splitlines():
+            if line.startswith("##"):
+                break
+            if not line.strip().startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if not cells or not cells[0]:
+                continue
+            if set(cells[0]) <= set("-: "):
+                continue
+            if cells[0].lower() in ("channel", "old"):
+                continue
+            out.append(cells)
+        return out
+
+    return {
+        "name": head["contract"],
+        "version": head.get("version", "0"),
+        "parties": parties,
+        "channels": [r[0] for r in rows("Channels") if r[0]],
+        "migration": [(r[0], r[1] if len(r) > 1 else "",
+                       (r[2] if len(r) > 2 else "").lower()) for r in rows("Migration")],
+    }
+
+
+def path_token(value):
+    """The searchable part of a migration row's old value. "POST /api/x"
+    is matched on /api/x — the verb is not in the client's source."""
+    toks = re.findall(r"/\S+", value)
+    return max(toks, key=len) if toks else value.strip()
+
+
+def haystack(files):
+    parts = []
+    for f in files:
+        try:
+            parts.append(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(parts)
+
+
+def main(argv):
+    if len(argv) < 2:
+        print("usage: contract-check <project-root> [surface ...]", file=sys.stderr)
+        return 3
+    root = pathlib.Path(argv[1]).resolve()
+    if not root.is_dir():
+        return 3
+    wanted = [s.strip() for s in argv[2:] if s.strip()]
+
+    cdir = root / ".claude/cereblnk/memory/contracts"
+    if not cdir.is_dir():
+        return 3
+    contracts = [c for c in (parse_contract(p) for p in sorted(cdir.glob("*.md"))) if c]
+    if not contracts:
+        return 3
+
+    smap = surfaces.load()
+    if not smap:
+        return 3
+
+    findings = []
+    for c in contracts:
+        parties = [p for p in c["parties"] if not wanted or p in wanted]
+        for party in parties:
+            if party not in smap:
+                continue
+            files = surfaces.files_for(root, party, smap)
+            if not files:
+                findings.append("%s v%s: surface %s has no files yet — nothing carries "
+                                "this contract" % (c["name"], c["version"], party))
+                continue
+            text = haystack(files)
+            for ch in c["channels"]:
+                if ch not in text:
+                    findings.append("%s v%s: %s never mentions channel %s"
+                                    % (c["name"], c["version"], party, ch))
+            for old, new, status in c["migration"]:
+                if status == "deferred":
+                    continue
+                tok = path_token(old)
+                if tok and tok in text:
+                    findings.append("%s v%s: %s still uses %s, which the contract "
+                                    "replaced with %s"
+                                    % (c["name"], c["version"], party, tok, new or "?"))
+
+    for f in findings:
+        print(f)
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
