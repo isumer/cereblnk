@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""test-behavior-check — acceptance run for behavior rulings (CB-117).
+
+The scenario is the one that motivated the task: a module is rewritten
+because its design is wrong, and the run reproduces the old structure
+along with the defects that caused the rewrite. What separates a
+rewrite from a transcription is a ruling per behavior, so the suite
+covers the combinations that let an unruled or dishonestly ruled row
+through, the coexistence with CB-116's channel and migration rows in
+the same file, and the skips.
+
+Usage: scripts/test-behavior-check   Exit: 0 all pass · 1 any failure
+"""
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CHECK = ROOT / "plugins/cereblnk/scripts/behavior-check"
+CONTRACT_CHECK = ROOT / "plugins/cereblnk/scripts/contract-check"
+
+HEAD = "contract: orders-rewrite\nversion: 1\nparties: api\n\n"
+
+CLEAN = HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | An order below the minimum is rejected before payment | intentional | keep | char:OrderMinimumTest |
+| B-2 | Cancelling a shipped order reports success | suspected-bug | fix | char:CancelShippedTest |
+| B-3 | Timestamps are stored in server-local time | incidental | drop | reason:UTC across the new module |
+| B-4 | Bulk export streams in insertion order | intentional | deferred | reason:not in this slice |
+"""
+
+failures = []
+checks = 0
+
+
+def run(base, *args):
+    return subprocess.run([sys.executable, str(CHECK), str(base), *args],
+                          capture_output=True, text=True)
+
+
+def build(base, body):
+    d = base / ".claude/cereblnk/memory/contracts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "orders.md").write_text(body, encoding="utf-8")
+    return base
+
+
+def expect(label, cond, detail=""):
+    global checks
+    checks += 1
+    if not cond:
+        failures.append(f"{label}{(' — ' + detail) if detail else ''}")
+
+
+def case(label, body, code, must_say=None, must_not_say=None):
+    with tempfile.TemporaryDirectory() as td:
+        base = build(pathlib.Path(td), body)
+        r = run(base)
+        expect(label, r.returncode == code,
+               f"exit {r.returncode} != {code}: {r.stdout.strip()[:120]}")
+        if must_say:
+            expect(f"{label} (message)", must_say in r.stdout,
+                   f"missing {must_say!r} in {r.stdout.strip()[:120]}")
+        if must_not_say:
+            expect(f"{label} (quiet)", must_not_say not in r.stdout,
+                   f"unexpected {must_not_say!r}")
+
+
+# --- the ruled contract passes -------------------------------------------
+case("a fully ruled contract is clean", CLEAN, 0)
+
+# --- the failure the task exists to catch --------------------------------
+case("an unruled row is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | An order below the minimum is rejected | intentional |  |  |
+""", 1, must_say="unruled")
+
+case("a defect ruled keep is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | Cancelling a shipped order reports success | suspected-bug | keep | char:CancelTest |
+""", 1, must_say="reclassify")
+
+# --- oracle discipline ----------------------------------------------------
+case("keep without a char oracle is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | An order below the minimum is rejected | intentional | keep | reason:obvious |
+""", 1, must_say="no char: oracle")
+
+case("fix without a char oracle is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | Cancelling a shipped order reports success | suspected-bug | fix |  |
+""", 1, must_say="no char: oracle")
+
+case("drop without a reason is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | Timestamps are server-local | incidental | drop |  |
+""", 1, must_say="no reason:")
+
+case("deferred without a reason is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | Bulk export streams in insertion order | intentional | deferred |  |
+""", 1, must_say="no reason:")
+
+# --- schema integrity -----------------------------------------------------
+case("an unknown class is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | An order below the minimum is rejected | probably-fine | keep | char:T |
+""", 1, must_say="expected one of")
+
+case("a duplicate row id is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 | An order below the minimum is rejected | intentional | keep | char:T1 |
+| B-1 | Refunds reopen the order | intentional | keep | char:T2 |
+""", 1, must_say="duplicate row id")
+
+case("a row with no behavior text is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+| B-1 |  | intentional | keep | char:T |
+""", 1, must_say="no behavior text")
+
+case("an empty Behavior section is a finding",
+     HEAD + """## Behavior
+| id | behavior | class | ruling | oracle |
+| --- | --- | --- | --- | --- |
+""", 1, must_say="nothing to rule")
+
+# --- skips, never green ---------------------------------------------------
+case("a contract with no Behavior section is skipped",
+     HEAD + """## Channels
+| channel | direction | payload |
+| --- | --- | --- |
+| /topic/orders | server->client | OrderDto |
+""", 3)
+
+with tempfile.TemporaryDirectory() as td:
+    r = run(pathlib.Path(td))
+    expect("a project with no contracts directory is skipped", r.returncode == 3,
+           f"exit {r.returncode}")
+
+r = subprocess.run([sys.executable, str(CHECK)], capture_output=True, text=True)
+expect("no argument is a usage skip", r.returncode == 3, f"exit {r.returncode}")
+
+# --- selection by name ----------------------------------------------------
+with tempfile.TemporaryDirectory() as td:
+    base = build(pathlib.Path(td), CLEAN)
+    r = run(base, "some-other-contract")
+    expect("an unmatched contract name is skipped", r.returncode == 3,
+           f"exit {r.returncode}")
+    r = run(base, "orders-rewrite")
+    expect("a matched contract name is checked", r.returncode == 0,
+           f"exit {r.returncode}: {r.stdout.strip()[:120]}")
+
+# --- coexistence with CB-116 ---------------------------------------------
+BOTH = CLEAN + """
+## Channels
+| channel | direction | payload |
+| --- | --- | --- |
+| /api/v2/orders | client->server | OrderCommand |
+
+## Migration
+| old | new | status |
+| --- | --- | --- |
+| POST /api/orders | /api/v2/orders | replaced |
+"""
+
+case("behavior rows coexist with channels and migration", BOTH, 0)
+
+with tempfile.TemporaryDirectory() as td:
+    base = build(pathlib.Path(td), BOTH)
+    r = subprocess.run([sys.executable, str(CONTRACT_CHECK), str(base)],
+                       capture_output=True, text=True)
+    expect("contract-check ignores the Behavior section it does not know",
+           r.returncode in (0, 1, 3) and "B-1" not in r.stdout,
+           f"exit {r.returncode}: {r.stdout.strip()[:160]}")
+
+# --- the Behavior section ends at the next heading ------------------------
+with tempfile.TemporaryDirectory() as td:
+    base = build(pathlib.Path(td), BOTH)
+    r = run(base)
+    expect("migration rows are not read as behavior rows", r.returncode == 0,
+           f"exit {r.returncode}: {r.stdout.strip()[:160]}")
+
+print(f"{checks - len(failures)}/{checks} checks passed")
+for f in failures:
+    print(f"  FAIL  {f}")
+sys.exit(1 if failures else 0)
