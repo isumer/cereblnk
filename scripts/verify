@@ -17,6 +17,7 @@ unsupported paths where the tool has them):
   test-reachability       orphan-symbol analyser + the reach floor (CB-114)
   test-env-lifecycle      environment lifecycle + teardown safety (CB-115)
   test-contract-check     cross-surface contract reconciliation (CB-116)
+  test-behavior-check     behavior rulings in a rewrite contract (CB-117)
   test-hooks              four guards, full path matrix
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
@@ -72,7 +73,7 @@ def main():
                  "test-skill-selection", "test-discovery", "test-select-rules",
                  "test-docindex", "test-exec-floor",
                  "test-reachability", "test-env-lifecycle",
-                 "test-contract-check"):
+                 "test-contract-check", "test-behavior-check"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 
