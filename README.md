@@ -1,14 +1,169 @@
 # Cereblnk
 
-Cereblnk is an adaptive multi-agent engineering platform for Claude Code,
-distributed as a plugin through this marketplace repository.
+Cereblnk is a Claude Code plugin that turns engineering discipline into
+mechanism.
 
-It is not a prompt collection. Cereblnk behaves like an engineering
-organization: a runtime that understands intent, plans work, spawns
-specialized ephemeral agents, collects evidence, verifies results, and
-synthesizes decisions.
+When Claude Code writes code for you, the quality of the result depends
+on whether the model remembered to check its work. Cereblnk removes that
+dependency. It ships specialist agents, the constraints they work under,
+and — the part that matters — hooks that block an agent from finishing
+when it skipped a step. A rule here is not a paragraph asking nicely. It
+is a script with an exit code.
 
 > "Context is expensive. Evidence is valuable. Verification is mandatory."
+
+## The problem it addresses
+
+An agent that edits a file and never runs it produces something that
+looks finished. An agent that declares a function nothing ever calls
+produces something that passes review. An agent that changes one side of
+an API contract and stops produces a migration that reads as complete and
+is not.
+
+None of these are model failures you can prompt away, because in each
+case the output is internally consistent and fluent. They are failures of
+*absence* — something that should have happened did not, and nothing
+noticed. Instructions do not catch absence. Only a check that runs
+independently of the agent's own reasoning does.
+
+That is the whole design. Every discipline in this repository either
+names the script that detects its violation, or is labeled as unenforced.
+
+## What it looks like in use
+
+You describe work in plain language, or name a command directly:
+
+```
+/cb-do add rate limiting to the auth endpoints
+```
+
+What happens next:
+
+```mermaid
+flowchart LR
+    REQ["your request"] --> DISP["cb-dispatch<br/>intent read 3 ways<br/>risk scored"]
+    DISP --> SEL["select-agents<br/>deterministic:<br/>who works, what they load"]
+    SEL --> SPEC["specialists<br/>subagents, isolated context"]
+    SPEC --> LED["ledgers<br/>PostToolUse records<br/>edits · runs · skills"]
+    LED --> FLOOR{"floor hooks<br/>SubagentStop"}
+    FLOOR -- "exit 2 — something is missing" --> SPEC
+    FLOOR -- "clean" --> GATE["gates<br/>verifier · challenger · consistency"]
+    GATE --> SYN["synthesizer<br/>Decision → Evidence →<br/>Reasoning → Risk → Confidence"]
+    SYN --> OUT["you"]
+
+    %% link 5 is the back edge — the whole product is that arrow
+    linkStyle 5 stroke:#c0392b,stroke-width:2.5px
+```
+
+Risk scoring is not cosmetic: auth, money, deletion, migration and
+production config take the deep pass regardless of how small the change
+looks. Agent and skill selection is a deterministic read of policy files,
+not a judgment made in the moment. And no specialist reads the whole
+conversation or the whole repository — each one gets its own context
+window and sees only its own task.
+
+The red arrow is the part you will not find in a prompt library. It runs
+whether or not the model felt like being careful.
+
+## The workflows
+
+Each lane carries one rule it will not bend. `/cb-do` will not edit a
+file in the conversation. `/cb-bug` will not propose a fix before a
+demonstrated root cause, and stops fixing entirely after three failed
+attempts. `/cb-refactor` writes the invariant contract before the first
+edit, and an invariant with no executable check either gets one or the
+scope shrinks to what is checkable.
+
+Memory here is files under `.claude/cereblnk/memory/` — durable plans a
+linter refuses when malformed, contract artifacts a script reconciles,
+and evidence promoted when it outlives its run. No embeddings, no
+similarity search, no cross-session recall.
+
+## How it works
+
+Four layers, each a directory you can read.
+
+**Entry points** (`skills/*/SKILL.md`) — the 16 `/cb-*` commands below.
+They orchestrate; they do not do the work themselves.
+
+**Agents** (`agents/`) — 26 specialists in four groups. `core/` holds the
+reasoning and gate roles: planner, verifier, challenger, consistency,
+synthesizer. `engineering/` holds the domain specialists — backend,
+frontend, database, security, qa, refactoring, performance, infra,
+architect, apidesign, debugger, docs, testengineer. `lifecycle/` covers
+requirements and documentation intake. `context/` covers compression,
+evidence collection and archiving.
+
+**Constraints** (`rules/`) — 176 files, loaded per task by
+`scripts/select-rules` rather than all at once, because context is the
+expensive resource.
+
+**Hooks** (`hooks/`) — 18 scripts across seven Claude Code events:
+`PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`, `SubagentStop`,
+`SessionEnd`, `UserPromptSubmit`. This is the enforcement layer.
+
+Four of them decide whether a specialist is allowed to call itself done:
+
+```mermaid
+flowchart TD
+    S["a specialist tries to finish"] --> Q1{"edited a surface<br/>but never ran it?"}
+    Q1 -- yes --> BACK["exit 2 — stop refused,<br/>back to work<br/><i>nudge-capped, fail-open</i>"]
+    Q1 -- no --> Q2{"declared a symbol<br/>nothing references?"}
+    Q2 -- yes --> BACK
+    Q2 -- no --> Q3{"closed one side of a<br/>cross-surface contract?"}
+    Q3 -- yes --> BACK
+    Q3 -- no --> Q4{"finished without the craft<br/>its task required?"}
+    Q4 -- yes --> BACK
+    Q4 -- no --> OK["stop allowed"]
+    BACK --> S
+
+    linkStyle 1,3,5,7 stroke:#c0392b,stroke-width:2px
+    linkStyle 9 stroke:#c0392b,stroke-width:2.5px
+```
+
+Each question is a hook. In order: `exec-floor`, `reach-floor`,
+`contract-floor`, `skill-floor`.
+
+The full set that blocks rather than observes:
+
+| Hook | Blocks when |
+|---|---|
+| `exec-floor` | A specialist edited a surface and never ran it. Running a program is the one check no static gate performs |
+| `reach-floor` | A symbol was declared whose identifier appears nowhere outside its own declaration line. Unwired code fails by silence, so execution alone does not catch it |
+| `contract-floor` | One side of a cross-surface contract closed unmatched. Both directions are checked — the new path present *and* the replaced path gone |
+| `skill-floor` | A specialist finished without loading the craft its task required |
+| `doc-floor` | An indexed document was read unbounded instead of by citation |
+| `edit-boundary` | Work strayed outside a declared directory |
+| `destructive-command` | An irreversible shell operation ran under `/cb-careful` |
+| `secret-guard` | A credential was about to be written or echoed |
+
+Floor hooks are nudge-capped and fail-open: they return an agent to work
+a bounded number of times, and a hook that cannot run does not freeze the
+session.
+
+### Why context stays small
+
+Context is the expensive resource, so it is not shared — knowledge is.
+The plan lives on disk rather than in the conversation, each specialist
+sees one task, and only digests travel back:
+
+```mermaid
+flowchart TD
+    PLAN["plan.md on disk<br/>tasks · acceptance criteria · status"]
+    PLAN -->|one task| A["backend-agent<br/>own window"]
+    PLAN -->|one task| B["frontend-agent<br/>own window"]
+    PLAN -->|one task| C["security-agent<br/>own window"]
+    A -->|digest| G["gates<br/>read digests and evidence,<br/>never transcripts"]
+    B -->|digest| G
+    C -->|digest| G
+    G --> PLAN
+```
+
+Nothing flows sideways between specialists, and the conductor
+conversation carries plan, digests and verdicts — nothing else. This is
+also what makes the work survive a compaction: any model resumes by
+reading `plan-status`, and any single task can be handed to a fresh
+executor whose entire world is that one task.
 
 ## Installation
 
@@ -24,12 +179,12 @@ To test a local clone before installing from GitHub:
 /plugin install cereblnk@cereblnk-marketplace
 ```
 
-## Enabling it every session
+### Enabling it every session
 
-Installing is not the same as enabling. Once installed, commands,
-agents, and skills load automatically **only while the plugin is
-enabled** in `settings.json` via `enabledPlugins`. Set it once and it
-persists across sessions — no reinstall, no per-session step.
+Installing is not the same as enabling. Once installed, commands, agents,
+and skills load automatically **only while the plugin is enabled** in
+`settings.json` via `enabledPlugins`. Set it once and it persists across
+sessions — no reinstall, no per-session step.
 
 **Personal (all your projects)** — add to `~/.claude/settings.json`:
 
@@ -58,8 +213,8 @@ GitHub source in a shared `.claude/settings.json` does not silently
 install it for teammates — each person is still prompted to trust and
 install the plugin before it runs.
 
-**"Installed but not working"?** Directory/local-marketplace installs
-are a known gotcha: the plugin lands in `installed_plugins.json` but is
+**"Installed but not working"?** Directory/local-marketplace installs are
+a known gotcha: the plugin lands in `installed_plugins.json` but is
 sometimes *not* added to `enabledPlugins`, so commands and hooks stay
 silent. Fix: add the `enabledPlugins` line above by hand, then restart
 the session.
@@ -68,31 +223,7 @@ Enabling loads the skills; it does not guarantee that `cb-dispatch`
 auto-triggers on a given message. For a guaranteed entry point, start
 work with an explicit command such as `/cb-pr-review`.
 
-## Repository Layout
-
-```
-cereblnk/                        # repo root = marketplace
-├── .claude-plugin/marketplace.json
-├── plugins/cereblnk/            # the Cereblnk plugin
-│   ├── .claude-plugin/plugin.json
-│   ├── agents/                  # core / engineering / lifecycle / context
-│   ├── skills/                  # entry points at the top level,
-│   │                            #   domain skills grouped below
-│   ├── rules/                   # constraints — the enforceable form
-│   ├── hooks/                   # hard-enforcement hooks
-│   ├── protocols/               # Agent Communication Protocol (ACP)
-│   ├── policies/                # risk model, budgets, quality gates
-│   └── scripts/                 # budget, stack and selection computation
-├── docs/                        # core documents 00–09
-├── scripts/                     # verify and its suites
-└── tests/                       # scenarios and checker fixtures
-```
-
-`memory/`, `context/`, and `telemetry/` directories are created at runtime
-in the user's project under `.claude/cereblnk/` — never shipped, and
-ignored by git from the moment the directory appears.
-
-## Entry points
+## Commands
 
 Sixteen skills start work. You rarely need to pick one: **cb-dispatch**
 reads a plain-language request, scores risk, and routes automatically,
@@ -144,16 +275,46 @@ long form is what disambiguates if another plugin ships a similar name.
 | `/cb-orchestrate` | You want the routing decision made explicitly and shown — three-level intent read, risk score, fast path or full pipeline |
 | `/cb-dispatch` | Never typed. It is the router that runs when you describe work without naming a command |
 
-Every command takes an argument; run one with no argument and it will
-say what it wants.
+Every command takes an argument; run one with no argument and it will say
+what it wants.
 
-## Skills (93)
+## Repository layout
 
-Sixteen entry points sit at the top level (above). The other 77 are
-domain skills grouped under `plugins/cereblnk/skills/`: `languages/` 19 ·
-`frameworks/` 16 · `data/` 7 · `infrastructure/` 8 · `delivery/` 6 ·
-`practices/` 21. Skills load lazily by description; agents pull their set
-via frontmatter plus the relations closure
+```
+cereblnk/                        # repo root = marketplace
+├── .claude-plugin/marketplace.json
+├── plugins/cereblnk/            # the Cereblnk plugin
+│   ├── .claude-plugin/plugin.json
+│   ├── agents/                  # core / engineering / lifecycle / context
+│   ├── skills/                  # entry points at the top level,
+│   │                            #   domain skills grouped below
+│   ├── rules/                   # constraints — the enforceable form
+│   ├── hooks/                   # hard-enforcement hooks
+│   ├── protocols/               # Agent Communication Protocol (ACP)
+│   ├── policies/                # risk model, budgets, quality gates
+│   └── scripts/                 # budget, stack and selection computation
+├── docs/                        # core documents 00–09
+├── scripts/                     # verify and its suites
+└── tests/                       # scenarios and checker fixtures
+```
+
+`memory/`, `context/`, and `telemetry/` directories are created at runtime
+in the user's project under `.claude/cereblnk/` — never shipped, and
+ignored by git from the moment the directory appears.
+
+Where to read next: `docs/05_EXECUTION_REALITY_MAP.md` maps every concept
+to the mechanism that implements it, and is the fastest way to separate
+what is real here from what is aspiration. `docs/00_MANIFESTO.md` is the
+contract every agent works under. `docs/TOPOLOGY.md` shows how work
+reaches agents.
+
+## Skills
+
+Sixteen entry points sit at the top level (above). The other 77 of the 93
+skills are domain skills grouped under `plugins/cereblnk/skills/`:
+`languages/` 19 · `frameworks/` 16 · `data/` 7 · `infrastructure/` 8 ·
+`delivery/` 6 · `practices/` 21. Skills load lazily by description;
+agents pull their set via frontmatter plus the relations closure
 (`policies/skill-relations-policy.md`, checked by
 `scripts/check-skill-relations`).
 
@@ -180,27 +341,26 @@ something easy to miss: a weaker model does not only build worse, it
 Task Block or drop a digest. So the topology adapts: fewer and larger
 slices, parallel specialists capped at what the risk actually requires.
 
-**The plan lives on disk, not in the conversation.** Tasks are checkboxes
-in `plan.md` with their acceptance criteria written down. Any model
-resumes after a compaction by reading `plan-status`, and each task can
-go to a fresh executor whose entire world is that one task — minimal
-context, maximal structure.
+**The plan lives on disk, not in the conversation** — see the diagram
+above. Minimal context, maximal structure, and no dependence on what the
+model still remembers.
 
 **The checks are mechanical.** A gate compares fact IDs and epistemic
 labels; hooks block on exit codes. Neither is impressed by fluent
 writing, which is exactly the failure a smaller model is most likely to
 produce.
 
-Note what this is not: the plugin does not connect Claude Code to a
-model of your choosing — that is a platform and configuration matter,
-outside what ships here. And the effect is unmeasured. The mechanisms
-are inspectable; how much they close the gap on any particular model is
-not something this repository has established.
+Note what this is not: the plugin does not connect Claude Code to a model
+of your choosing — that is a platform and configuration matter, outside
+what ships here. And the effect is unmeasured. The mechanisms are
+inspectable; how much they close the gap on any particular model is not
+something this repository has established.
 
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 18 hooks · 27 verify suites** (count them: `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
+176 constraint files · 18 hooks · 28 verify suites** (count them:
+`find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
 fails the build when these drift. Versioning follows CHANGELOG.md semver;
@@ -214,8 +374,14 @@ Claims are labeled the way this platform labels facts:
 | Workflows, agents, dispatch routing (prompt-driven behavior) | **Implemented, manually validated** | `tests/*.md` scenarios executed by hand |
 
 Honest boundary: `scripts/verify` green does NOT verify workflow
-behavior — treating it as if it did is exactly the "all tests pass"
-trap the manual warns about (09 Part II #8).
+behavior — treating it as if it did is exactly the "all tests pass" trap
+the manual warns about (09 Part II #8).
+
+What this repository does **not** contain: a retrieval index, an
+embedding or vector store, a standalone command-line binary, or a
+persistent cross-session memory layer. Those are tracked as F-class in
+`docs/05_EXECUTION_REALITY_MAP.md`, which means they do not exist and
+must not be designed against.
 
 ## License
 
