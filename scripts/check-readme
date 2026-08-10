@@ -16,6 +16,9 @@ Asserts:
        point skill that exists
   M-2  every entry point that exists is documented — a shipped command
        nobody can find is the same defect from the other side
+  M-4  every image the README references resolves to a file — a broken
+       asset link renders as a silent gap, and the reader cannot tell
+       whether the picture is missing or was never there
   M-3  the agent, skill and hook counts printed in README match the
        tree, whatever the prose around them says
 
@@ -67,6 +70,13 @@ def main():
             bad += 1
         elif count not in found:
             print(f"M-3 README says {found} {label}, tree has {count}")
+            bad += 1
+
+    for ref in sorted(set(re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text))):
+        if ref.startswith(("http://", "https://")):
+            continue
+        if not (ROOT / ref).is_file():
+            print(f"M-4 README references {ref}, which is not a file")
             bad += 1
 
     if bad:
