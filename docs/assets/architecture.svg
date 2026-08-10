@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1902" height="2040" viewBox="0 0 1902 2040" role="img" aria-label="Cereblnk architecture: entry points, routing, agents, verification gates, and the enforcement hooks that refuse an unfinished stop">
+<title>Cereblnk architecture: entry points, routing, agents, verification gates, and the enforcement hooks that refuse an unfinished stop</title>
+<rect width="1902" height="2040" fill="#15181B"/>
+<text x="20" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="28" fill="#E6EBEF" font-weight="700" letter-spacing="6" text-anchor="start">CEREBLNK</text>
+<text x="300" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">engineering discipline as mechanism</text>
+<text x="1882" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="end">26 agents · 93 skills · 176 rules · 18 hooks</text>
+<text x="1882" y="50" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="end">generated from the tree by scripts/build-diagrams</text>
+<line x1="20" y1="60" x2="1882" y2="60" stroke="#2F373E" stroke-width="1"/>
+<text x="20" y="2026" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">github.com/isumer/cereblnk · MIT · hook names and their events are asserted by scripts/check-diagram</text>
+<g id="panel-enforcement" transform="translate(18,78)">
+  <rect x="0" y="0" width="1866" height="424" rx="3" fill="#1D2226" stroke="#D8412F" stroke-width="1.5"/>
+  <text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">ENFORCEMENT</text>
+  <text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">18 hooks across 7 events · 12 refuse, 6 record</text>
+  <text x="16" y="410" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">■ refuses · □ records — a refused stop returns the specialist to work, exit code 2.</text>
+  <g id="event-UserPromptSubmit" transform="translate(16,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">UserPromptSubmit</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">as your turn arrives</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ context-monitor</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Tracks window occupancy each turn</text>
+</g>
+  <g id="event-PreToolUse" transform="translate(280,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">PreToolUse</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before a tool runs</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ delegation-guard</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">File edits in the conducting</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">conversation while a run is active</text>
+  <text x="0" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ destructive-command</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Irreversible shell operations,</text>
+  <text x="13" y="106" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">once /cb-careful is on</text>
+  <text x="0" y="122" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ doc-floor</text>
+  <text x="13" y="134" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Unbounded reads of an indexed</text>
+  <text x="13" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">document</text>
+  <text x="0" y="162" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ edit-boundary</text>
+  <text x="13" y="174" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Writes outside the declared</text>
+  <text x="13" y="186" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">directory</text>
+  <text x="0" y="202" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ scratch-guard</text>
+  <text x="13" y="214" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Working notes written to the</text>
+  <text x="13" y="226" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">repository root</text>
+  <text x="0" y="242" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ secret-guard</text>
+  <text x="13" y="254" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Writes whose content looks like a</text>
+  <text x="13" y="266" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">credential</text>
+  <text x="0" y="282" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ skill-ledger</text>
+  <text x="13" y="294" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Records which skills a run loaded</text>
+</g>
+  <g id="event-PostToolUse" transform="translate(544,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">PostToolUse</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">after a tool runs</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ exec-ledger</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Records surface edits and</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">executions</text>
+  <text x="0" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ post-edit-test</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">A failing test after an edit at</text>
+  <text x="13" y="106" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">gate level 3</text>
+</g>
+  <g id="event-PreCompact" transform="translate(808,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">PreCompact</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before context is compacted</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ history-archive</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Archives detail before a</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">compaction discards it</text>
+</g>
+  <g id="event-Stop" transform="translate(1072,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">Stop</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before the turn ends</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ run-guard</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Prevents concurrent runs</text>
+</g>
+  <g id="event-SubagentStop" transform="translate(1336,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">SubagentStop</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before a specialist finishes</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ contract-floor</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Closed one side of a cross-surface</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">contract</text>
+  <text x="0" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ digest-cap</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Returned more than ten lines of</text>
+  <text x="13" y="106" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">digest</text>
+  <text x="0" y="122" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ exec-floor</text>
+  <text x="13" y="134" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Edited a surface and never ran it</text>
+  <text x="0" y="150" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ reach-floor</text>
+  <text x="13" y="162" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Declared a symbol nothing</text>
+  <text x="13" y="174" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">references</text>
+  <text x="0" y="190" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ skill-floor</text>
+  <text x="13" y="202" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Finished without the craft the</text>
+  <text x="13" y="214" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">task required</text>
+</g>
+  <g id="event-SessionEnd" transform="translate(1600,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">SessionEnd</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">when the session ends</text>
+  <line x1="0" y1="24" x2="232" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ env-teardown</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Reclaims an environment a run left</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">up</text>
+</g>
+</g>
+<g id="panel-commands" transform="translate(18,520)">
+  <rect x="0" y="0" width="1866" height="432" rx="3" fill="#1D2226" stroke="#6B93B5" stroke-width="1.5"/>
+  <text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">ENTRY POINTS</text>
+  <text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">16 commands · type one when it matters</text>
+  <g id="command-column-0" transform="translate(16,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B93B5" font-weight="700" letter-spacing="2" text-anchor="start">ROUTING</text>
+  <line x1="0" y1="7" x2="891" y2="7" stroke="#2F373E" stroke-width="1"/>
+  <text x="0" y="24" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-dispatch</text>
+  <text x="10" y="36" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Routes plain language. Fires on description match —</text>
+  <text x="10" y="48" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">a convenience, not a contract</text>
+  <text x="0" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-orchestrate</text>
+  <text x="10" y="78" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">The routing decision, made explicitly and shown</text>
+  <text x="0" y="106" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B93B5" font-weight="700" letter-spacing="2" text-anchor="start">BUILDING</text>
+  <line x1="0" y1="113" x2="891" y2="113" stroke="#2F373E" stroke-width="1"/>
+  <text x="0" y="130" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-do</text>
+  <text x="10" y="142" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Build a stated, bounded change. No spec, no plan to</text>
+  <text x="10" y="154" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">approve</text>
+  <text x="0" y="172" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-implement</text>
+  <text x="10" y="184" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Build from an approved spec, slice by verified slice</text>
+  <text x="0" y="202" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-refactor</text>
+  <text x="10" y="214" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Structure changes, behaviour does not</text>
+  <text x="0" y="242" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B93B5" font-weight="700" letter-spacing="2" text-anchor="start">SESSION GUARDS</text>
+  <line x1="0" y1="249" x2="891" y2="249" stroke="#2F373E" stroke-width="1"/>
+  <text x="0" y="266" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-careful</text>
+  <text x="10" y="278" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Block irreversible shell operations until turned off</text>
+  <text x="0" y="296" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-boundary</text>
+  <text x="10" y="308" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Confine writes to one directory</text>
+</g>
+  <g id="command-column-1" transform="translate(941,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B93B5" font-weight="700" letter-spacing="2" text-anchor="start">DECIDING</text>
+  <line x1="0" y1="7" x2="891" y2="7" stroke="#2F373E" stroke-width="1"/>
+  <text x="0" y="24" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-think</text>
+  <text x="10" y="36" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Reason a problem through. No code comes out</text>
+  <text x="0" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-frame</text>
+  <text x="10" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Challenge the literal ask; produce a design brief</text>
+  <text x="0" y="84" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-requirements</text>
+  <text x="10" y="96" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Numbered, testable requirements with acceptance</text>
+  <text x="10" y="108" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">criteria</text>
+  <text x="0" y="126" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-design</text>
+  <text x="10" y="138" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">A brief becomes an executable spec</text>
+  <text x="0" y="166" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B93B5" font-weight="700" letter-spacing="2" text-anchor="start">CHECKING</text>
+  <line x1="0" y1="173" x2="891" y2="173" stroke="#2F373E" stroke-width="1"/>
+  <text x="0" y="190" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-pr-review</text>
+  <text x="10" y="202" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Hunt production incidents across a diff</text>
+  <text x="0" y="220" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-bug</text>
+  <text x="10" y="232" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">No fix without a demonstrated root cause</text>
+  <text x="0" y="250" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-qa</text>
+  <text x="10" y="262" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Test the surfaces the branch actually touched</text>
+  <text x="0" y="280" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-security-audit</text>
+  <text x="10" y="292" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Trust boundaries and secrets, always at gate level 3</text>
+  <text x="0" y="310" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">/cb-docs</text>
+  <text x="10" y="322" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Find every statement the diff made stale</text>
+</g>
+</g>
+<g id="panel-routing" transform="translate(18,970)">
+  <rect x="0" y="0" width="1866" height="470" rx="3" fill="#1D2226" stroke="#E0A32E" stroke-width="1.5"/>
+  <text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">ROUTING</text>
+  <text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">11 routes · read from the dispatch skill</text>
+  <g id="route-0" transform="translate(16,66)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">judge a PR / diff / branch</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-pr-review</text>
+</g>
+  <line x1="16" y1="92" x2="1850" y2="92" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-1" transform="translate(16,102)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">explain or fix a bug, failing test</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-bug</text>
+</g>
+  <line x1="16" y1="128" x2="1850" y2="128" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-2" transform="translate(16,138)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build a stated, bounded change</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-do</text>
+</g>
+  <line x1="16" y1="164" x2="1850" y2="164" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-3" transform="translate(16,174)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build something new or vague</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-frame → /cb-design → /cb-implement</text>
+</g>
+  <line x1="16" y1="200" x2="1850" y2="200" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-4" transform="translate(16,210)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build from an existing brief in memory/</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-design or /cb-implement</text>
+</g>
+  <line x1="16" y1="236" x2="1850" y2="236" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-5" transform="translate(16,246)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">test what changed</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-qa</text>
+</g>
+  <line x1="16" y1="272" x2="1850" y2="272" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-6" transform="translate(16,282)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">restructure without behavior change</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-refactor</text>
+</g>
+  <line x1="16" y1="308" x2="1850" y2="308" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-7" transform="translate(16,318)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">check security, auth, secrets</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-security-audit</text>
+</g>
+  <line x1="16" y1="344" x2="1850" y2="344" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-8" transform="translate(16,354)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">fix docs drift</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-docs</text>
+</g>
+  <line x1="16" y1="380" x2="1850" y2="380" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-9" transform="translate(16,390)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">think a problem through, not build it</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-think</text>
+</g>
+  <line x1="16" y1="416" x2="1850" y2="416" stroke="#2F373E" stroke-width="1"/>
+  <g id="route-10" transform="translate(16,426)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">mixed or unclear</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-orchestrate</text>
+</g>
+</g>
+<g id="panel-gates" transform="translate(18,1458)">
+  <rect x="0" y="0" width="1866" height="232" rx="3" fill="#1D2226" stroke="#4E9E6A" stroke-width="1.5"/>
+  <text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">VERIFICATION GATES</text>
+  <text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">depth is dynamic — set by risk, raisable by any agent</text>
+  <g id="gate-level-1" transform="translate(16,66)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L1</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">Low</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Self-verification by the executing agent only</text>
+</g>
+  <g id="gate-level-2" transform="translate(16,104)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L2</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">Medium</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Verifier + Consistency</text>
+</g>
+  <g id="gate-level-3" transform="translate(16,142)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L3</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">High</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Verifier + Challenger + Consistency (all mandatory)</text>
+</g>
+  <text x="16" y="184" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Security-surface, auth, data-deletion, migration, money and</text>
+  <text x="16" y="196" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">production-config work is always level 3, regardless of apparent</text>
+  <text x="16" y="208" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">simplicity. Risk is never silently downgraded.</text>
+</g>
+<g id="panel-agents" transform="translate(18,1708)">
+  <rect x="0" y="0" width="1866" height="284" rx="3" fill="#1D2226" stroke="#6B93B5" stroke-width="1.5"/>
+  <text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">AGENTS</text>
+  <text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">26 specialists · each in its own context window</text>
+  <g id="agent-group-context" transform="translate(16,66)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">context/</text>
+  <text x="0" y="13" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">compression, evidence, archiving</text>
+  <text x="0" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">compression · contextarchivist · evidencecollector · memorybuilder · merge</text>
+</g>
+  <g id="agent-group-core" transform="translate(16,116)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">core/</text>
+  <text x="0" y="13" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">reasoning and gate roles</text>
+  <text x="0" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">challenger · consistency · planner · synthesizer · verifier</text>
+</g>
+  <g id="agent-group-engineering" transform="translate(16,166)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">engineering/</text>
+  <text x="0" y="13" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">domain specialists</text>
+  <text x="0" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">apidesign · architect · backend · database · debugger · docs · frontend ·</text>
+  <text x="0" y="40" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">infra · performance · qa · refactoring · security · testengineer</text>
+</g>
+  <g id="agent-group-lifecycle" transform="translate(16,228)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">lifecycle/</text>
+  <text x="0" y="13" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">requirements and documentation intake</text>
+  <text x="0" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">docintake · requirements · technicalwriter</text>
+</g>
+</g>
+</svg>

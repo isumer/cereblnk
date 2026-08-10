@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="268" viewBox="0 0 420 268" role="img" aria-label="Cereblnk verification gates: who reviews at each risk level">
+<title>Cereblnk verification gates: who reviews at each risk level</title>
+<rect width="420" height="268" fill="#15181B"/>
+<rect x="0" y="0" width="420" height="268" rx="3" fill="#1D2226" stroke="#4E9E6A" stroke-width="1.5"/>
+<text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">VERIFICATION GATES</text>
+<text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">depth is dynamic — set by risk, raisable by any agent</text>
+<g id="gate-level-1" transform="translate(16,66)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L1</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">Low</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Self-verification by the executing agent</text>
+  <text x="28" y="26" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">only</text>
+</g>
+<g id="gate-level-2" transform="translate(16,116)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L2</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">Medium</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Verifier + Consistency</text>
+</g>
+<g id="gate-level-3" transform="translate(16,154)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#4E9E6A" font-weight="700" letter-spacing="0" text-anchor="start">L3</text>
+  <text x="28" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="11" fill="#E6EBEF" font-weight="700" letter-spacing="0" text-anchor="start">High</text>
+  <text x="28" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">Verifier + Challenger + Consistency (all</text>
+  <text x="28" y="26" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">mandatory)</text>
+</g>
+<text x="16" y="208" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Security-surface, auth, data-deletion,</text>
+<text x="16" y="220" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">migration, money and production-config work is</text>
+<text x="16" y="232" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">always level 3, regardless of apparent</text>
+<text x="16" y="244" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">simplicity. Risk is never silently downgraded.</text>
+</svg>
