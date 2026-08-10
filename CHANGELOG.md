@@ -7,6 +7,74 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.0] — A rewrite that transcribes is not a rewrite
+
+The four floors before this one ask whether a change works. This one
+asks whether it was the change that was called for.
+
+A rewrite is requested because the current design is wrong. It fails by
+reproducing that design, and the defects that motivated it come along,
+because nothing in the run ever separated the requirements from the
+accidents. The old structure is the most concrete thing in the room and
+every later stage anchors to it. Fidelity to legacy code is the failure
+mode, not the goal.
+
+The word does the damage first. "Refactor" is what users say for both
+jobs, and the plugin only had the behaviour-preserving one, whose whole
+mandate is to leave the structure standing. The request routed to a
+workflow specified to do the opposite of what was wanted.
+
+### Added
+
+- **`/cb-rewrite`, and the ruling that separates it from a
+  transcription.** The old code enters as behaviour, never as
+  structure. LegacyAnalystAgent extracts one row per behaviour in the
+  domain's language, classified `intentional`, `incidental` or
+  `suspected-bug`. RequirementsAgent rules each row with the user:
+  `keep`, `fix`, `drop` or `deferred`. Classification is a reading and
+  ruling is a decision, and Law 1 keeps them in different hands.
+- **`behavior-check`** — the checker for the rulings, over the
+  `## Behavior` section of a contract. It refuses an unruled row, a
+  defect ruled `keep`, a `keep` or `fix` with no `char:` oracle, and a
+  `drop` or `deferred` with no reason. `contract-check` ignores
+  sections it does not know, so behaviour rows share the file with the
+  channels and migration rows they will produce.
+- **The firewall, expressed as an absent agent.** LegacyAnalystAgent
+  hands over the contract and does not return; RefactoringAgent is not
+  spawned at all. Both exclusions are rules in
+  `agent-selection-policy` §3b with VerifierAgent as checker. An agent
+  that is not in the room cannot anchor the design, which is sturdier
+  than a rule the architect has to remember.
+- **The oracle discipline that makes validation differential.**
+  `keep` and `fix` both require a characterization test pinned against
+  the old system. `scripts/env preflight` (CB-115) decides whether that
+  is possible at all; when the old system will not run, every row stays
+  `derived`, the contract says so in its first line, and the run's
+  confidence drops rather than the claim being quietly softened.
+
+### Changed
+
+- **Dispatch asks once, on a closed list.** A structural verb over
+  existing code with no complaint naming form or responsibility is the
+  ambiguous case, and only that case. A complaint about form routes to
+  `/cb-refactor`, one about responsibility to `/cb-rewrite`, a named
+  target structure to `/cb-do`. An open trigger would have turned every
+  restructure request into a question and spent the one-question budget
+  on requests that already answered themselves.
+- **`/cb-refactor` states its mandate before the checklist**, and can
+  hand over mid-run. Three closed triggers, all checkable once the
+  target structure exists and before the first edit: a contract must
+  change, a suspect behaviour is load-bearing, or the path will not cut
+  into invariant-holding steps. The statement is not a question —
+  rule 4 still gives the explicit command right of way.
+
+### Notes
+
+The contract gate is class D: `behavior-check` is the named checker and
+`/cb-rewrite` runs it, but no hook blocks a design stage that skips it.
+Promoting it to M is a separate task, and the honest label ships in the
+meantime.
+
 ## [1.2.3] — Two legs that each pass and still disagree
 
 The three floors before this one are single-surface questions: did you
