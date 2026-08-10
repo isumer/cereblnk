@@ -429,13 +429,10 @@ the manual warns about (09 Part II #8). One of the 28 suites, the
 reference-string leakage scan, skips unless a wordlist is configured; a
 skip is printed and never counted as a pass.
 
-Two things in particular are unenforced, and worth knowing before you
-rely on them. Automatic routing through `cb-dispatch` depends on the
-session model matching a skill description, and nothing checks a request
-that should have routed and did not. And the systems note above is a
-raster image: every command, hook name, path and count on it was checked
-against the tree by hand, once, and no script can check it again. When
-this repository changes, that picture will not, and nothing will say so.
+One thing in particular is unenforced, and worth knowing before you rely
+on it. Automatic routing through `cb-dispatch` depends on the session
+model matching a skill description, and nothing checks a request that
+should have routed and did not.
 
 What this repository does **not** contain: a retrieval index, an
 embedding or vector store, a standalone command-line binary, or a
