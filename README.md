@@ -31,39 +31,29 @@ names the script that detects its violation, or is labeled as unenforced.
 
 ## What it looks like in use
 
-There are two ways in, and only one of them is guaranteed:
+The whole system on one sheet — how a request becomes work, who does
+it, and what refuses to let it finish:
 
-```mermaid
-flowchart LR
-    REQ["your request"] --> FORK{"did you name<br/>a command?"}
-    FORK -- "yes: /cb-do ..." --> ENTRY["entry point runs"]
-    FORK -- "no" --> DISP["cb-dispatch may route it"]
-    DISP -- "the session invokes it" --> ENTRY
-    DISP -. "it does not fire" .-> PLAIN["an ordinary Claude Code turn:<br/>no specialists, no floors, no gates"]
-    ENTRY --> SEL["select-agents · select-rules<br/>deterministic, from policy files"]
-    SEL --> SPEC["specialists as subagents<br/>own context, one task each"]
-    SPEC --> LED["ledgers record<br/>edits · runs · skills loaded"]
-    LED --> FLOOR{"floor hooks<br/>SubagentStop"}
-    FLOOR -- "exit 2 — something is missing" --> SPEC
-    FLOOR -- "clean" --> GATE["gates: verifier · challenger · consistency"]
-    GATE --> SYN["synthesizer<br/>Decision → Evidence →<br/>Reasoning → Risk → Confidence"]
+![Cereblnk systems note: the request routing loop, the agent pipeline, the eighteen enforcement hooks across seven events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
 
-    linkStyle 4 stroke:#8C99A2,stroke-dasharray:4 3
-    linkStyle 9 stroke:#c0392b,stroke-width:2.5px
-```
+There are two ways in, and only one of them is guaranteed.
 
-Read the dashed branch carefully, because it is the honest one.
-`cb-dispatch` is a skill, and a skill fires when the session model
-decides its description matches your message. Nothing in the plugin
-forces that decision, and nothing detects a message that should have
-routed and did not. **Type a command when it matters.**
+Panel 8 is the honest one. `cb-dispatch` is a skill, and a skill fires
+when the session model decides its description matches your message.
+Nothing in the plugin forces that decision, and nothing detects a
+message that should have routed and did not — so if it does not fire you
+get an ordinary session turn, with no specialists, no floors and no
+gates. **Type a command when it matters.**
 
-Everything after the fork is where the design earns its keep. Selection
+Everything after that fork is where the design earns its keep. Selection
 is a deterministic read of policy files rather than a judgment made in
 the moment. No specialist reads the whole conversation or the whole
 repository — each gets its own context window and sees only its own task.
-And the red arrow, the refused stop, runs whether or not the model felt
-like being careful.
+And the red return arrow in panel 4, the refused stop, runs whether or
+not the model felt like being careful.
+
+The sheet is dense by design and reads best on a wide screen; open the
+image on its own for a full-size view.
 
 ## How it works
 
@@ -161,25 +151,6 @@ also what makes work survive a compaction: `plan-lint` refuses a
 malformed plan, `plan-status` recovers state after a session dies, and
 any single task can go to a fresh executor whose entire world is that one
 task.
-
-## The picture
-
-![Cereblnk enforcement: eighteen hooks grouped by the event that fires them, twelve of which refuse a specialist's stop](docs/assets/enforcement.svg)
-
-The panels are generated from the tree by `scripts/build-diagrams`, not
-drawn against it. Which hooks exist, which event fires each one, whether
-it refuses or records, which commands ship and how a request routes are
-read from the files that define them, so none of that can drift. The
-sentences describing them are authored, and a hook or command added
-without a description fails the build rather than shipping a blank row.
-
-Individual panels: [entry points](docs/assets/commands.svg) ·
-[routing](docs/assets/routing.svg) ·
-[verification gates](docs/assets/gates.svg) ·
-[agents](docs/assets/agents.svg). They are laid out narrow so a phone
-renders them near actual size rather than scaling the type away. The
-[full composite](docs/assets/architecture.svg) puts every panel on one
-sheet for a wider screen.
 
 ## Installation
 
@@ -459,7 +430,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 18 hooks · 30 verify suites** (count them:
+176 constraint files · 18 hooks · 28 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
@@ -481,10 +452,10 @@ skip is printed and never counted as a pass.
 Two things in particular are unenforced, and worth knowing before you
 rely on them. Automatic routing through `cb-dispatch` depends on the
 session model matching a skill description, and nothing checks a request
-that should have routed and did not. And while the diagrams' hook names,
-their events and the command list are asserted by
-`scripts/check-diagram`, the sentences describing them are not — those
-were verified by hand once and nothing will notice when they drift.
+that should have routed and did not. And the systems note above is a
+raster image: every command, hook name, path and count on it was checked
+against the tree by hand, once, and no script can check it again. When
+this repository changes, that picture will not, and nothing will say so.
 
 What this repository does **not** contain: a retrieval index, an
 embedding or vector store, a standalone command-line binary, or a
