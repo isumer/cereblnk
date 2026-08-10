@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test-behavior-check — acceptance run for behavior rulings (CB-117).
+"""test-behavior-check — acceptance run for behavior rulings (CB-121).
 
 The scenario is the one that motivated the task: a module is rewritten
 because its design is wrong, and the run reproduces the old structure
