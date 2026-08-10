@@ -93,29 +93,18 @@ observe.
 
 ### What blocks a finish
 
-Five hooks decide whether a specialist may call itself done:
+Five hooks decide whether a specialist may call itself done,
+checked in this order:
 
-```mermaid
-flowchart TD
-    S["a specialist tries to finish"] --> Q1{"edited a surface<br/>but never ran it?"}
-    Q1 -- yes --> BACK["exit 2 — stop refused,<br/>back to work"]
-    Q1 -- no --> Q2{"declared a symbol<br/>nothing references?"}
-    Q2 -- yes --> BACK
-    Q2 -- no --> Q3{"closed one side of a<br/>cross-surface contract?"}
-    Q3 -- yes --> BACK
-    Q3 -- no --> Q4{"finished without the craft<br/>its task required?"}
-    Q4 -- yes --> BACK
-    Q4 -- no --> Q5{"returned more than<br/>ten lines of digest?"}
-    Q5 -- yes --> BACK
-    Q5 -- no --> OK["stop allowed"]
-    BACK --> S
+| Hook | Refuses the stop when |
+|---|---|
+| `exec-floor` | The specialist edited a surface and never ran it |
+| `reach-floor` | It declared a symbol nothing references |
+| `contract-floor` | It closed one side of a cross-surface contract |
+| `skill-floor` | It finished without the craft its task required |
+| `digest-cap` | It returned more than ten lines of digest |
 
-    linkStyle 1,3,5,7,9 stroke:#c0392b,stroke-width:2px
-    linkStyle 11 stroke:#c0392b,stroke-width:2.5px
-```
-
-In order: `exec-floor`, `reach-floor`, `contract-floor`, `skill-floor`,
-`digest-cap`. The first four each catch a failure the others cannot —
+The first four each catch a failure the others cannot —
 running a program is the one check no static gate performs; unwired code
 fails by silence, so execution alone misses it; a contract needs both
 directions checked, the new path present *and* the replaced path gone.
@@ -130,20 +119,10 @@ nudge-capped, returning an agent to work a bounded number of times.
 ### Why context stays small
 
 Context is the expensive resource, so it is not shared — knowledge is.
-The plan lives on disk rather than in the conversation, each specialist
-sees one task, and only digests travel back:
-
-```mermaid
-flowchart TD
-    PLAN["plan.md on disk<br/>tasks · acceptance criteria · status"]
-    PLAN -->|one task| A["backend-agent<br/>own window"]
-    PLAN -->|one task| B["frontend-agent<br/>own window"]
-    PLAN -->|one task| C["security-agent<br/>own window"]
-    A -->|digest, ten lines| G["gates<br/>read digests and evidence,<br/>never transcripts"]
-    B -->|digest, ten lines| G
-    C -->|digest, ten lines| G
-    G --> PLAN
-```
+The plan lives on disk rather than in the conversation. Each specialist
+receives one task and works in its own window; what comes back is a
+digest capped at ten lines, and the gates read those digests and the
+evidence behind them rather than any transcript.
 
 Nothing flows sideways between specialists, and the conducting
 conversation carries plan, digests and verdicts — nothing else. This is
@@ -395,9 +374,10 @@ something easy to miss: a weaker model does not only build worse, it
 Task Block or drop a digest. So the topology adapts: fewer and larger
 slices, parallel specialists capped at what the risk actually requires.
 
-**The plan lives on disk, not in the conversation** — see the diagram
-above. Minimal context, maximal structure, and no dependence on what the
-model still remembers.
+**The plan lives on disk, not in the conversation.** Tasks are
+checkboxes with acceptance criteria written beside them, so a fresh
+executor can pick one up knowing nothing else. Minimal context, maximal
+structure, and no dependence on what the model still remembers.
 
 **The checks are mechanical.** Gates compare fact IDs and epistemic
 labels; hooks block on exit codes. Neither is impressed by fluent
