@@ -406,8 +406,8 @@ rules:
     topics: [coding standard, style guide, convention]
 
   - skill: legacy-modernization
-    roles: [refactoring-agent, architect-agent]
-    topics: [legacy, modernization, strangler]
+    roles: [legacy-analyst-agent, refactoring-agent, architect-agent]
+    topics: [legacy, modernization, strangler, rewrite, characterization]
 
   - skill: performance-engineering
     roles: [performance-agent]
