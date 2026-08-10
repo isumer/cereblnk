@@ -136,3 +136,4 @@ read.
 - [x] **CB-114** — Reachability: new code that nothing calls is not done
 - [x] **CB-115** — Runtime stage: environment lifecycle and health-gated attribution
 - [x] **CB-116** — Cross-surface contract as a referenceable artifact
+- [x] **CB-117** — Rewrite: the old behaviour is ruled, not transcribed

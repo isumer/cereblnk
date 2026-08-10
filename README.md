@@ -264,6 +264,17 @@ checkable. Afterwards every item is re-verified, and any invariant that
 cannot be re-verified downgrades the whole verdict. It engages the edit
 boundary on the declared directory by itself.
 
+**`/cb-rewrite`** — redesign, for when the structure itself is what is
+wrong. The old code enters as behaviour and never as structure: an
+analyst extracts one row per behaviour in the domain's language,
+classified as a requirement, an accident or a suspected defect, and each
+row is then ruled with you — kept, fixed, dropped or deferred. Kept and
+fixed rows need a characterization test pinned against the old system,
+so the new one is compared rather than assumed. Past the ruling stage
+the replaced structure is gone from the run, which is what stops a
+rewrite from quietly becoming a transcription of the design it was
+called to replace.
+
 ### Checking
 
 **`/cb-pr-review`** — production-incident hunting across a diff with
@@ -340,7 +351,7 @@ reaches agents.
 
 ## Skills
 
-Sixteen entry points sit at the top level. The rest are domain skills
+Seventeen entry points sit at the top level. The rest are domain skills
 grouped under `plugins/cereblnk/skills/`: `languages/` 19 ·
 `frameworks/` 16 · `data/` 7 · `infrastructure/` 8 · `delivery/` 6 ·
 `practices/` 21. Skills load lazily by description; agents pull their set
@@ -409,7 +420,7 @@ migration, money and production-config work is always level 3.
 
 ## Status & maturity
 
-Current contents: **27 agents · 93 skills (16 of them entry points) ·
+Current contents: **27 agents · 94 skills (17 of them entry points) ·
 176 constraint files · 18 hooks · 28 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,

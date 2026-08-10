@@ -11,6 +11,25 @@ A request smuggling in behavior changes is split out to
 /cb-implement
 first — a refactor with feature changes is neither.
 
+**Say this first, before the checklist.** One line to the user. This
+run preserves behavior. It leaves the structure standing. If the
+design itself is wrong, /cb-rewrite is the workflow.
+
+This is a statement, not a question. The explicit command still wins.
+It exists because "refactor" is the word users say for both jobs. The
+wrong one is cheapest to correct before the first edit.
+
+**Hand over when the target design demands it.** Three closed
+triggers. Each is checkable once the target exists, and before any
+edit.
+
+- An observable contract must change to reach the target.
+- A behavior the checklist marks suspect is load-bearing in it.
+- The path will not cut into steps that hold the invariants.
+
+Any one ends this workflow and starts /cb-rewrite. Widening scope in
+place is the cardinal sin. Handing over is not.
+
 ## Boundary auto-engagement
 
 Before any edit, run
