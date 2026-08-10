@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="470" viewBox="0 0 420 470" role="img" aria-label="Cereblnk routing: which command a plain-language request is routed to">
+<title>Cereblnk routing: which command a plain-language request is routed to</title>
+<rect width="420" height="470" fill="#15181B"/>
+<rect x="0" y="0" width="420" height="470" rx="3" fill="#1D2226" stroke="#E0A32E" stroke-width="1.5"/>
+<text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">ROUTING</text>
+<text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">11 routes · read from the dispatch skill</text>
+<g id="route-0" transform="translate(16,66)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">judge a PR / diff / branch</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-pr-review</text>
+</g>
+<line x1="16" y1="92" x2="404" y2="92" stroke="#2F373E" stroke-width="1"/>
+<g id="route-1" transform="translate(16,102)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">explain or fix a bug, failing test</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-bug</text>
+</g>
+<line x1="16" y1="128" x2="404" y2="128" stroke="#2F373E" stroke-width="1"/>
+<g id="route-2" transform="translate(16,138)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build a stated, bounded change</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-do</text>
+</g>
+<line x1="16" y1="164" x2="404" y2="164" stroke="#2F373E" stroke-width="1"/>
+<g id="route-3" transform="translate(16,174)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build something new or vague</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-frame → /cb-design → /cb-implement</text>
+</g>
+<line x1="16" y1="200" x2="404" y2="200" stroke="#2F373E" stroke-width="1"/>
+<g id="route-4" transform="translate(16,210)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">build from an existing brief in memory/</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-design or /cb-implement</text>
+</g>
+<line x1="16" y1="236" x2="404" y2="236" stroke="#2F373E" stroke-width="1"/>
+<g id="route-5" transform="translate(16,246)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">test what changed</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-qa</text>
+</g>
+<line x1="16" y1="272" x2="404" y2="272" stroke="#2F373E" stroke-width="1"/>
+<g id="route-6" transform="translate(16,282)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">restructure without behavior change</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-refactor</text>
+</g>
+<line x1="16" y1="308" x2="404" y2="308" stroke="#2F373E" stroke-width="1"/>
+<g id="route-7" transform="translate(16,318)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">check security, auth, secrets</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-security-audit</text>
+</g>
+<line x1="16" y1="344" x2="404" y2="344" stroke="#2F373E" stroke-width="1"/>
+<g id="route-8" transform="translate(16,354)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">fix docs drift</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-docs</text>
+</g>
+<line x1="16" y1="380" x2="404" y2="380" stroke="#2F373E" stroke-width="1"/>
+<g id="route-9" transform="translate(16,390)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">think a problem through, not build it</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-think</text>
+</g>
+<line x1="16" y1="416" x2="404" y2="416" stroke="#2F373E" stroke-width="1"/>
+<g id="route-10" transform="translate(16,426)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E6EBEF" font-weight="400" letter-spacing="0" text-anchor="start">mixed or unclear</text>
+  <text x="0" y="14" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#E0A32E" font-weight="700" letter-spacing="0" text-anchor="start">→ /cb-orchestrate</text>
+</g>
+</svg>
