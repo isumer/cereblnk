@@ -17,6 +17,7 @@ unsupported paths where the tool has them):
   test-reachability       orphan-symbol analyser + the reach floor (CB-114)
   test-env-lifecycle      environment lifecycle + teardown safety (CB-115)
   test-contract-check     cross-surface contract reconciliation (CB-116)
+  test-behavior-check     behavior rulings in a rewrite contract (CB-121)
   test-hooks              four guards, full path matrix
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
@@ -72,7 +73,7 @@ def main():
                  "test-skill-selection", "test-discovery", "test-select-rules",
                  "test-docindex", "test-exec-floor",
                  "test-reachability", "test-env-lifecycle",
-                 "test-contract-check"):
+                 "test-contract-check", "test-behavior-check"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 
@@ -159,6 +160,21 @@ def main():
         # The wrong specialist must not merely be outranked, it must be absent.
         if paths[0].startswith("memory/specs/") and "docs-agent" in r.stdout:
             ok = False; why.append(paths[0] + " (docs-agent still selected)")
+    # CB-121: a rewrite has no diff to route on — the request is the
+    # only signal. The analyst must be reachable from it, and the agent
+    # the workflow excludes must not ride along.
+    for text, want, level in [
+        ("rewrite this legacy order module, the design is wrong",
+         "legacy-analyst-agent", "gate_level: 3"),
+        ("modernize the reporting module from scratch",
+         "legacy-analyst-agent", "gate_level: 3"),
+    ]:
+        r = sh(["bash", str(PS / "select-agents"), "--text", text])
+        if r.returncode != 0 or want not in r.stdout or level not in r.stdout:
+            ok = False; why.append(text[:24])
+        if "refactoring-agent" in r.stdout:
+            ok = False; why.append(text[:24] + " (refactoring-agent selected)")
+
     suite("select-agents triples", ok, f"mismatch on {why}")
 
     print("verify:"); print("\n".join(results))

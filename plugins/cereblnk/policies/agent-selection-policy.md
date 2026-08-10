@@ -28,6 +28,7 @@ verdict on the run and a re-plan trigger.
 | New user journey / acceptance behavior | testengineer-agent (one E2E, WRITTEN not run + functional/BDD) | qa-agent | 2 |
 | Docs-only changes | docs-agent | technicalwriter-agent (restructuring) | 1; escalate to the described topic's level if docs state security/migration behavior |
 | Refactor (declared behavior-preserving) | refactoring-agent, qa-agent | architect-agent | **3** (workflow-fixed, /cb-refactor) |
+| Rewrite (declared behavior-changing: the design itself is replaced) | legacy-analyst-agent, testengineer-agent (characterization), requirements-agent (ruling), architect-agent, the replaced surface's specialists | apidesign-agent (migration rows), security-agent, qa-agent | **3** (workflow-fixed, /cb-rewrite) |
 | Bug investigation | debugger-agent (tracing), then per root-cause surface | qa-agent (regression) | per surface; iron rule applies |
 | Performance-sensitive paths (flagged hotspots, query changes) | performance-agent | database-agent (if queries) | 2 |
 | Cross-cutting structure (module moves, boundary changes) | architect-agent | affected surface specialists | 2 |
@@ -85,6 +86,16 @@ and most expensive to ship.
 during gate review that every mandatory specialist for the task's
 signals was actually spawned; this section extends "task" to
 design/spec stages explicitly.
+
+**Exclusion is also selection (/cb-rewrite).** Two agents are absent
+from a rewrite's design stage by rule. RefactoringAgent, because its
+domain is behavior-preserving transformation and a rewrite preserves
+no such mandate — present, it reintroduces the structure the run
+exists to replace. LegacyAnalystAgent, because it read the old source:
+it hands the behavior contract over and does not return. The firewall
+is an agent absent from the room rather than a rule the architect must
+remember. **Checker:** VerifierAgent, same gate review — either agent
+spawned after the ruling stage is a selection violation.
 
 ## 4. Skill relations resolution (skill-relations-policy.md)
 

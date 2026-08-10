@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""behavior-check — has the old system's behavior been ruled, or just copied.
+
+A rewrite starts because the current design is wrong. The failure it
+falls into is the opposite of the one it was called for: the old
+structure is carried over, and with it the bugs that motivated the
+rewrite. Fidelity to legacy code preserves the defects along with the
+requirements, because nothing in the run ever separated the two.
+
+The separation is a ruling, and it is per behavior rather than per
+system. Each line the analyst extracted carries what it is (a
+requirement, an accident, a defect) and what happens to it (kept,
+fixed, dropped, deferred). A line that reaches the design stage
+unruled is the one that gets copied by default.
+
+This checker reads the `## Behavior` section of a contract and refuses
+the combinations that let a rewrite silently become a transcription:
+
+  - a row with no ruling — the default is transcription
+  - a defect ruled `keep` — if the behavior is load-bearing, the row is
+    reclassified `intentional` and the reason is recorded; keeping a
+    row still labelled a defect hides the decision
+  - `keep` or `fix` with no characterization oracle — both are claims
+    about what the old system does, and neither is evidence until
+    something ran against it. `keep` without a pinned oracle is a
+    guess about the old behavior; `fix` without one cannot show the
+    behavior changed.
+  - `drop` or `deferred` with no reason — a removal nobody has to
+    justify is indistinguishable from an omission
+
+Class D: the ruling is instruction, this script is its checker. No hook
+blocks a design stage on it yet; `/cb-rewrite` runs it as a gate.
+
+Format, inside a contract under .claude/cereblnk/memory/contracts/*.md.
+`contract-check` (CB-116) ignores sections it does not know, so the
+behavior rows live in the same file as the channels they will produce:
+
+    contract: orders-rewrite
+    version: 1
+    parties: api
+
+    ## Behavior
+    | id | behavior | class | ruling | oracle |
+    | --- | --- | --- | --- | --- |
+    | B-1 | An order below the minimum is rejected before payment | intentional | keep | char:OrderMinimumTest |
+    | B-2 | Cancelling a shipped order reports success | suspected-bug | fix | char:CancelShippedTest |
+    | B-3 | Timestamps are stored in server-local time | incidental | drop | reason:UTC across the new module |
+
+Behavior is written in domain language. A row naming a class, file or
+call path has described the structure the rewrite exists to replace,
+and anchors the design to it.
+
+Usage: behavior-check <project-root> [contract-name ...]
+Exit:  0 clean · 1 findings printed · 3 nothing to check
+"""
+import pathlib
+import re
+import sys
+
+CLASSES = ("intentional", "incidental", "suspected-bug")
+RULINGS = ("keep", "fix", "drop", "deferred")
+NEEDS_ORACLE = ("keep", "fix")
+NEEDS_REASON = ("drop", "deferred")
+HEADER_CELLS = ("id", "behavior")
+
+
+def parse_behavior(path):
+    """Read the head keys and the `## Behavior` rows out of a contract."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    head = {}
+    for line in text.splitlines():
+        m = re.match(r"^(contract|version):\s*(.+?)\s*$", line)
+        if m:
+            head.setdefault(m.group(1), m.group(2))
+    if not head.get("contract"):
+        return None
+
+    rows = []
+    m = re.search(r"^##\s+Behavior\s*$", text, re.M | re.I)
+    if not m:
+        return None
+    for line in text[m.end():].splitlines():
+        if line.startswith("##"):
+            break
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not cells or not cells[0]:
+            continue
+        if set(cells[0]) <= set("-: "):
+            continue
+        if cells[0].lower() in HEADER_CELLS:
+            continue
+        rows.append(cells)
+
+    return {"name": head["contract"],
+            "version": head.get("version", "0"),
+            "rows": rows}
+
+
+def cell(row, i):
+    return row[i].strip().lower() if len(row) > i else ""
+
+
+def check(contract):
+    """Findings for one contract. Empty list means the rows are ruled."""
+    out = []
+    tag = "%s v%s" % (contract["name"], contract["version"])
+    seen = set()
+
+    if not contract["rows"]:
+        out.append("%s: a Behavior section with no rows — the extraction "
+                   "produced nothing to rule" % tag)
+        return out
+
+    for row in contract["rows"]:
+        rid = row[0].strip()
+        behavior = row[1].strip() if len(row) > 1 else ""
+        klass = cell(row, 2)
+        ruling = cell(row, 3)
+        oracle = cell(row, 4)
+
+        if rid in seen:
+            out.append("%s: duplicate row id %s" % (tag, rid))
+        seen.add(rid)
+
+        if not behavior:
+            out.append("%s: %s has no behavior text" % (tag, rid))
+
+        if klass not in CLASSES:
+            out.append("%s: %s has class %r — expected one of %s"
+                       % (tag, rid, klass or "(empty)", ", ".join(CLASSES)))
+
+        if ruling not in RULINGS:
+            out.append("%s: %s is unruled (%r) — an unruled row is carried "
+                       "over by default, which is the failure a rewrite "
+                       "exists to avoid" % (tag, rid, ruling or "(empty)"))
+            continue
+
+        if klass == "suspected-bug" and ruling == "keep":
+            out.append("%s: %s is a suspected bug ruled keep — if the "
+                       "behavior is load-bearing, reclassify it intentional "
+                       "and record why; keeping it labelled a defect hides "
+                       "the decision" % (tag, rid))
+
+        if ruling in NEEDS_ORACLE and not oracle.startswith("char:"):
+            out.append("%s: %s is ruled %s with no char: oracle — nothing "
+                       "pinned what the old system does, so the new one "
+                       "cannot be shown to match or to differ"
+                       % (tag, rid, ruling))
+
+        if ruling in NEEDS_REASON and not oracle.startswith("reason:"):
+            out.append("%s: %s is ruled %s with no reason: — a removal "
+                       "nobody justified reads the same as an omission"
+                       % (tag, rid, ruling))
+
+    return out
+
+
+def main(argv):
+    if len(argv) < 2:
+        print("usage: behavior-check <project-root> [contract-name ...]",
+              file=sys.stderr)
+        return 3
+    root = pathlib.Path(argv[1]).resolve()
+    if not root.is_dir():
+        return 3
+    wanted = [c.strip() for c in argv[2:] if c.strip()]
+
+    cdir = root / ".claude/cereblnk/memory/contracts"
+    if not cdir.is_dir():
+        return 3
+
+    contracts = [c for c in (parse_behavior(p) for p in sorted(cdir.glob("*.md"))) if c]
+    if wanted:
+        contracts = [c for c in contracts if c["name"] in wanted]
+    if not contracts:
+        return 3
+
+    findings = []
+    for c in contracts:
+        findings.extend(check(c))
+
+    for f in findings:
+        print(f)
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

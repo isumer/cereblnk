@@ -51,6 +51,7 @@ auth, money, deletion, migration, prod config. A match forces high —
 | build from an existing brief in memory/ | /cb-design or /cb-implement |
 | test what changed | /cb-qa |
 | restructure without behavior change | /cb-refactor |
+| replace code whose design is wrong | /cb-rewrite |
 | check security, auth, secrets | /cb-security-audit |
 | fix docs drift | /cb-docs |
 | think a problem through, not build it | /cb-think |
@@ -67,7 +68,23 @@ Rules:
 6. **Stated beats vague.** A request naming what to change routes to
    /cb-do. A request naming an outcome to explore routes to /cb-frame.
    The test is whether Step 1 produces one reading or several.
-7. **Nothing changed yet? Route on the request.** Design and new-build
+7. **Restructure requests get one question, and only these.** A
+   structural verb over existing code, with no complaint naming either
+   form or responsibility, is the ambiguous case. "Refactor this",
+   "clean this up", "improve it", "modernise it", pasted code with
+   "make it better". Ask once: is the work the code does correct, and
+   only the writing bad? Correct work, bad code routes to
+   /cb-refactor. Wrong structure routes to /cb-rewrite. Say plainly
+   that /cb-refactor leaves the structure standing.
+   Do not ask when the request already answers it. A complaint about
+   form ("unreadable", "duplicated", "fails the rule set") is
+   /cb-refactor. A complaint about responsibility ("this layer should
+   not do this", "boundaries are wrong", "design it again") is
+   /cb-rewrite. Behavior preservation already declared is
+   /cb-refactor. A named target structure ("split this module in two")
+   is /cb-do. Bug, feature, review and docs intents never reach this
+   rule.
+8. **Nothing changed yet? Route on the request.** Design and new-build
    work has no diff. Use `select-agents --text "<the request>"`. Its
    `skills_required` block travels into the Task Blocks. Exit 3 is
    unresolved, never a reason to guess one agent.
