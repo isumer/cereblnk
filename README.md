@@ -31,39 +31,29 @@ names the script that detects its violation, or is labeled as unenforced.
 
 ## What it looks like in use
 
-There are two ways in, and only one of them is guaranteed:
+The whole system on one sheet — how a request becomes work, who does
+it, and what refuses to let it finish:
 
-```mermaid
-flowchart LR
-    REQ["your request"] --> FORK{"did you name<br/>a command?"}
-    FORK -- "yes: /cb-do ..." --> ENTRY["entry point runs"]
-    FORK -- "no" --> DISP["cb-dispatch may route it"]
-    DISP -- "the session invokes it" --> ENTRY
-    DISP -. "it does not fire" .-> PLAIN["an ordinary Claude Code turn:<br/>no specialists, no floors, no gates"]
-    ENTRY --> SEL["select-agents · select-rules<br/>deterministic, from policy files"]
-    SEL --> SPEC["specialists as subagents<br/>own context, one task each"]
-    SPEC --> LED["ledgers record<br/>edits · runs · skills loaded"]
-    LED --> FLOOR{"floor hooks<br/>SubagentStop"}
-    FLOOR -- "exit 2 — something is missing" --> SPEC
-    FLOOR -- "clean" --> GATE["gates: verifier · challenger · consistency"]
-    GATE --> SYN["synthesizer<br/>Decision → Evidence →<br/>Reasoning → Risk → Confidence"]
+![Cereblnk systems note: the request routing loop, the agent pipeline, the eighteen enforcement hooks across seven events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
 
-    linkStyle 4 stroke:#8C99A2,stroke-dasharray:4 3
-    linkStyle 9 stroke:#c0392b,stroke-width:2.5px
-```
+There are two ways in, and only one of them is guaranteed.
 
-Read the dashed branch carefully, because it is the honest one.
-`cb-dispatch` is a skill, and a skill fires when the session model
-decides its description matches your message. Nothing in the plugin
-forces that decision, and nothing detects a message that should have
-routed and did not. **Type a command when it matters.**
+Panel 8 is the honest one. `cb-dispatch` is a skill, and a skill fires
+when the session model decides its description matches your message.
+Nothing in the plugin forces that decision, and nothing detects a
+message that should have routed and did not — so if it does not fire you
+get an ordinary session turn, with no specialists, no floors and no
+gates. **Type a command when it matters.**
 
-Everything after the fork is where the design earns its keep. Selection
+Everything after that fork is where the design earns its keep. Selection
 is a deterministic read of policy files rather than a judgment made in
 the moment. No specialist reads the whole conversation or the whole
 repository — each gets its own context window and sees only its own task.
-And the red arrow, the refused stop, runs whether or not the model felt
-like being careful.
+And the red return arrow in panel 4, the refused stop, runs whether or
+not the model felt like being careful.
+
+The sheet is dense by design and reads best on a wide screen; open the
+image on its own for a full-size view.
 
 ## How it works
 
@@ -103,29 +93,18 @@ observe.
 
 ### What blocks a finish
 
-Five hooks decide whether a specialist may call itself done:
+Five hooks decide whether a specialist may call itself done,
+checked in this order:
 
-```mermaid
-flowchart TD
-    S["a specialist tries to finish"] --> Q1{"edited a surface<br/>but never ran it?"}
-    Q1 -- yes --> BACK["exit 2 — stop refused,<br/>back to work"]
-    Q1 -- no --> Q2{"declared a symbol<br/>nothing references?"}
-    Q2 -- yes --> BACK
-    Q2 -- no --> Q3{"closed one side of a<br/>cross-surface contract?"}
-    Q3 -- yes --> BACK
-    Q3 -- no --> Q4{"finished without the craft<br/>its task required?"}
-    Q4 -- yes --> BACK
-    Q4 -- no --> Q5{"returned more than<br/>ten lines of digest?"}
-    Q5 -- yes --> BACK
-    Q5 -- no --> OK["stop allowed"]
-    BACK --> S
+| Hook | Refuses the stop when |
+|---|---|
+| `exec-floor` | The specialist edited a surface and never ran it |
+| `reach-floor` | It declared a symbol nothing references |
+| `contract-floor` | It closed one side of a cross-surface contract |
+| `skill-floor` | It finished without the craft its task required |
+| `digest-cap` | It returned more than ten lines of digest |
 
-    linkStyle 1,3,5,7,9 stroke:#c0392b,stroke-width:2px
-    linkStyle 11 stroke:#c0392b,stroke-width:2.5px
-```
-
-In order: `exec-floor`, `reach-floor`, `contract-floor`, `skill-floor`,
-`digest-cap`. The first four each catch a failure the others cannot —
+The first four each catch a failure the others cannot —
 running a program is the one check no static gate performs; unwired code
 fails by silence, so execution alone misses it; a contract needs both
 directions checked, the new path present *and* the replaced path gone.
@@ -140,20 +119,10 @@ nudge-capped, returning an agent to work a bounded number of times.
 ### Why context stays small
 
 Context is the expensive resource, so it is not shared — knowledge is.
-The plan lives on disk rather than in the conversation, each specialist
-sees one task, and only digests travel back:
-
-```mermaid
-flowchart TD
-    PLAN["plan.md on disk<br/>tasks · acceptance criteria · status"]
-    PLAN -->|one task| A["backend-agent<br/>own window"]
-    PLAN -->|one task| B["frontend-agent<br/>own window"]
-    PLAN -->|one task| C["security-agent<br/>own window"]
-    A -->|digest, ten lines| G["gates<br/>read digests and evidence,<br/>never transcripts"]
-    B -->|digest, ten lines| G
-    C -->|digest, ten lines| G
-    G --> PLAN
-```
+The plan lives on disk rather than in the conversation. Each specialist
+receives one task and works in its own window; what comes back is a
+digest capped at ten lines, and the gates read those digests and the
+evidence behind them rather than any transcript.
 
 Nothing flows sideways between specialists, and the conducting
 conversation carries plan, digests and verdicts — nothing else. This is
@@ -161,25 +130,6 @@ also what makes work survive a compaction: `plan-lint` refuses a
 malformed plan, `plan-status` recovers state after a session dies, and
 any single task can go to a fresh executor whose entire world is that one
 task.
-
-## The picture
-
-![Cereblnk enforcement: eighteen hooks grouped by the event that fires them, twelve of which refuse a specialist's stop](docs/assets/enforcement.svg)
-
-The panels are generated from the tree by `scripts/build-diagrams`, not
-drawn against it. Which hooks exist, which event fires each one, whether
-it refuses or records, which commands ship and how a request routes are
-read from the files that define them, so none of that can drift. The
-sentences describing them are authored, and a hook or command added
-without a description fails the build rather than shipping a blank row.
-
-Individual panels: [entry points](docs/assets/commands.svg) ·
-[routing](docs/assets/routing.svg) ·
-[verification gates](docs/assets/gates.svg) ·
-[agents](docs/assets/agents.svg). They are laid out narrow so a phone
-renders them near actual size rather than scaling the type away. The
-[full composite](docs/assets/architecture.svg) puts every panel on one
-sheet for a wider screen.
 
 ## Installation
 
@@ -424,9 +374,10 @@ something easy to miss: a weaker model does not only build worse, it
 Task Block or drop a digest. So the topology adapts: fewer and larger
 slices, parallel specialists capped at what the risk actually requires.
 
-**The plan lives on disk, not in the conversation** — see the diagram
-above. Minimal context, maximal structure, and no dependence on what the
-model still remembers.
+**The plan lives on disk, not in the conversation.** Tasks are
+checkboxes with acceptance criteria written beside them, so a fresh
+executor can pick one up knowing nothing else. Minimal context, maximal
+structure, and no dependence on what the model still remembers.
 
 **The checks are mechanical.** Gates compare fact IDs and epistemic
 labels; hooks block on exit codes. Neither is impressed by fluent
@@ -459,7 +410,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 18 hooks · 30 verify suites** (count them:
+176 constraint files · 18 hooks · 28 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
@@ -478,13 +429,10 @@ the manual warns about (09 Part II #8). One of the 28 suites, the
 reference-string leakage scan, skips unless a wordlist is configured; a
 skip is printed and never counted as a pass.
 
-Two things in particular are unenforced, and worth knowing before you
-rely on them. Automatic routing through `cb-dispatch` depends on the
-session model matching a skill description, and nothing checks a request
-that should have routed and did not. And while the diagrams' hook names,
-their events and the command list are asserted by
-`scripts/check-diagram`, the sentences describing them are not — those
-were verified by hand once and nothing will notice when they drift.
+One thing in particular is unenforced, and worth knowing before you rely
+on it. Automatic routing through `cb-dispatch` depends on the session
+model matching a skill description, and nothing checks a request that
+should have routed and did not.
 
 What this repository does **not** contain: a retrieval index, an
 embedding or vector store, a standalone command-line binary, or a
