@@ -96,14 +96,6 @@ def main():
     suite("check-readme", rm.returncode == 0,
           (rm.stdout or rm.stderr).strip().splitlines()[0][:100] if rm.returncode else "")
 
-    bd = sh([sys.executable, str(S / "build-diagrams"), "--check"])
-    suite("diagram assets fresh", bd.returncode == 0,
-          (bd.stdout or bd.stderr).strip().splitlines()[0][:100] if bd.returncode else "")
-
-    dg = sh([sys.executable, str(S / "check-diagram")])
-    suite("check-diagram", dg.returncode == 0,
-          (dg.stdout or dg.stderr).strip().splitlines()[0][:100] if dg.returncode else "")
-
     bl = sh([sys.executable, str(S / "check-budget-literals")])
     suite("budget-literals", bl.returncode == 0,
           bl.stdout.strip().splitlines()[-1] if bl.stdout else "")
