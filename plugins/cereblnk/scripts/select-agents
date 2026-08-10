@@ -102,6 +102,11 @@ TEXT_RULES = [
      ["performance-agent"], 2),
     ("tests",          r'(?i)(\btest\b|coverage|regression)',
      ["qa-agent"], 1),
+    # A rewrite reads the old code before anything is designed, so the
+    # analyst is selected from the request rather than from a diff --
+    # there is no diff yet. Level 3: the blast radius is the module.
+    ("rewrite/legacy", r'(?i)(rewrite|re-?write|legacy|modernis|moderniz|from scratch|redesign)',
+     ["legacy-analyst-agent", "architect-agent"], 3),
 ]
 
 paths = [l.strip() for l in os.environ.get("CB_PATHS", "").splitlines() if l.strip()]
