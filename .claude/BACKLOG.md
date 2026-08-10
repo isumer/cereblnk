@@ -136,3 +136,8 @@ read.
 - [x] **CB-114** — Reachability: new code that nothing calls is not done
 - [x] **CB-115** — Runtime stage: environment lifecycle and health-gated attribution
 - [x] **CB-116** — Cross-surface contract as a referenceable artifact
+- [x] **CB-117** — The front page says what this is before how to install it
+- [x] **CB-118** — Every README claim re-derived from the tree; five were wrong
+- [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
+- [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
+- [x] **CB-122** — The backlog records what shipped; 117 through 120 backfilled
