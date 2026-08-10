@@ -17,7 +17,7 @@ unsupported paths where the tool has them):
   test-reachability       orphan-symbol analyser + the reach floor (CB-114)
   test-env-lifecycle      environment lifecycle + teardown safety (CB-115)
   test-contract-check     cross-surface contract reconciliation (CB-116)
-  test-behavior-check     behavior rulings in a rewrite contract (CB-117)
+  test-behavior-check     behavior rulings in a rewrite contract (CB-121)
   test-hooks              four guards, full path matrix
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
@@ -160,7 +160,7 @@ def main():
         # The wrong specialist must not merely be outranked, it must be absent.
         if paths[0].startswith("memory/specs/") and "docs-agent" in r.stdout:
             ok = False; why.append(paths[0] + " (docs-agent still selected)")
-    # CB-117: a rewrite has no diff to route on — the request is the
+    # CB-121: a rewrite has no diff to route on — the request is the
     # only signal. The analyst must be reachable from it, and the agent
     # the workflow excludes must not ride along.
     for text, want, level in [
