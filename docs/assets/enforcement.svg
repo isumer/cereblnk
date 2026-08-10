@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="1127" viewBox="0 0 420 1127" role="img" aria-label="Cereblnk enforcement: hooks by the event that fires them, and which ones refuse a specialist's stop">
+<title>Cereblnk enforcement: hooks by the event that fires them, and which ones refuse a specialist's stop</title>
+<rect width="420" height="1127" fill="#15181B"/>
+<rect x="0" y="0" width="420" height="1127" rx="3" fill="#1D2226" stroke="#D8412F" stroke-width="1.5"/>
+<text x="16" y="28" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="14" fill="#E6EBEF" font-weight="700" letter-spacing="2" text-anchor="start">ENFORCEMENT</text>
+<text x="16" y="44" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">18 hooks across 7 events · 12 refuse, 6 record</text>
+<text x="16" y="1102" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">■ refuses · □ records — a refused stop returns the specialist to</text>
+<text x="16" y="1113" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">work, exit code 2.</text>
+<g id="event-UserPromptSubmit" transform="translate(16,62)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">UserPromptSubmit</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">as your turn arrives</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ context-monitor</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Tracks window occupancy each turn</text>
+</g>
+<g id="event-PreToolUse" transform="translate(16,150)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">PreToolUse</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before a tool runs</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ delegation-guard</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">File edits in the conducting</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">conversation while a run is active</text>
+  <text x="0" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ destructive-command</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Irreversible shell operations, once</text>
+  <text x="13" y="106" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">/cb-careful is on</text>
+  <text x="0" y="122" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ doc-floor</text>
+  <text x="13" y="134" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Unbounded reads of an indexed document</text>
+  <text x="0" y="150" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ edit-boundary</text>
+  <text x="13" y="162" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Writes outside the declared directory</text>
+  <text x="0" y="178" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ scratch-guard</text>
+  <text x="13" y="190" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Working notes written to the repository</text>
+  <text x="13" y="202" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">root</text>
+  <text x="0" y="218" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ secret-guard</text>
+  <text x="13" y="230" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Writes whose content looks like a</text>
+  <text x="13" y="242" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">credential</text>
+  <text x="0" y="258" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ skill-ledger</text>
+  <text x="13" y="270" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Records which skills a run loaded</text>
+</g>
+<g id="event-PostToolUse" transform="translate(16,454)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">PostToolUse</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">after a tool runs</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ exec-ledger</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Records surface edits and executions</text>
+  <text x="0" y="70" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ post-edit-test</text>
+  <text x="13" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">A failing test after an edit at gate</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">level 3</text>
+</g>
+<g id="event-PreCompact" transform="translate(16,582)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">PreCompact</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before context is compacted</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ history-archive</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Archives detail before a compaction</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">discards it</text>
+</g>
+<g id="event-Stop" transform="translate(16,682)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">Stop</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before the turn ends</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ run-guard</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Prevents concurrent runs</text>
+</g>
+<g id="event-SubagentStop" transform="translate(16,770)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#E6EBEF" font-weight="700" letter-spacing="0.5" text-anchor="start">SubagentStop</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">before a specialist finishes</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#D8412F" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ contract-floor</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Closed one side of a cross-surface</text>
+  <text x="13" y="66" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">contract</text>
+  <text x="0" y="82" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ digest-cap</text>
+  <text x="13" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Returned more than ten lines of digest</text>
+  <text x="0" y="110" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ exec-floor</text>
+  <text x="13" y="122" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Edited a surface and never ran it</text>
+  <text x="0" y="138" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ reach-floor</text>
+  <text x="13" y="150" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Declared a symbol nothing references</text>
+  <text x="0" y="166" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#D8412F" font-weight="700" letter-spacing="0" text-anchor="start">■ skill-floor</text>
+  <text x="13" y="178" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Finished without the craft the task</text>
+  <text x="13" y="190" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">required</text>
+</g>
+<g id="event-SessionEnd" transform="translate(16,994)">
+  <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8C99A2" font-weight="700" letter-spacing="0.5" text-anchor="start">SessionEnd</text>
+  <text x="0" y="15" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9.5" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">when the session ends</text>
+  <line x1="0" y1="24" x2="370" y2="24" stroke="#8C99A2" stroke-width="1"/>
+  <text x="0" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8C99A2" font-weight="400" letter-spacing="0" text-anchor="start">□ env-teardown</text>
+  <text x="13" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="9" fill="#66727A" font-weight="400" letter-spacing="0" text-anchor="start">Reclaims an environment a run left up</text>
+</g>
+</svg>

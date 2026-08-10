@@ -162,6 +162,25 @@ malformed plan, `plan-status` recovers state after a session dies, and
 any single task can go to a fresh executor whose entire world is that one
 task.
 
+## The picture
+
+![Cereblnk enforcement: eighteen hooks grouped by the event that fires them, twelve of which refuse a specialist's stop](docs/assets/enforcement.svg)
+
+The panels are generated from the tree by `scripts/build-diagrams`, not
+drawn against it. Which hooks exist, which event fires each one, whether
+it refuses or records, which commands ship and how a request routes are
+read from the files that define them, so none of that can drift. The
+sentences describing them are authored, and a hook or command added
+without a description fails the build rather than shipping a blank row.
+
+Individual panels: [entry points](docs/assets/commands.svg) ·
+[routing](docs/assets/routing.svg) ·
+[verification gates](docs/assets/gates.svg) ·
+[agents](docs/assets/agents.svg). They are laid out narrow so a phone
+renders them near actual size rather than scaling the type away. The
+[full composite](docs/assets/architecture.svg) puts every panel on one
+sheet for a wider screen.
+
 ## Installation
 
 ```
@@ -440,7 +459,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **26 agents · 93 skills (16 of them entry points) ·
-176 constraint files · 18 hooks · 28 verify suites** (count them:
+176 constraint files · 18 hooks · 30 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
@@ -462,9 +481,10 @@ skip is printed and never counted as a pass.
 Two things in particular are unenforced, and worth knowing before you
 rely on them. Automatic routing through `cb-dispatch` depends on the
 session model matching a skill description, and nothing checks a request
-that should have routed and did not. The hook names printed in this file
-are not compared against `hooks/scripts/`, so a rename would leave this
-page quietly wrong until someone noticed.
+that should have routed and did not. And while the diagrams' hook names,
+their events and the command list are asserted by
+`scripts/check-diagram`, the sentences describing them are not — those
+were verified by hand once and nothing will notice when they drift.
 
 What this repository does **not** contain: a retrieval index, an
 embedding or vector store, a standalone command-line binary, or a
