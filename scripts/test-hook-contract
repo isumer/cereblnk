@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""test-hook-contract — the Claude binding, frozen (CB-127).
+
+Two things are asserted, and neither is about whether the hooks are
+right. They are about whether they still do what they did:
+
+  1. plugins/cereblnk/hooks/hooks.json is byte-identical to
+     tests/golden/claude-hooks.json.
+  2. Every case in tests/fixtures/hook-contract/cases.json produces the
+     exit code and refusal text recorded in tests/golden/hook-contract.json.
+
+CB-128 moves the refusal out of eighteen scripts and into a host
+adapter; CB-124 generates the binding instead of storing it. Both are
+behaviour-preserving by intent, and intent is not a mechanism. This
+suite is the mechanism.
+
+Blessing current output is normally forbidden — a fixture taken from
+buggy output invalidates the suite. Here the current behaviour is the
+specification: what is frozen is a contract to be preserved, not a
+verdict that it is correct. The prohibition stands everywhere else.
+
+Usage:
+  scripts/test-hook-contract              verify against the golden file
+  scripts/test-hook-contract --capture    re-record the golden file
+
+Exit: 0 all pass · 1 any difference · 2 capture refused
+"""
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOOKS = ROOT / "plugins/cereblnk/hooks/scripts"
+BINDING = ROOT / "plugins/cereblnk/hooks/hooks.json"
+GOLDEN_BINDING = ROOT / "tests/golden/claude-hooks.json"
+GOLDEN_CASES = ROOT / "tests/golden/hook-contract.json"
+CASES = ROOT / "tests/fixtures/hook-contract/cases.json"
+
+
+def build_project(root, state):
+    """A throwaway project in the shape the hooks expect.
+
+    state is a list of tokens, composed rather than switched: a case that
+    needs an armed run inside a run context says so, and the builder does
+    not have to grow a keyword per combination.
+    """
+    proj = root / "proj"
+    cbd = proj / ".claude/cereblnk"
+    (cbd / "flags").mkdir(parents=True, exist_ok=True)
+    (cbd / "context").mkdir(parents=True, exist_ok=True)
+    (proj / "src").mkdir(parents=True, exist_ok=True)
+    (proj / "src/a.py").write_text("def a():\n    return 1\n")
+
+    for token in state:
+        if token == "boundary":
+            # an empty boundary declares nothing, so every path is outside
+            # it; the allowed case needs a prefix to actually be allowed
+            (cbd / "flags/boundary").write_text("src\n")
+        elif token in ("run-active", "careful", "run-complete"):
+            (cbd / "flags" / token).touch()
+        elif token == "run-context":
+            run = cbd / "context/implement-2026-08-11"
+            run.mkdir(parents=True, exist_ok=True)
+            (run / "plan.md").write_text("task_id: T-1\n")
+        elif token == "exec-log":
+            # ts \t agent \t kind \t surface — an edit with no matching exec
+            run = cbd / "context/implement-2026-08-11"
+            run.mkdir(parents=True, exist_ok=True)
+            (run / "exec.log").write_text("1\tbackend\tedit\tbackend\n")
+        elif token == "check-command":
+            cfg = cbd / "config"
+            cfg.mkdir(parents=True, exist_ok=True)
+            (cfg / "check-command.backend").write_text("pytest -q\n")
+        elif token == "contracts":
+            (cbd / "memory/contracts").mkdir(parents=True, exist_ok=True)
+        else:
+            raise SystemExit(f"unknown state token: {token}")
+    return proj
+
+
+def normalise(text, proj):
+    """Strip everything that changes between runs but not between versions.
+
+    Temp paths and the host's own directory names carry no contract. A
+    difference that survives this is a difference in behaviour.
+    """
+    out = text.replace(str(proj), "<PROJ>")
+    out = out.replace(str(ROOT), "<ROOT>")
+    return "\n".join(line.rstrip() for line in out.strip().splitlines())
+
+
+def run_case(case, tmp):
+    proj = build_project(tmp, case.get("state", []))
+    env = dict(
+        os.environ,
+        CLAUDE_PROJECT_DIR=str(proj),
+        CLAUDE_PLUGIN_ROOT=str(ROOT / "plugins/cereblnk"),
+    )
+    payload = json.dumps(case["stdin"]).replace("<PROJ>", str(proj))
+    proc = subprocess.run(
+        ["bash", str(HOOKS / case["script"])],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(proj),
+    )
+    return {
+        "rc": proc.returncode,
+        "stderr": normalise(proc.stderr, proj),
+        "stdout": normalise(proc.stdout, proj),
+    }
+
+
+def collect():
+    spec = json.loads(CASES.read_text())
+    recorded = {}
+    for case in spec["cases"]:
+        script = HOOKS / case["script"]
+        if not script.exists():
+            recorded[case["name"]] = {"missing": case["script"]}
+            continue
+        with tempfile.TemporaryDirectory() as td:
+            recorded[case["name"]] = run_case(case, pathlib.Path(td))
+    return recorded
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-hook-contract: bash not on PATH — skipping "
+              "(hooks require bash)")
+        return 0
+
+    capture = "--capture" in sys.argv
+
+    if capture and GOLDEN_CASES.exists() and "--force" not in sys.argv:
+        print("test-hook-contract: refusing to overwrite an existing golden "
+              "file.\n  The point of the freeze is that it is not quietly "
+              "re-taken. If the\n  contract is meant to change, say so in the "
+              "task and pass --force.", file=sys.stderr)
+        return 2
+
+    recorded = collect()
+
+    if capture:
+        GOLDEN_CASES.parent.mkdir(parents=True, exist_ok=True)
+        GOLDEN_CASES.write_text(
+            json.dumps(recorded, indent=2, sort_keys=True) + "\n")
+        print(f"test-hook-contract: recorded {len(recorded)} cases -> "
+              f"{GOLDEN_CASES.relative_to(ROOT)}")
+        return 0
+
+    fails = []
+
+    if not GOLDEN_BINDING.exists():
+        fails.append("golden binding missing: tests/golden/claude-hooks.json")
+    elif BINDING.read_bytes() != GOLDEN_BINDING.read_bytes():
+        fails.append(
+            "binding drift: plugins/cereblnk/hooks/hooks.json no longer "
+            "matches tests/golden/claude-hooks.json byte for byte")
+
+    if not GOLDEN_CASES.exists():
+        print("test-hook-contract: no golden file — run with --capture first",
+              file=sys.stderr)
+        return 1
+
+    golden = json.loads(GOLDEN_CASES.read_text())
+
+    for name in sorted(set(golden) - set(recorded)):
+        fails.append(f"{name}: case disappeared from the fixture")
+    for name in sorted(set(recorded) - set(golden)):
+        fails.append(f"{name}: new case not in the golden file")
+
+    for name in sorted(set(golden) & set(recorded)):
+        want, got = golden[name], recorded[name]
+        for field in ("rc", "stderr", "stdout"):
+            if want.get(field) != got.get(field):
+                fails.append(
+                    f"{name}: {field} changed\n"
+                    f"      was: {str(want.get(field))[:160]!r}\n"
+                    f"      now: {str(got.get(field))[:160]!r}")
+
+    if fails:
+        print(f"test-hook-contract: {len(fails)} difference(s)",
+              file=sys.stderr)
+        for f in fails:
+            print(f"  {f}", file=sys.stderr)
+        return 1
+
+    print(f"test-hook-contract: binding frozen, {len(recorded)} hook cases "
+          f"unchanged")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

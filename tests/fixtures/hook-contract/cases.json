@@ -1,0 +1,429 @@
+{
+  "_note": [
+    "Case definitions for scripts/test-hook-contract (CB-127).",
+    "",
+    "Each case names a hook script, the stdin payload it receives, and the",
+    "project state it runs against. The recorded exit code and stderr live",
+    "in tests/golden/hook-contract.json and are the contract CB-128 must",
+    "preserve while it moves the refusal into a host adapter.",
+    "",
+    "state is a list of tokens applied to the throwaway project:",
+    "  run-active    the run-active flag is armed",
+    "  run-complete  the run-complete marker is present",
+    "  careful       destructive-command's opt-in flag",
+    "  boundary      edit-boundary's opt-in flag",
+    "  run-context   a run directory under context/ holding a plan",
+    "  exec-log      that run directory holding an edit ledger",
+    "  contracts     memory/contracts/ exists",
+    "",
+    "  check-command  a check command registered for the backend surface",
+    "A case that records exit 0 for every version of the code proves",
+    "nothing. Each guard therefore carries both an allowed path and the",
+    "path where it refuses.",
+    "",
+    "Known gap. skill-floor, reach-floor, contract-floor and digest-cap are",
+    "recorded on their allowed path only: arming them needs a skill ledger,",
+    "a reachability report, a contract and a transcript respectively, which",
+    "a synthetic project cannot produce cheaply. Their refusal paths stay",
+    "covered by their own suites (test-exec-floor, test-reachability,",
+    "test-contract-check, test-skill-selection). This file says so rather",
+    "than letting four exit-0 rows look like coverage."
+  ],
+  "cases": [
+    {
+      "name": "delegation-guard: no run, conductor edit",
+      "script": "delegation-guard.sh",
+      "state": [],
+      "stdin": {
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "src/a.py",
+          "content": "x"
+        }
+      }
+    },
+    {
+      "name": "delegation-guard: armed, conductor edit",
+      "script": "delegation-guard.sh",
+      "state": [
+        "run-active"
+      ],
+      "stdin": {
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "src/a.py",
+          "content": "x"
+        }
+      }
+    },
+    {
+      "name": "delegation-guard: armed, subagent edit",
+      "script": "delegation-guard.sh",
+      "state": [
+        "run-active"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "src/a.py"
+        }
+      }
+    },
+    {
+      "name": "edit-boundary: in-tree edit",
+      "script": "edit-boundary.sh",
+      "state": [
+        "boundary"
+      ],
+      "stdin": {
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "<PROJ>/src/a.py"
+        }
+      }
+    },
+    {
+      "name": "edit-boundary: absolute path outside project",
+      "script": "edit-boundary.sh",
+      "state": [
+        "boundary"
+      ],
+      "stdin": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/etc/hosts",
+          "content": "x"
+        }
+      }
+    },
+    {
+      "name": "secret-guard: ordinary content",
+      "script": "secret-guard.sh",
+      "state": [],
+      "stdin": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "src/a.py",
+          "content": "print(1)"
+        }
+      }
+    },
+    {
+      "name": "secret-guard: private key material",
+      "script": "secret-guard.sh",
+      "state": [],
+      "stdin": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "src/a.py",
+          "content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----"
+        }
+      }
+    },
+    {
+      "name": "scratch-guard: normal path",
+      "script": "scratch-guard.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "src/a.py",
+          "content": "x"
+        }
+      }
+    },
+    {
+      "name": "scratch-guard: scratch file at project root",
+      "script": "scratch-guard.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "tmp.py",
+          "content": "x"
+        }
+      }
+    },
+    {
+      "name": "destructive-command: harmless",
+      "script": "destructive-command.sh",
+      "state": [
+        "careful"
+      ],
+      "stdin": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls -la"
+        }
+      }
+    },
+    {
+      "name": "destructive-command: recursive force delete",
+      "script": "destructive-command.sh",
+      "state": [
+        "careful"
+      ],
+      "stdin": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "rm -rf /"
+        }
+      }
+    },
+    {
+      "name": "doc-floor: source read",
+      "script": "doc-floor.sh",
+      "state": [],
+      "stdin": {
+        "tool_name": "Read",
+        "tool_input": {
+          "file_path": "src/a.py"
+        }
+      }
+    },
+    {
+      "name": "skill-ledger: skill invocation",
+      "script": "skill-ledger.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "tool_name": "Skill",
+        "tool_input": {
+          "name": "implement"
+        }
+      }
+    },
+    {
+      "name": "post-edit-test: edit recorded",
+      "script": "post-edit-test.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "src/a.py"
+        }
+      }
+    },
+    {
+      "name": "exec-ledger: edit recorded",
+      "script": "exec-ledger.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "src/a.py"
+        }
+      }
+    },
+    {
+      "name": "context-monitor: prompt submitted",
+      "script": "context-monitor.sh",
+      "state": [],
+      "stdin": {
+        "prompt": "add a health endpoint"
+      }
+    },
+    {
+      "name": "history-archive: compaction",
+      "script": "history-archive.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "trigger": "auto",
+        "custom_instructions": ""
+      }
+    },
+    {
+      "name": "run-guard: stop with no run",
+      "script": "run-guard.sh",
+      "state": [],
+      "stdin": {
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "run-guard: stop with run armed",
+      "script": "run-guard.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "run-guard: stop already looping",
+      "script": "run-guard.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "stop_hook_active": true
+      }
+    },
+    {
+      "name": "env-teardown: session end",
+      "script": "env-teardown.sh",
+      "state": [],
+      "stdin": {
+        "reason": "clear"
+      }
+    },
+    {
+      "name": "skill-floor: subagent stop",
+      "script": "skill-floor.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "skill-floor: already looping",
+      "script": "skill-floor.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": true
+      }
+    },
+    {
+      "name": "exec-floor: subagent stop",
+      "script": "exec-floor.sh",
+      "state": [
+        "run-active",
+        "run-context",
+        "exec-log",
+        "check-command"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "exec-floor: already looping",
+      "script": "exec-floor.sh",
+      "state": [
+        "run-active",
+        "run-context",
+        "exec-log",
+        "check-command"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": true
+      }
+    },
+    {
+      "name": "reach-floor: subagent stop",
+      "script": "reach-floor.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "reach-floor: already looping",
+      "script": "reach-floor.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": true
+      }
+    },
+    {
+      "name": "contract-floor: subagent stop",
+      "script": "contract-floor.sh",
+      "state": [
+        "run-active",
+        "run-context",
+        "contracts"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "contract-floor: already looping",
+      "script": "contract-floor.sh",
+      "state": [
+        "run-active",
+        "run-context",
+        "contracts"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": true
+      }
+    },
+    {
+      "name": "digest-cap: subagent stop",
+      "script": "digest-cap.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": false
+      }
+    },
+    {
+      "name": "digest-cap: already looping",
+      "script": "digest-cap.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "agent_id": "abc",
+        "agent_type": "backend",
+        "stop_hook_active": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "context-monitor: prompt submitted": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "contract-floor: already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "contract-floor: subagent stop": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "delegation-guard: armed, conductor edit": {
+    "rc": 2,
+    "stderr": "Cereblnk DelegationGuard: a run is active \u2014 file edits belong to the surface specialist subagent (agent-selection-policy \u00a71/\u00a73b), not the conducting conversation. The conductor holds plan, digests, and verdicts only. NEXT ACTION: spawn backend-agent with a Task Block for src/a.py, skills_required: [python], and let it write inside its own context.",
+    "stdout": ""
+  },
+  "delegation-guard: armed, subagent edit": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "delegation-guard: no run, conductor edit": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "destructive-command: harmless": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "destructive-command: recursive force delete": {
+    "rc": 2,
+    "stderr": "Cereblnk DestructiveCommandHook: blocked irreversible operation (recursive/forced delete). Ask the user for explicit confirmation, or have them disable /cb-careful (remove <PROJ>/.claude/cereblnk/flags/careful) if intended.",
+    "stdout": ""
+  },
+  "digest-cap: already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "digest-cap: subagent stop": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "doc-floor: source read": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "edit-boundary: absolute path outside project": {
+    "rc": 2,
+    "stderr": "Cereblnk EditBoundaryHook: write to '/etc/hosts' is outside the declared boundary (src). Adjust the plan or update the boundary with /cb-boundary.",
+    "stdout": ""
+  },
+  "edit-boundary: in-tree edit": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "env-teardown: session end": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "exec-floor: already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "exec-floor: subagent stop": {
+    "rc": 2,
+    "stderr": "backend edited backend and finished without running it. Run the configured check for each surface, read the output, and fix what it reports before finishing: backend -> pytest -q. State the result in your Response Block; an unexecuted change carries an assumed label, not a known one.",
+    "stdout": ""
+  },
+  "exec-ledger: edit recorded": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "history-archive: compaction": {
+    "rc": 0,
+    "stderr": "cereblnk history-archive: no transcript available to archive (path=''); compaction proceeds.",
+    "stdout": ""
+  },
+  "post-edit-test: edit recorded": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "reach-floor: already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "reach-floor: subagent stop": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "run-guard: stop already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "run-guard: stop with no run": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "run-guard: stop with run armed": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": "{\"decision\":\"block\",\"reason\":\"A Cereblnk run is still active (0/1 task blocks on disk in context/implement-2026-08-11/) \u2014 continue nudge 1/3. Reconcile the run ledger (plan.md vs Response Blocks), execute the NEXT unconfirmed task, then gates and synthesis. Nudges continue only while the ledger grows; if you are intentionally waiting for the user, remove flags/run-active first and ask.\"}"
+  },
+  "scratch-guard: normal path": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "scratch-guard: scratch file at project root": {
+    "rc": 2,
+    "stderr": "cereblnk scratch-guard: tmp.py is a new file at the repository root, created during a run. Working notes belong in <PROJ>/.claude/cereblnk/context/implement-2026-08-11/scratch, which is ignored by git and swept with the run. If this really is a deliverable, put it in the directory that owns it, or say so and write it again.",
+    "stdout": ""
+  },
+  "secret-guard: ordinary content": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "secret-guard: private key material": {
+    "rc": 2,
+    "stderr": "Cereblnk SecretGuardHook: blocked write containing a likely secret (private key material). Redact it or load it from the environment/secret store; never commit credentials to artifacts.",
+    "stdout": ""
+  },
+  "skill-floor: already looping": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "skill-floor: subagent stop": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "skill-ledger: skill invocation": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  }
+}

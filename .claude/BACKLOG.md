@@ -87,6 +87,16 @@ Claude path came through unchanged.
   suite. Here the current behaviour *is* the specification: this is a
   behaviour-preserving refactor, not a rewrite. The prohibition is not
   waived for anything else in this release.
+- **Coverage recorded, not claimed.** 31 cases across all 18 scripts. Six
+  guards have their refusal path frozen as well as their allowed path:
+  delegation-guard, edit-boundary, secret-guard, scratch-guard,
+  destructive-command, exec-floor. skill-floor, reach-floor,
+  contract-floor and digest-cap are frozen on the allowed path only —
+  arming them needs a skill ledger, a reachability report, a contract and
+  a transcript, which a synthetic project cannot produce cheaply. Their
+  refusal paths remain covered by test-skill-selection, test-reachability,
+  test-contract-check and test-exec-floor. The fixture says so in writing
+  rather than letting four exit-0 rows pass for coverage.
 - **Depends on.** Nothing.
 
 ### CB-128 — The refusal is decided in eighteen places and expressed in one
