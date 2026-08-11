@@ -6,14 +6,20 @@ load, and a skill that does not load fails the way this project cares
 about least usefully: silently, with the run continuing as though the
 craft had been supplied.
 
-The ceiling is not ours and we do not get to argue with it, so it is
-checked here rather than remembered. It is deliberately enforced on every
-host, including the ones with no such limit: a tree where one skill only
-works in some places is a tree where nobody can say what a port delivers.
+The ceiling is enforced on every host, including the ones with no such
+limit: a tree where one skill only works in some places is a tree where
+nobody can say what a port delivers.
 
-Ceiling: 8192 bytes, from the skill packaging limit of the smallest
-adjacent host. Re-measure it when CB-122 profiles that host; if it moves,
-this constant moves with evidence attached.
+Ceiling: 8192 bytes. **This number is unmeasured.** It comes from
+documentation for an adjacent host, which is the kind of source CB-122
+exists not to trust, and no probe has confirmed it. It is enforced anyway
+because a guessed ceiling that turns out to be right costs a tidier file,
+and one that turns out to be wrong is corrected by moving a constant. Both
+are cheaper than shipping a skill that silently fails to load.
+
+When CB-131 profiles that host, this constant is re-derived from the
+profile and this paragraph is rewritten to say what was measured. Until
+then it reads as a guess, because it is one.
 
 Usage:
   scripts/check-skill-size            check every SKILL.md
