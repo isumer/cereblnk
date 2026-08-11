@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""check-host-matrix — every published cell traces to evidence (CB-125).
+
+The support matrix is the one page a reader consults to find out what a
+port delivers. A hand-maintained table drifts from the tree, and the
+drift that matters is upward: a capability quietly reading as supported
+because someone read a vendor page, or because it was true of Claude Code
+and the row was copied.
+
+So no cell is written by hand. Each is compared with the source that
+earns it:
+
+  a bound host      policies/hosts/<host>.yaml, the class field
+  an unbound host   context/host-profile.<host>.yaml, the status field
+  neither           the cell must read `unmeasured`
+
+That last line is the point of the whole checker. `unmeasured` is not a
+placeholder to be tidied away later; it is the accurate answer until a
+run says otherwise, and this refuses any cell that claims more than its
+evidence does. A host with no profile cannot have a supported capability
+printed against it, however confident the documentation is.
+
+The reverse is checked too: evidence that exists and is not published is
+also a difference, because a matrix that omits a measured absence reads
+as though the question were never asked.
+
+Usage:
+  scripts/check-host-matrix           check README against the evidence
+  scripts/check-host-matrix --show    print the matrix the evidence supports
+
+Exit: 0 the matrix matches its evidence · 1 it does not
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PLUGIN = ROOT / "plugins/cereblnk"
+HOSTS_DIR = PLUGIN / "policies/hosts"
+PROFILE_DIR = PLUGIN / "context"
+README = ROOT / "README.md"
+
+MARK_START = "<!-- host-matrix:start -->"
+MARK_END = "<!-- host-matrix:end -->"
+
+HOSTS = ("claude", "cursor", "codex", "gemini")
+CAPABILITIES = ("pre_tool_veto", "post_tool", "turn_stop", "subagent_stop",
+                "pre_compact", "session_start", "session_end")
+
+UNMEASURED = "unmeasured"
+
+
+def bound_classes(host):
+    """Capability -> class, from a host binding. Absent if unbound."""
+    path = HOSTS_DIR / ("%s.yaml" % host)
+    if not path.exists():
+        return None
+    out, current = {}, None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^\s*-\s*capability:\s*(\S+)", line)
+        if m:
+            current = m.group(1)
+            continue
+        m = re.match(r"^\s+class:\s*(\S+)", line)
+        if m and current:
+            # a capability id in a binding is <family>.<script>; the
+            # matrix asks about families, so several rows collapse to one
+            family = current.split(".", 1)[0]
+            out.setdefault(family, m.group(1))
+    return out
+
+
+def probed_status(host):
+    """Capability -> status, from a recorded profile. Absent if never run."""
+    path = PROFILE_DIR / ("host-profile.%s.yaml" % host)
+    if not path.exists():
+        return None
+    out, current = {}, None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^\s*-\s*capability:\s*(\S+)", line)
+        if m:
+            current = m.group(1)
+            continue
+        m = re.match(r"^\s+status:\s*(\S+)", line)
+        if m and current:
+            out[current] = m.group(1)
+    return out
+
+
+FAMILY = {"pre_tool_veto": "veto", "post_tool": "veto", "turn_stop": "turn",
+          "subagent_stop": "floor", "pre_compact": "compact",
+          "session_start": "session", "session_end": "session"}
+
+
+def cell(host, capability):
+    classes = bound_classes(host)
+    if classes is not None:
+        got = classes.get(FAMILY.get(capability, capability))
+        if got:
+            return got
+    status = probed_status(host)
+    if status is not None:
+        got = status.get(capability)
+        if got and got != UNMEASURED:
+            return got
+    return UNMEASURED
+
+
+def supported_matrix():
+    rows = ["| Capability | " + " | ".join(HOSTS) + " |",
+            "|---|" + "---|" * len(HOSTS)]
+    for cap in CAPABILITIES:
+        rows.append("| `%s` | %s |"
+                    % (cap, " | ".join(cell(h, cap) for h in HOSTS)))
+    return "\n".join(rows)
+
+
+def published():
+    if not README.exists():
+        return None
+    text = README.read_text(encoding="utf-8")
+    if MARK_START not in text or MARK_END not in text:
+        return None
+    body = text.split(MARK_START, 1)[1].split(MARK_END, 1)[0]
+    return "\n".join(l.rstrip() for l in body.strip().splitlines()
+                     if l.strip().startswith("|"))
+
+
+def main():
+    want = supported_matrix()
+    if "--show" in sys.argv:
+        print(want)
+        return 0
+
+    got = published()
+    if got is None:
+        print("check-host-matrix: README.md has no host matrix.\n"
+              "  Add one between %s and %s.\n"
+              "  scripts/check-host-matrix --show prints the matrix the "
+              "evidence supports." % (MARK_START, MARK_END), file=sys.stderr)
+        return 1
+
+    if got != want:
+        print("check-host-matrix: the published matrix does not match its "
+              "evidence", file=sys.stderr)
+        wl, gl = want.splitlines(), got.splitlines()
+        for i in range(max(len(wl), len(gl))):
+            w = wl[i] if i < len(wl) else "(missing)"
+            g = gl[i] if i < len(gl) else "(missing)"
+            if w != g:
+                print("  published: %s\n  evidence:  %s" % (g, w),
+                      file=sys.stderr)
+        print("\n  Cells are not edited into the README. Fix the evidence —\n"
+              "  a binding under policies/hosts/, or a profile produced by\n"
+              "  scripts/host-probe — then paste `--show` output back in.",
+              file=sys.stderr)
+        return 1
+
+    counted = sum(1 for cap in CAPABILITIES for h in HOSTS
+                  if cell(h, cap) != UNMEASURED)
+    print("check-host-matrix: %d cell(s) traced to evidence, %d unmeasured"
+          % (counted, len(CAPABILITIES) * len(HOSTS) - counted))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

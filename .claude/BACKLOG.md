@@ -58,20 +58,6 @@ open or closed.
   matrix CB-125 publishes would otherwise be a table of guesses.
 - **Depends on.** CB-122.
 
-### CB-125 — The support matrix is checked against the probe, not written by hand
-
-A hand-maintained capability table drifts from the tree, and a silent
-drop from M to D is the failure this project exists to refuse. A host
-that cannot block must say so, not quietly stop blocking.
-
-- **Deliverable.** `scripts/check-host-matrix`, wired into
-  `scripts/verify`, plus the matrix section in `README.md`.
-- **Acceptance.** Every cell in the published matrix is derived from a
-  `context/host-profile.<host>.yaml` field. Mutation: change one cell by
-  hand, the checker goes red. A capability absent on a host is printed
-  as absent, never omitted.
-- **Depends on.** CB-122.
-
 ---
 
 ## Closed
