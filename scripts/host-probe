@@ -259,25 +259,73 @@ def cmd_status():
     return 0
 
 
+# Candidate event names per host, for wiring the recorder. These come
+# from documentation, and documentation is exactly what CB-122 refuses to
+# trust — so they are candidates, not claims. A name that is wrong simply
+# never fires, and the profile reports that capability unmeasured. The
+# guess cannot contaminate the evidence; it can only fail to gather any.
+CANDIDATE_EVENTS = {
+    "claude": ["PreToolUse", "PostToolUse", "Stop", "SubagentStop",
+               "PreCompact", "SessionStart", "SessionEnd"],
+    "cursor": ["preToolUse", "postToolUse", "stop", "subagentStop",
+               "preCompact", "sessionStart", "sessionEnd",
+               "beforeShellExecution", "afterFileEdit"],
+    "codex": ["PreToolUse", "PostToolUse", "Stop", "SessionStart",
+              "UserPromptSubmit"],
+    "gemini": ["BeforeTool", "AfterTool", "BeforeModel", "AfterModel"],
+}
+
+
 def cmd_install(host):
     if host not in HOSTS:
         print("host-probe: unknown host %r" % host, file=sys.stderr)
         return 2
     spec = HOSTS[host]
+    probe = ROOT / "scripts/host-probe"
+    events = CANDIDATE_EVENTS.get(host, [])
+
+    hooks = {}
+    for event in events:
+        hooks[event] = [{
+            "command": "CB_PROBE_HOST=%s CB_PROBE_EVENT=%s %s record"
+                       % (host, event, probe),
+        }]
+    config = json.dumps({"version": 1, "hooks": hooks}, indent=2)
+
     print("host-probe: %s reads its hook config from %s"
           % (host, spec["config"]))
-    print("  Point every lifecycle event it offers at:")
-    print("    %s record" % (ROOT / "scripts/host-probe"))
-    print("  with CB_PROBE_HOST=%s and CB_PROBE_EVENT set per event." % host)
     print()
-    print("  Then use the host normally, and provoke the two facts a normal")
-    print("  session will not show: make a hook refuse something, and make")
-    print("  a hook exit non-zero to see whether the action still went")
-    print("  through. Collect with: host-probe collect %s --write" % host)
+    print("1. Put this in that file, inside a project the host opens:")
     print()
-    print("  install prints rather than writes: the config it would touch")
-    print("  belongs to the operator's editor, and a probe that silently")
-    print("  rewrites it has already earned distrust.")
+    for line in config.splitlines():
+        print("   " + line)
+    print()
+    print("   The event names above are candidates taken from")
+    print("   documentation, which is what this whole command exists not to")
+    print("   trust. A wrong name never fires and its capability stays")
+    print("   unmeasured — the guess cannot contaminate the evidence, only")
+    print("   fail to gather it. Adjust the key shape to whatever the host")
+    print("   actually accepts; the recorder itself does not care.")
+    print()
+    print("2. Use the host normally for a few turns. Edit a file, run a")
+    print("   command, let a subagent finish, end the session.")
+    print()
+    print("3. Provoke the two facts step 2 cannot show.")
+    print("   a. Make a hook refuse something — return the host's refusal")
+    print("      form from a pre-tool hook — and see whether the action")
+    print("      was actually stopped or merely complained about:")
+    print("        host-probe attest %s --refusal-enforced yes|no" % host)
+    print("   b. Make a hook exit non-zero, and see whether the action")
+    print("      still went through:")
+    print("        host-probe attest %s --failure-mode open|closed" % host)
+    print()
+    print("4. host-probe collect %s --write" % host)
+    print("   Then scripts/check-host-matrix, which will refuse any cell")
+    print("   the recording does not support.")
+    print()
+    print("install prints rather than writes: the file it would touch")
+    print("belongs to the operator's editor, and a probe that silently")
+    print("rewrites it has already earned distrust.")
     return 0
 
 
