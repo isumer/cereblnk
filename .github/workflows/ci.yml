@@ -55,3 +55,23 @@ jobs:
 
       - name: Run the deterministic acceptance suite
         run: python3 scripts/verify
+
+  # The release gate. Runs only where the decision is made — a pull
+  # request into main — because open items are the normal state on a
+  # release branch and on every task branch feeding it. That is also why
+  # it is not part of scripts/verify.
+  release-ready:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the tree
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Refuse a release that still has open backlog items
+        run: python3 scripts/check-release-ready

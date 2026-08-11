@@ -69,36 +69,6 @@ an agent is told to run something that is not there.
   Mutation: break one path, the checker goes red.
 - **Depends on.** Nothing.
 
-### CB-127 — The Claude binding is frozen before anything moves
-
-CB-128 and CB-124 are behaviour-preserving by intent. Intent is not a
-mechanism. Without a recorded prior state there is no way to prove the
-Claude path came through unchanged.
-
-- **Deliverable.** `tests/golden/claude-hooks.json` (today's
-  `hooks/hooks.json`, byte for byte) and `test-hook-contract` with one
-  fixture per hook script.
-- **Acceptance.** For each of the 18 hook scripts a fixture supplies a
-  stdin payload and records the resulting exit code and stderr text,
-  captured before CB-128 begins. The suite passes against the current
-  tree.
-- **Note on blessed fixtures.** Blessing current output is normally
-  forbidden, because a fixture taken from buggy output invalidates the
-  suite. Here the current behaviour *is* the specification: this is a
-  behaviour-preserving refactor, not a rewrite. The prohibition is not
-  waived for anything else in this release.
-- **Coverage recorded, not claimed.** 31 cases across all 18 scripts. Six
-  guards have their refusal path frozen as well as their allowed path:
-  delegation-guard, edit-boundary, secret-guard, scratch-guard,
-  destructive-command, exec-floor. skill-floor, reach-floor,
-  contract-floor and digest-cap are frozen on the allowed path only —
-  arming them needs a skill ledger, a reachability report, a contract and
-  a transcript, which a synthetic project cannot produce cheaply. Their
-  refusal paths remain covered by test-skill-selection, test-reachability,
-  test-contract-check and test-exec-floor. The fixture says so in writing
-  rather than letting four exit-0 rows pass for coverage.
-- **Depends on.** Nothing.
-
 ### CB-128 — The refusal is decided in eighteen places and expressed in one
 
 Every blocking hook ends the same way: message to stderr, `exit 2`.
@@ -164,6 +134,20 @@ directory distinct from the plugin's.
   matrix changes because of it.
 - **Depends on.** Nothing. (Matrix entries for these hosts wait on
   CB-122.)
+
+### CB-130 — A release branch reaches main empty
+
+"1.4.0 does not merge to main until the backlog is done" is a rule, and a
+rule without a checker is a wish. Someone merges on a Friday, two items
+are still open, and nothing objects.
+
+- **Deliverable.** `scripts/check-release-ready`, and a CI job that runs
+  it on pull requests whose base is `main`.
+- **Acceptance.** With any task heading under `## Open`, the checker
+  exits non-zero and names every open item. With the section empty, it
+  exits 0. It does not run on merges into the release branch, where open
+  items are the normal state — so it stays out of `scripts/verify`.
+- **Depends on.** Nothing.
 
 ### CB-129 — One skill exceeds the smallest host's ceiling
 
@@ -301,4 +285,5 @@ read.
 - [x] **CB-118** — Every README claim re-derived from the tree; five were wrong
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
+- [x] **CB-127** — The Claude binding is frozen before anything moves
 - [x] **CB-121** — Rewrite: the old behaviour is ruled, not transcribed
