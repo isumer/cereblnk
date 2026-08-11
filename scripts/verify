@@ -22,6 +22,7 @@ unsupported paths where the tool has them):
   test-hook-contract      the Claude binding, frozen (CB-127)
   test-host-adapter       the refusal changes shape per host (CB-128)
   check-generated         committed bindings match their generator (CB-124)
+  check-script-paths      a path named in a prompt exists (CB-123)
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
   rules-layer             constraint files load and resolve (CB-092)
@@ -92,6 +93,10 @@ def main():
           if lk.returncode == 3
           else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
           skipped=(lk.returncode == 3))
+
+    sp = sh([sys.executable, str(S / "check-script-paths")])
+    suite("check-script-paths", sp.returncode == 0,
+          (sp.stdout or sp.stderr).strip().splitlines()[0][:100] if sp.returncode else "")
 
     cg = sh([sys.executable, str(S / "check-generated")])
     suite("check-generated", cg.returncode == 0,

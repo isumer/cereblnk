@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""check-script-paths — a path named in a prompt has to exist (CB-123).
+
+Skills and agents tell a model to run things by path. Nothing checked
+those paths. `ground-check` validates evidence citations of the form
+`file#Lm-n`, which is a different claim about a different kind of line.
+
+A stale path here does not fail loudly. The agent is told to run something
+that is not there, the shell says so into a subprocess nobody reads, and
+the run continues having skipped a step. That is the failure this exists
+to convert into a red suite — and the reason the 1.4.0 port must not move
+a single script until it is green.
+
+Scanned: skills/, agents/, rules/, README.md and docs/.
+Recognised, with or without a ${CLAUDE_PLUGIN_ROOT} or plugins/cereblnk
+prefix:
+
+    scripts/<name>          resolved against both script roots
+    hooks/scripts/<name>    resolved against the hook directory
+
+Prose about `scripts/` with no name after it is not a reference and is
+not checked.
+
+Usage:
+  scripts/check-script-paths            check the tree
+  scripts/check-script-paths --list     print every reference found
+
+Exit: 0 every path resolves · 1 at least one does not
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PLUGIN = ROOT / "plugins/cereblnk"
+
+SCAN = [PLUGIN / "skills", PLUGIN / "agents", PLUGIN / "rules",
+        ROOT / "docs", ROOT / "README.md"]
+
+# Script roots, in the order a reference is resolved against them.
+SCRIPT_ROOTS = [PLUGIN / "scripts", ROOT / "scripts"]
+HOOK_ROOT = PLUGIN / "hooks/scripts"
+
+REF = re.compile(
+    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}/|plugins/cereblnk/)?"
+    r"(?P<kind>hooks/scripts|scripts)/(?P<name>[A-Za-z0-9_][A-Za-z0-9_.-]*)")
+
+# Names that look like a reference but are not a script: directory entries
+# that legitimately live under scripts/ without being one.
+NOT_A_SCRIPT = {"lib"}
+
+
+def files():
+    for target in SCAN:
+        if target.is_file():
+            yield target
+        elif target.is_dir():
+            for p in sorted(target.rglob("*")):
+                if p.is_file() and p.suffix in (".md", ".yaml", ".yml"):
+                    yield p
+
+
+def resolve(kind, name):
+    roots = [HOOK_ROOT] if kind == "hooks/scripts" else SCRIPT_ROOTS
+    for root in roots:
+        if (root / name).exists():
+            return root / name
+    return None
+
+
+def main():
+    listing = "--list" in sys.argv
+    misses, seen, scanned = [], set(), 0
+
+    for path in files():
+        scanned += 1
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            for m in REF.finditer(line):
+                kind, name = m.group("kind"), m.group("name")
+                if name in NOT_A_SCRIPT:
+                    continue
+                ref = "%s/%s" % (kind, name)
+                seen.add(ref)
+                if listing:
+                    continue
+                if resolve(kind, name) is None:
+                    misses.append((path.relative_to(ROOT), n, ref))
+
+    if listing:
+        for ref in sorted(seen):
+            kind, name = ref.rsplit("/", 1)
+            print("%s %s" % ("ok  " if resolve(kind, name) else "MISS", ref))
+        return 0
+
+    if misses:
+        print("check-script-paths: %d unresolved path(s)" % len(misses),
+              file=sys.stderr)
+        for where, line, ref in misses:
+            print("  %s:%d  %s" % (where, line, ref), file=sys.stderr)
+        print("\n  A path named in a prompt is an instruction to run it. If the "
+              "script moved,\n  every reference moves with it; if it never "
+              "existed, the instruction is a\n  wish.", file=sys.stderr)
+        return 1
+
+    print("check-script-paths: %d reference(s) across %d file(s), all resolve"
+          % (len(seen), scanned))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

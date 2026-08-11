@@ -55,38 +55,6 @@ rest on that.
   absent, not assumed.
 - **Depends on.** Nothing.
 
-### CB-123 — A script path named inside a prompt is never checked to exist
-
-`scripts/` is referenced 60 times inside skill and agent files and 6
-times in README and docs. `ground-check` validates evidence citations
-(`path#Lm-n`), not these. A stale path here fails silently at runtime:
-an agent is told to run something that is not there.
-
-- **Deliverable.** `scripts/check-script-paths`, wired into
-  `scripts/verify`.
-- **Acceptance.** Every script path named in `skills/`, `agents/`,
-  `rules/`, `README.md` and `docs/` resolves to a file that exists.
-  Mutation: break one path, the checker goes red.
-- **Depends on.** Nothing.
-
-### CB-128 — The refusal is decided in eighteen places and expressed in one
-
-Every blocking hook ends the same way: message to stderr, `exit 2`.
-That pairing is Claude Code's refusal form, and it is currently spelled
-out inside each script. Any second host would require either a second
-copy of all eighteen or a translation layer. It gets the translation
-layer.
-
-- **Deliverable.** `hooks/lib/hostio.sh`, providing `cb_event_read`
-  (normalises the event payload into host-neutral variables) and
-  `cb_block` (emits the host's refusal form). The 18 scripts change at
-  their exit sites only.
-- **Acceptance.** `test-hook-contract` from CB-127 passes unchanged. No
-  hook script contains a literal `exit 2` outside `hostio.sh`. Hook
-  logic, conditions and message text are untouched — the diff is
-  confined to exit sites and one added source line.
-- **Depends on.** CB-127.
-
 ### CB-125 — The support matrix is checked against the probe, not written by hand
 
 A hand-maintained capability table drifts from the tree, and a silent
@@ -118,20 +86,6 @@ directory distinct from the plugin's.
   matrix changes because of it.
 - **Depends on.** Nothing. (Matrix entries for these hosts wait on
   CB-122.)
-
-### CB-130 — A release branch reaches main empty
-
-"1.4.0 does not merge to main until the backlog is done" is a rule, and a
-rule without a checker is a wish. Someone merges on a Friday, two items
-are still open, and nothing objects.
-
-- **Deliverable.** `scripts/check-release-ready`, and a CI job that runs
-  it on pull requests whose base is `main`.
-- **Acceptance.** With any task heading under `## Open`, the checker
-  exits non-zero and names every open item. With the section empty, it
-  exits 0. It does not run on merges into the release branch, where open
-  items are the normal state — so it stays out of `scripts/verify`.
-- **Depends on.** Nothing.
 
 ### CB-129 — One skill exceeds the smallest host's ceiling
 
