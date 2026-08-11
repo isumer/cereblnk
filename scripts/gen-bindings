@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""gen-bindings — a host's hook config, generated from the two-hop policy (CB-124).
+
+Concept -> capability -> host binding. The middle hop is the whole point:
+bound straight to one host's event names, a capability that is mechanical
+there looks mechanical everywhere, and the first port inherits a claim
+nobody checked.
+
+The generated file is committed. It is not hand-edited — check-generated
+regenerates every committed binding and goes red on any difference, which
+is the only thing keeping a second host from becoming a second copy.
+
+Usage:
+  scripts/gen-bindings claude            print the binding to stdout
+  scripts/gen-bindings claude --write    write it to its committed path
+  scripts/gen-bindings --list            hosts with a binding file
+
+Exit: 0 fine · 1 the policy could not be read or is inconsistent
+"""
+import json
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+POLICY = ROOT / "plugins/cereblnk/policies"
+OUT = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json"}
+
+
+def read_blocks(path, first_key):
+    """The restricted subset this repo already uses for policy files.
+
+    Deliberately not general YAML: a plugin the user installs may not
+    add a dependency, and the standard library carries no reader. The
+    schema is a list of blocks with scalar values, which a few lines
+    handle exactly and predictably.
+    """
+    blocks, errors, cur, header = [], [], None, {}
+    if not path.exists():
+        return [], {}, ["%s not found" % path]
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        m = re.match(r"^(\w+):\s*(.*)$", line)
+        if m and not line.startswith(" "):
+            key, val = m.group(1), m.group(2).strip()
+            if val:
+                header[key] = json.loads(val) if val.startswith('"') else val
+            continue
+        m = re.match(r"^\s*-\s*%s:\s*(.+?)\s*$" % first_key, line)
+        if m:
+            cur = {first_key: m.group(1), "line": n}
+            blocks.append(cur)
+            continue
+        m = re.match(r"^\s+(\w+):\s*(.+?)\s*$", line)
+        if not m:
+            errors.append("line %d: unparsed: %s" % (n, line.strip()))
+            continue
+        if cur is None:
+            errors.append("line %d: %s before any block" % (n, m.group(1)))
+            continue
+        cur[m.group(1)] = m.group(2).strip().strip("'")
+    return blocks, header, errors
+
+
+def build(host):
+    caps, _, cap_err = read_blocks(POLICY / "capabilities.yaml", "capability")
+    binds, header, bind_err = read_blocks(
+        POLICY / ("hosts/%s.yaml" % host), "capability")
+    errors = cap_err + bind_err
+    if not binds and not errors:
+        errors.append("no bindings for host %r" % host)
+
+    known = {c["capability"]: c for c in caps}
+    for b in binds:
+        if b["capability"] not in known:
+            errors.append("line %d: %s is not in capabilities.yaml"
+                          % (b["line"], b["capability"]))
+        if b.get("class") not in ("M", "D", "F"):
+            errors.append("line %d: %s has class %r, expected M, D or F"
+                          % (b["line"], b["capability"], b.get("class")))
+    if errors:
+        return None, errors
+
+    hooks = {}
+    for b in binds:
+        if b["class"] == "F":
+            continue  # absent on this host; nothing to emit
+        event = b["event"]
+        entry = {"type": "command",
+                 "command": '"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/%s"'
+                            % known[b["capability"]]["script"]}
+        group = hooks.setdefault(event, [])
+        matcher = b.get("matcher")
+        # consecutive rows sharing an event and matcher become one group,
+        # which is how the generated file reproduces the hand-written one
+        if group and group[-1].get("matcher") == matcher:
+            group[-1]["hooks"].append(entry)
+        else:
+            block = {"hooks": [entry]}
+            if matcher is not None:
+                block = {"matcher": matcher, "hooks": [entry]}
+            group.append(block)
+
+    doc = {}
+    if "description" in header:
+        doc["description"] = header["description"]
+    doc["hooks"] = hooks
+    return json.dumps(doc, indent=2) + "\n", []
+
+
+def main():
+    argv = sys.argv[1:]
+    if "--list" in argv:
+        for p in sorted((POLICY / "hosts").glob("*.yaml")):
+            print(p.stem)
+        return 0
+    if not argv:
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        return 1
+
+    host = argv[0]
+    text, errors = build(host)
+    if errors:
+        print("gen-bindings: %s: %d problem(s)" % (host, len(errors)),
+              file=sys.stderr)
+        for e in errors:
+            print("  %s" % e, file=sys.stderr)
+        return 1
+
+    if "--write" in argv:
+        target = OUT.get(host)
+        if target is None:
+            print("gen-bindings: no committed path for host %r — add one to "
+                  "OUT before writing" % host, file=sys.stderr)
+            return 1
+        target.write_text(text, encoding="utf-8")
+        print("gen-bindings: wrote %s" % target.relative_to(ROOT))
+        return 0
+
+    sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

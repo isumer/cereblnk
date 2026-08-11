@@ -1,0 +1,82 @@
+# Claude Code binding (CB-124)
+#
+# The host-specific half. Every line answers one question: which event on
+# this host delivers this capability, and is the enforcement mechanical
+# (M), instruction-driven (D), or absent (F)?
+#
+# Order is significant. scripts/gen-bindings emits hooks.json by walking
+# this file top to bottom and grouping consecutive rows that share an
+# event and matcher, which is how the generated file reproduces the one
+# that was hand-written before it. Reordering rows reorders the hooks.
+#
+# Schema, one block per binding:
+#   capability:  an id from policies/capabilities.yaml
+#   event:       the host's lifecycle event
+#   matcher:     tool filter, or omitted where the event takes none
+#   class:       M | D | F, for this host only
+version: 1
+description: "Cereblnk hard-enforcement hooks. DestructiveCommand, EditBoundary, and PostEditTest are opt-in per session via flag files under .claude/cereblnk/flags/ (/cb-careful, /cb-boundary); SecretGuard, HistoryArchive (PreCompact transcript backup to .claude/cereblnk/history/), SkillLedger (records skill loads into the run ledger) and SkillFloor (blocks a specialist that finishes without its required skills) and DigestCap (blocks a subagent whose return exceeds the computed digest line cap) and ContextMonitor (measures real window occupancy each turn; warns past the checkpoint, never blocks) and ScratchGuard (blocks a new untracked file at the repository root during a run and names where working notes belong) and DocFloor (blocks an unbounded Read of a large indexed document and hands back its outline) and ExecLedger (records which surfaces a specialist edited and which it ran) and ExecFloor (blocks a specialist that finishes without running a surface it changed) and ReachFloor (blocks a specialist that leaves new code nothing in the project calls) and EnvTeardown (SessionEnd; takes down an environment this project started and nothing reaped) and ContractFloor (blocks a surface closing while silent about a channel its cross-surface contract names) are always on."
+bindings:
+  - capability: veto.destructive-command
+    event: PreToolUse
+    matcher: 'Bash'
+    class: M
+  - capability: veto.delegation-guard
+    event: PreToolUse
+    matcher: 'Write|Edit|MultiEdit|NotebookEdit'
+    class: M
+  - capability: veto.edit-boundary
+    event: PreToolUse
+    matcher: 'Write|Edit|MultiEdit|NotebookEdit'
+    class: M
+  - capability: veto.secret-guard
+    event: PreToolUse
+    matcher: 'Write|Edit|MultiEdit|NotebookEdit'
+    class: M
+  - capability: veto.scratch-guard
+    event: PreToolUse
+    matcher: 'Write|Edit|MultiEdit|NotebookEdit'
+    class: M
+  - capability: veto.doc-floor
+    event: PreToolUse
+    matcher: 'Read'
+    class: M
+  - capability: veto.skill-ledger
+    event: PreToolUse
+    matcher: 'Skill'
+    class: M
+  - capability: veto.post-edit-test
+    event: PostToolUse
+    matcher: 'Write|Edit'
+    class: M
+  - capability: veto.exec-ledger
+    event: PostToolUse
+    matcher: 'Write|Edit|MultiEdit|NotebookEdit|Bash'
+    class: M
+  - capability: compact.history-archive
+    event: PreCompact
+    class: M
+  - capability: turn.run-guard
+    event: Stop
+    class: M
+  - capability: session.env-teardown
+    event: SessionEnd
+    class: M
+  - capability: floor.skill-floor
+    event: SubagentStop
+    class: M
+  - capability: floor.exec-floor
+    event: SubagentStop
+    class: M
+  - capability: floor.reach-floor
+    event: SubagentStop
+    class: M
+  - capability: floor.contract-floor
+    event: SubagentStop
+    class: M
+  - capability: floor.digest-cap
+    event: SubagentStop
+    class: M
+  - capability: prompt.context-monitor
+    event: UserPromptSubmit
+    class: M

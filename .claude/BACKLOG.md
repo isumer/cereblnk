@@ -87,22 +87,6 @@ layer.
   confined to exit sites and one added source line.
 - **Depends on.** CB-127.
 
-### CB-124 — Concept to capability to host: the binding grows a middle hop
-
-`05_EXECUTION_REALITY_MAP.md` binds a concept straight to a Claude Code
-mechanism. An M on one host may be D or absent on another, so a single
-global class label stops being true the moment a second host exists.
-
-- **Deliverable.** `policies/capabilities.yaml` (host-neutral capability
-  ids), `policies/hosts/claude.yaml` (the binding), `scripts/gen-bindings`
-  (emits a host's config from the two), and 05 restructured so M/D/F is
-  recorded per host.
-- **Acceptance.** `gen-bindings claude` produces a file byte-identical
-  to `tests/golden/claude-hooks.json`. `check-generated` regenerates
-  every committed host config and goes red on any difference. No file is
-  moved; no path changes.
-- **Depends on.** CB-127, CB-128.
-
 ### CB-125 — The support matrix is checked against the probe, not written by hand
 
 A hand-maintained capability table drifts from the tree, and a silent

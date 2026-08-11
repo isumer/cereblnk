@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""check-generated — a generated file matches its generator (CB-124).
+
+Host bindings are committed, because a plugin has to work from a checkout
+without running anything first. Committed and generated at once is a
+standing invitation: someone fixes a hook path in hooks.json directly, the
+policy still says the old thing, and the next regeneration silently
+reverts the fix.
+
+So the committed file is compared against what the generator produces
+right now, the way a lockfile is. If they differ, one of the two is
+wrong and the difference is shown rather than resolved.
+
+This is what keeps a second host from becoming a second copy. Without it
+the two-hop binding is a diagram, not a mechanism.
+
+Usage: scripts/check-generated
+
+Exit: 0 every binding matches · 1 drift or a generator failure
+"""
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+GEN = ROOT / "scripts/gen-bindings"
+HOSTS = ROOT / "plugins/cereblnk/policies/hosts"
+COMMITTED = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json"}
+
+
+def main():
+    hosts = sorted(p.stem for p in HOSTS.glob("*.yaml"))
+    if not hosts:
+        print("check-generated: no host bindings under policies/hosts/",
+              file=sys.stderr)
+        return 1
+
+    problems, checked = [], 0
+    for host in hosts:
+        proc = subprocess.run([sys.executable, str(GEN), host],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            problems.append("%s: gen-bindings failed\n    %s"
+                            % (host, proc.stderr.strip().replace("\n", "\n    ")))
+            continue
+
+        target = COMMITTED.get(host)
+        if target is None:
+            problems.append(
+                "%s: generates cleanly but has no committed path — add one to "
+                "COMMITTED, or the binding is generated and never shipped"
+                % host)
+            continue
+        if not target.exists():
+            problems.append("%s: %s is missing"
+                            % (host, target.relative_to(ROOT)))
+            continue
+
+        if target.read_text(encoding="utf-8") != proc.stdout:
+            problems.append(
+                "%s: %s differs from what gen-bindings produces.\n"
+                "    Either the file was hand-edited, or the policy changed "
+                "and the file was not\n"
+                "    regenerated. Fix the policy, then: scripts/gen-bindings "
+                "%s --write"
+                % (host, target.relative_to(ROOT), host))
+            continue
+        checked += 1
+
+    if problems:
+        print("check-generated: %d problem(s)" % len(problems),
+              file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        return 1
+
+    print("check-generated: %d host binding(s) match their generator"
+          % checked)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
