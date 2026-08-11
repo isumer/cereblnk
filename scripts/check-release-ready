@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""check-release-ready — a release branch reaches main empty (CB-130).
+
+The rule is that feature/1.4.0 does not merge to main until every item
+opened for it is closed. Stated in a document, that is a wish; someone
+merges on a Friday and the release ships with two items still open and
+nothing objects.
+
+So it is a checker, and it runs where the decision is actually made: on a
+pull request whose base is main. Everywhere else — every task branch,
+every merge into the release branch — open items are the normal state and
+this stays out of the way. That is why it is not part of scripts/verify.
+
+What counts as open is a task heading under `## Open` in
+.claude/BACKLOG.md. Closing an item means moving it to `## Closed` as a
+one-line entry, which is the shape that section already has.
+
+Usage:
+  scripts/check-release-ready              check .claude/BACKLOG.md
+  scripts/check-release-ready --path FILE  check another file
+
+Exit: 0 nothing open · 1 items still open · 2 the backlog could not be read
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+DEFAULT = ROOT / ".claude/BACKLOG.md"
+
+TASK = re.compile(r"^###\s+(CB-\d{3})\b\s*(.*)$")
+SECTION = re.compile(r"^##\s+(.*)$")
+
+
+def open_items(text):
+    """Task headings that sit under an Open section."""
+    found, in_open = [], False
+    for line in text.splitlines():
+        section = SECTION.match(line)
+        if section and not line.startswith("###"):
+            in_open = section.group(1).strip().lower().startswith("open")
+            continue
+        if not in_open:
+            continue
+        task = TASK.match(line)
+        if task:
+            found.append((task.group(1), task.group(2).strip(" —-")))
+    return found
+
+
+def main():
+    path = DEFAULT
+    if "--path" in sys.argv:
+        path = pathlib.Path(sys.argv[sys.argv.index("--path") + 1])
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"check-release-ready: cannot read {path}: {exc}",
+              file=sys.stderr)
+        return 2
+
+    items = open_items(text)
+    if not items:
+        print("check-release-ready: no open items — the release branch is "
+              "empty and may reach main")
+        return 0
+
+    print(f"check-release-ready: {len(items)} item(s) still open — this "
+          f"release does not merge to main yet", file=sys.stderr)
+    for cb, title in items:
+        print(f"  {cb} — {title}", file=sys.stderr)
+    print("\n  Close an item by moving it to the Closed section as a "
+          "one-line entry.\n  If an item is being dropped rather than done, "
+          "it still moves — with\n  the reason it was dropped, so the record "
+          "does not go quiet.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
