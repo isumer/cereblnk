@@ -90,20 +90,6 @@ directory distinct from the plugin's.
 - **Depends on.** Nothing. (Matrix entries for these hosts wait on
   CB-122.)
 
-### CB-129 — One skill exceeds the smallest host's ceiling
-
-An adjacent host caps a skill file at 8 KB. Measured across the tree:
-1 of 94 `SKILL.md` files is over (`skills/orchestrate/SKILL.md`, 9983 B);
-0 of 29 agent files are.
-
-- **Deliverable.** `skills/orchestrate/SKILL.md` brought under the cap,
-  and a size assertion in the verify suite.
-- **Acceptance.** Every `SKILL.md` is under 8192 bytes. The checker
-  names the ceiling and its source. `authoring-lint judgment` still
-  passes on the reduced file — shrinking it must not turn judgment
-  language into a recipe.
-- **Depends on.** Nothing.
-
 ---
 
 ## Closed
