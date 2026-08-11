@@ -8,11 +8,19 @@
 # graph hold; it is not a claim that the agents reason correctly.
 name: verify
 
+# Release branches are gated like main: a task branch merges into
+# feature/**, and that merge has to be checked where it lands, not only
+# when the release finally reaches main. Task branches (cb/**) are
+# covered by their pull request rather than by a second push run.
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'feature/**'
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - 'feature/**'
 
 # Least-privilege: this job only reads the checked-out tree.
 permissions:
