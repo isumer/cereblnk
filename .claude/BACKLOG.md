@@ -20,6 +20,157 @@
 
 ---
 
+## Open — 1.4.0: the host boundary
+
+**Release branch.** This release lands on `feature/1.4.0`. Tasks are
+implemented on `cb/CB-XXX-slug` branches cut from and merged into
+`feature/1.4.0`; the release branch merges to `main` once, with a single
+version bump. This deviates from the per-task-to-`main` workflow above
+and applies to this release only.
+
+**What 1.4.0 claims.** The platform gains a host boundary. The only
+bound host is still Claude Code. Bindings for adjacent hosts are out of
+scope: they depend on CB-122 output that does not exist yet, and a task
+may not depend on an F-class mechanism.
+
+**Mandatory order.** CB-127 → CB-128 → CB-124. Freezing the current
+binding is what makes "nothing changed" provable; doing it after the
+refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
+independent and may run in parallel.
+
+### CB-122 — Host capability is measured by running it, not read off a page
+
+Secondary sources disagree with each other and with themselves across
+months: one adjacent host was reported to have no blocking hooks in one
+quarter and a full pre-tool veto in the next. Nothing downstream may
+rest on that.
+
+- **Deliverable.** `scripts/host-probe`, plus one
+  `context/host-profile.<host>.yaml` per probed host.
+- **Acceptance.** For each probed host the profile records, from an
+  actual run: the events that fired, the field names present on the
+  event payload, at least one case where a refusal actually stopped the
+  action, and at least one case establishing whether an erroring hook
+  fails open or closed. A field asserted without a run is recorded as
+  absent, not assumed.
+- **Depends on.** Nothing.
+
+### CB-123 — A script path named inside a prompt is never checked to exist
+
+`scripts/` is referenced 60 times inside skill and agent files and 6
+times in README and docs. `ground-check` validates evidence citations
+(`path#Lm-n`), not these. A stale path here fails silently at runtime:
+an agent is told to run something that is not there.
+
+- **Deliverable.** `scripts/check-script-paths`, wired into
+  `scripts/verify`.
+- **Acceptance.** Every script path named in `skills/`, `agents/`,
+  `rules/`, `README.md` and `docs/` resolves to a file that exists.
+  Mutation: break one path, the checker goes red.
+- **Depends on.** Nothing.
+
+### CB-127 — The Claude binding is frozen before anything moves
+
+CB-128 and CB-124 are behaviour-preserving by intent. Intent is not a
+mechanism. Without a recorded prior state there is no way to prove the
+Claude path came through unchanged.
+
+- **Deliverable.** `tests/golden/claude-hooks.json` (today's
+  `hooks/hooks.json`, byte for byte) and `test-hook-contract` with one
+  fixture per hook script.
+- **Acceptance.** For each of the 18 hook scripts a fixture supplies a
+  stdin payload and records the resulting exit code and stderr text,
+  captured before CB-128 begins. The suite passes against the current
+  tree.
+- **Note on blessed fixtures.** Blessing current output is normally
+  forbidden, because a fixture taken from buggy output invalidates the
+  suite. Here the current behaviour *is* the specification: this is a
+  behaviour-preserving refactor, not a rewrite. The prohibition is not
+  waived for anything else in this release.
+- **Depends on.** Nothing.
+
+### CB-128 — The refusal is decided in eighteen places and expressed in one
+
+Every blocking hook ends the same way: message to stderr, `exit 2`.
+That pairing is Claude Code's refusal form, and it is currently spelled
+out inside each script. Any second host would require either a second
+copy of all eighteen or a translation layer. It gets the translation
+layer.
+
+- **Deliverable.** `hooks/lib/hostio.sh`, providing `cb_event_read`
+  (normalises the event payload into host-neutral variables) and
+  `cb_block` (emits the host's refusal form). The 18 scripts change at
+  their exit sites only.
+- **Acceptance.** `test-hook-contract` from CB-127 passes unchanged. No
+  hook script contains a literal `exit 2` outside `hostio.sh`. Hook
+  logic, conditions and message text are untouched — the diff is
+  confined to exit sites and one added source line.
+- **Depends on.** CB-127.
+
+### CB-124 — Concept to capability to host: the binding grows a middle hop
+
+`05_EXECUTION_REALITY_MAP.md` binds a concept straight to a Claude Code
+mechanism. An M on one host may be D or absent on another, so a single
+global class label stops being true the moment a second host exists.
+
+- **Deliverable.** `policies/capabilities.yaml` (host-neutral capability
+  ids), `policies/hosts/claude.yaml` (the binding), `scripts/gen-bindings`
+  (emits a host's config from the two), and 05 restructured so M/D/F is
+  recorded per host.
+- **Acceptance.** `gen-bindings claude` produces a file byte-identical
+  to `tests/golden/claude-hooks.json`. `check-generated` regenerates
+  every committed host config and goes red on any difference. No file is
+  moved; no path changes.
+- **Depends on.** CB-127, CB-128.
+
+### CB-125 — The support matrix is checked against the probe, not written by hand
+
+A hand-maintained capability table drifts from the tree, and a silent
+drop from M to D is the failure this project exists to refuse. A host
+that cannot block must say so, not quietly stop blocking.
+
+- **Deliverable.** `scripts/check-host-matrix`, wired into
+  `scripts/verify`, plus the matrix section in `README.md`.
+- **Acceptance.** Every cell in the published matrix is derived from a
+  `context/host-profile.<host>.yaml` field. Mutation: change one cell by
+  hand, the checker goes red. A capability absent on a host is printed
+  as absent, never omitted.
+- **Depends on.** CB-122.
+
+### CB-126 — Manifests for adjacent hosts, without moving a file
+
+Adjacent hosts read repo-local plugin registries, and the layout they
+expect is a per-plugin manifest under `plugins/<name>/` — which is the
+layout this repo already has. Moving assets to the root would move away
+from it, and would collide: the root already holds a `scripts/`
+directory distinct from the plugin's.
+
+- **Deliverable.** `.agents/plugins/marketplace.json`,
+  `plugins/cereblnk/.codex-plugin/plugin.json`, and `AGENTS.md` at the
+  repository root.
+- **Acceptance.** Each manifest passes its host's validator. The Claude
+  manifests and `marketplace.json` are unchanged, verified by diff. This
+  task adds packaging only and claims no capability; nothing in the
+  matrix changes because of it.
+- **Depends on.** Nothing. (Matrix entries for these hosts wait on
+  CB-122.)
+
+### CB-129 — One skill exceeds the smallest host's ceiling
+
+An adjacent host caps a skill file at 8 KB. Measured across the tree:
+1 of 94 `SKILL.md` files is over (`skills/orchestrate/SKILL.md`, 9983 B);
+0 of 29 agent files are.
+
+- **Deliverable.** `skills/orchestrate/SKILL.md` brought under the cap,
+  and a size assertion in the verify suite.
+- **Acceptance.** Every `SKILL.md` is under 8192 bytes. The checker
+  names the ceiling and its source. `authoring-lint judgment` still
+  passes on the reduced file — shrinking it must not turn judgment
+  language into a recipe.
+- **Depends on.** Nothing.
+
+---
+
 ## Closed
 
 One line each. The full record of what shipped and why lives in
