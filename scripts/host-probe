@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""host-probe — what a host actually does, from running it (CB-122).
+
+Secondary sources on host hook systems disagree with each other and with
+themselves across months: one adjacent host was written up as having no
+blocking hooks in one quarter and a full pre-tool veto in the next. The
+1.4.0 port cannot rest on that, so nothing downstream reads a vendor page.
+It reads this.
+
+The measurement has to happen inside the host, because the question is
+what the host does, not what its documentation says. So:
+
+  host-probe install <host>   write a recording hook into the host config
+  host-probe record           the hook itself; appends one event, exits 0
+  host-probe collect <host>   turn the recording into a profile
+  host-probe attest <host>    record an operator observation, as one
+  host-probe status           what has been measured, and what has not
+
+Everything a run did not establish is written as `unmeasured` and stays
+that way. That is the whole discipline here: an absent field is a fact
+about the evidence, not an invitation to fill it in from memory. A
+capability nobody measured must not appear in the published matrix as
+though it had been (CB-125).
+
+Two facts need the operator to provoke them, because no recording of a
+successful call can show them:
+
+  refusal_enforced   a refusal actually stopped the action
+  failure_mode       an erroring hook failed open or closed
+
+`install` writes hooks that provoke both; `collect` reports them as
+unmeasured until the recording proves otherwise.
+
+Exit: 0 fine · 1 the command failed · 2 bad usage
+"""
+import json
+import os
+import pathlib
+import sys
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+LOG_ENV = "CB_PROBE_LOG"
+DEFAULT_LOG = ROOT / ".cb-probe/events.jsonl"
+PROFILES = ROOT / "plugins/cereblnk/context"
+
+# Where each host reads its hook config, and the key names it uses. These
+# are the claims under test — install writes here, and collect reports
+# only what came back.
+HOSTS = {
+    "claude": {"config": ".claude/settings.json", "style": "claude"},
+    "cursor": {"config": ".cursor/hooks.json", "style": "cursor"},
+    "codex": {"config": ".codex/hooks.json", "style": "codex"},
+    "gemini": {"config": ".gemini/settings.json", "style": "gemini"},
+}
+
+# Event name -> capability, per host. This is a decoder for what came
+# back, not a claim about what exists: an event that never fires leaves
+# its capability unmeasured no matter what the table says, and an event
+# that fires under a name not listed here is reported unmapped, which is
+# itself a finding worth reading.
+ALIASES = {
+    "claude": {"PreToolUse": "pre_tool_veto", "PostToolUse": "post_tool",
+               "Stop": "turn_stop", "SubagentStop": "subagent_stop",
+               "PreCompact": "pre_compact", "SessionStart": "session_start",
+               "SessionEnd": "session_end"},
+    "cursor": {"preToolUse": "pre_tool_veto", "postToolUse": "post_tool",
+               "stop": "turn_stop", "subagentStop": "subagent_stop",
+               "preCompact": "pre_compact", "sessionStart": "session_start",
+               "sessionEnd": "session_end"},
+    "codex": {"PreToolUse": "pre_tool_veto", "PostToolUse": "post_tool",
+              "Stop": "turn_stop", "SessionStart": "session_start"},
+    "gemini": {"BeforeTool": "pre_tool_veto", "AfterTool": "post_tool",
+               "BeforeModel": "turn_stop"},
+}
+
+# What the port needs to know it has. Named host-neutrally on purpose:
+# each host's own event name is whatever the recording says it was.
+NEEDED = (
+    "pre_tool_veto",      # something can refuse a tool call before it runs
+    "post_tool",          # something observes a completed tool call
+    "turn_stop",          # something runs when the turn tries to end
+    "subagent_stop",      # something runs when a subagent tries to finish
+    "pre_compact",        # something runs before history is compacted
+    "session_start",
+    "session_end",
+)
+
+
+def log_path():
+    return pathlib.Path(os.environ.get(LOG_ENV) or DEFAULT_LOG)
+
+
+def cmd_record():
+    """Invoked by the host. Never blocks, never fails the caller."""
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        payload = {"_unparsed": raw[:500]}
+
+    entry = {
+        "at": time.time(),
+        "event": os.environ.get("CB_PROBE_EVENT", "unknown"),
+        "host": os.environ.get("CB_PROBE_HOST", "unknown"),
+        # the field names are the finding; the values are not recorded
+        "fields": sorted(payload.keys()) if isinstance(payload, dict) else [],
+        "argv": sys.argv[2:],
+    }
+    path = log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    return 0
+
+
+def read_events():
+    path = log_path()
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    return out
+
+
+def cmd_collect(host, write=False):
+    if host not in HOSTS:
+        print("host-probe: unknown host %r; known: %s"
+              % (host, ", ".join(sorted(HOSTS))), file=sys.stderr)
+        return 2
+
+    events = [e for e in read_events() if e.get("host") in (host, "unknown")]
+    by_event = {}
+    for e in events:
+        name = e.get("event", "unknown")
+        if name.startswith("_"):
+            continue  # attestations are not observations
+        seen = by_event.setdefault(name, set())
+        seen.update(e.get("fields", []))
+
+    lines = [
+        "# Host profile: %s (CB-122)" % host,
+        "#",
+        "# Produced by scripts/host-probe from %d recorded event(s)."
+        % len(events),
+        "# Every field here came back from a run. Anything a run did not",
+        "# establish reads `unmeasured`, and stays that way until one does.",
+        "#",
+        "# This file is evidence, not configuration. Do not hand-edit it:",
+        "# a hand-written capability is exactly the claim CB-122 exists to",
+        "# refuse.",
+        "version: 1",
+        "host: %s" % host,
+        "events_recorded: %d" % len(events),
+        "events:",
+    ]
+    if not by_event:
+        lines.append("  # none — the probe has not run on this host")
+    for name in sorted(by_event):
+        lines.append("  - event: %s" % name)
+        fields = sorted(by_event[name])
+        lines.append("    fields: [%s]" % ", ".join("'%s'" % f for f in fields)
+                     if fields else "    fields: []")
+
+    alias = ALIASES.get(host, {})
+    fired = {alias[name]: name for name in by_event if name in alias}
+    unmapped = sorted(n for n in by_event
+                      if n not in alias and not n.startswith("_"))
+
+    lines.append("capabilities:")
+    for need in NEEDED:
+        lines.append("  - capability: %s" % need)
+        if need in fired:
+            # the event fired. That establishes it exists, and nothing
+            # more: whether it can refuse is a separate question, and
+            # only a provoked refusal answers it.
+            lines.append("    status: present")
+            lines.append("    event: %s" % fired[need])
+        else:
+            lines.append("    status: unmeasured")
+
+    if unmapped:
+        lines.append("unmapped_events: [%s]"
+                     % ", ".join("'%s'" % n for n in unmapped))
+
+    attested = {}
+    for e in events:
+        if e.get("attested"):
+            attested[e["attested"]] = e.get("value")
+
+    lines += [
+        "# Provoked facts. No recording of ordinary use can show either, so",
+        "# a person provokes them and says what happened. Operator-attested",
+        "# is weaker than observed, and is labelled rather than blurred.",
+        "refusal_enforced: %s" % (
+            "attested:%s" % attested["refusal-enforced"]
+            if "refusal-enforced" in attested else "unmeasured"),
+        "failure_mode: %s" % (
+            "attested:%s" % attested["failure-mode"]
+            if "failure-mode" in attested else "unmeasured"),
+    ]
+
+    text = "\n".join(lines) + "\n"
+    if write:
+        PROFILES.mkdir(parents=True, exist_ok=True)
+        target = PROFILES / ("host-profile.%s.yaml" % host)
+        target.write_text(text, encoding="utf-8")
+        print("host-probe: wrote %s (%d event(s))"
+              % (target.relative_to(ROOT), len(events)))
+        return 0
+    sys.stdout.write(text)
+    return 0
+
+
+def cmd_attest(args):
+    """Record an operator's observation, labelled as one.
+
+    Two facts cannot be read off a recording of ordinary use, so a person
+    has to provoke them and say what happened. That is weaker evidence
+    than an observation, and the profile says which it is rather than
+    letting the two blur.
+    """
+    if len(args) < 3 or args[1] not in ("--refusal-enforced", "--failure-mode"):
+        print("host-probe: attest <host> --refusal-enforced yes|no\n"
+              "            attest <host> --failure-mode open|closed",
+              file=sys.stderr)
+        return 2
+    host, key, value = args[0], args[1].lstrip("-"), args[2]
+    entry = {"at": time.time(), "host": host, "attested": key,
+             "value": value, "event": "_attestation", "fields": []}
+    path = log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    print("host-probe: attested %s=%s for %s" % (key, value, host))
+    return 0
+
+
+def cmd_status():
+    events = read_events()
+    if not events:
+        print("host-probe: nothing recorded yet.")
+        print("  Run `host-probe install <host>` inside a project that host "
+              "opens,\n  use it normally for a few turns, then "
+              "`host-probe collect <host>`.")
+    by_host = {}
+    for e in events:
+        by_host.setdefault(e.get("host", "unknown"), set()).add(
+            e.get("event", "unknown"))
+    for host in sorted(HOSTS):
+        seen = by_host.get(host, set())
+        state = ", ".join(sorted(seen)) if seen else "unmeasured"
+        print("  %-8s %s" % (host, state))
+    return 0
+
+
+def cmd_install(host):
+    if host not in HOSTS:
+        print("host-probe: unknown host %r" % host, file=sys.stderr)
+        return 2
+    spec = HOSTS[host]
+    print("host-probe: %s reads its hook config from %s"
+          % (host, spec["config"]))
+    print("  Point every lifecycle event it offers at:")
+    print("    %s record" % (ROOT / "scripts/host-probe"))
+    print("  with CB_PROBE_HOST=%s and CB_PROBE_EVENT set per event." % host)
+    print()
+    print("  Then use the host normally, and provoke the two facts a normal")
+    print("  session will not show: make a hook refuse something, and make")
+    print("  a hook exit non-zero to see whether the action still went")
+    print("  through. Collect with: host-probe collect %s --write" % host)
+    print()
+    print("  install prints rather than writes: the config it would touch")
+    print("  belongs to the operator's editor, and a probe that silently")
+    print("  rewrites it has already earned distrust.")
+    return 0
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        return 2
+    cmd = argv[0]
+    if cmd == "record":
+        return cmd_record()
+    if cmd == "status":
+        return cmd_status()
+    if cmd == "attest":
+        return cmd_attest(argv[1:])
+    if cmd in ("collect", "install"):
+        if len(argv) < 2:
+            print("host-probe: %s needs a host name" % cmd, file=sys.stderr)
+            return 2
+        if cmd == "install":
+            return cmd_install(argv[1])
+        return cmd_collect(argv[1], write="--write" in argv)
+    print("host-probe: unknown command %r" % cmd, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

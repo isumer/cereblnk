@@ -6,3 +6,5 @@ __pycache__/
 # publishes exactly the strings it exists to catch (check-leakage L-3).
 .leakage-wordlist
 *.iml
+# host-probe recordings: evidence in progress, not a committed artefact
+.cb-probe/

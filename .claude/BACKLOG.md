@@ -38,22 +38,25 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
-### CB-122 — Host capability is measured by running it, not read off a page
+### CB-131 — The probe has to be run on the hosts it measures
 
-Secondary sources disagree with each other and with themselves across
-months: one adjacent host was reported to have no blocking hooks in one
-quarter and a full pre-tool veto in the next. Nothing downstream may
-rest on that.
+CB-122 lands the harness and the discipline; it cannot land the evidence.
+Cursor, Codex and Gemini profiles need those hosts installed and driven by
+a person, including the two facts no recording of ordinary use shows: that
+a refusal actually stopped an action, and whether an erroring hook fails
+open or closed.
 
-- **Deliverable.** `scripts/host-probe`, plus one
-  `context/host-profile.<host>.yaml` per probed host.
-- **Acceptance.** For each probed host the profile records, from an
-  actual run: the events that fired, the field names present on the
-  event payload, at least one case where a refusal actually stopped the
-  action, and at least one case establishing whether an erroring hook
-  fails open or closed. A field asserted without a run is recorded as
-  absent, not assumed.
-- **Depends on.** Nothing.
+- **Deliverable.** `context/host-profile.cursor.yaml`,
+  `.codex.yaml` and `.gemini.yaml`, produced by `host-probe collect
+  <host> --write` after real sessions.
+- **Acceptance.** Each profile records at least one event with its payload
+  field names, and carries either an observation or a labelled attestation
+  for `refusal_enforced` and `failure_mode`. A profile with no recorded
+  events does not count as done — that is what `unmeasured` is for.
+- **Operator task.** This is not implementable from a checkout; it needs
+  the hosts. 1.4.0 does not reach main without it, which is correct: the
+  matrix CB-125 publishes would otherwise be a table of guesses.
+- **Depends on.** CB-122.
 
 ### CB-125 — The support matrix is checked against the probe, not written by hand
 
