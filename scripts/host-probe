@@ -260,18 +260,36 @@ def cmd_status():
 
 
 # Candidate event names per host, for wiring the recorder. These come
-# from documentation, and documentation is exactly what CB-122 refuses to
-# trust — so they are candidates, not claims. A name that is wrong simply
-# never fires, and the profile reports that capability unmeasured. The
-# guess cannot contaminate the evidence; it can only fail to gather any.
+# from documentation and from configurations other projects have
+# committed and apparently run. Neither is measurement, which is what
+# CB-122 exists to insist on — so they are candidates, not claims. A name
+# that is wrong simply never fires, and the profile reports that
+# capability unmeasured. The guess cannot contaminate the evidence; it
+# can only fail to gather any.
+#
+# The list is deliberately wide. A name that does not exist costs one
+# line of config that never runs; a name left out costs a capability
+# recorded as absent when it was only unwired, and that error is the
+# expensive one because it looks like a finding.
+#
+# Cross-check note (CB-135). A committed multi-harness configuration
+# wires Cursor through per-tool events — before shell execution, before
+# file read, before MCP execution — and carries no generic pre-tool
+# event at all. If that holds, a pre-write veto on Cursor binds to
+# several events rather than one, and policies/hosts/cursor.yaml will
+# need a row each. It is not treated as settled: absence from someone
+# else's config means unused at least as often as unsupported.
 CANDIDATE_EVENTS = {
-    "claude": ["PreToolUse", "PostToolUse", "Stop", "SubagentStop",
-               "PreCompact", "SessionStart", "SessionEnd"],
-    "cursor": ["preToolUse", "postToolUse", "stop", "subagentStop",
-               "preCompact", "sessionStart", "sessionEnd",
-               "beforeShellExecution", "afterFileEdit"],
+    "claude": ["PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop",
+               "SubagentStop", "PreCompact", "SessionStart", "SessionEnd"],
+    "cursor": ["preToolUse", "postToolUse", "stop", "subagentStart",
+               "subagentStop", "preCompact", "sessionStart", "sessionEnd",
+               "beforeShellExecution", "afterShellExecution",
+               "beforeReadFile", "afterFileEdit", "beforeMCPExecution",
+               "afterMCPExecution", "beforeSubmitPrompt",
+               "beforeTabFileRead", "afterTabFileEdit"],
     "codex": ["PreToolUse", "PostToolUse", "Stop", "SessionStart",
-              "UserPromptSubmit"],
+              "SessionEnd", "UserPromptSubmit"],
     "gemini": ["BeforeTool", "AfterTool", "BeforeModel", "AfterModel"],
 }
 
