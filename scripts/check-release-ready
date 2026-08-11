@@ -6,10 +6,18 @@ opened for it is closed. Stated in a document, that is a wish; someone
 merges on a Friday and the release ships with two items still open and
 nothing objects.
 
-So it is a checker, and it runs where the decision is actually made: on a
-pull request whose base is main. Everywhere else — every task branch,
-every merge into the release branch — open items are the normal state and
-this stays out of the way. That is why it is not part of scripts/verify.
+So it is a checker, and it applies where the decision is actually made:
+on a pull request whose base is main. Everywhere else — every task branch,
+every merge into the release branch — open items are the normal state, so
+it reports that it does not apply and passes. That is why it is not part
+of scripts/verify.
+
+The decision used to live in a CI `if:` expression, which meant the job
+showed as *skipped* on every pull request and had never once run. A gate
+nobody has seen fire is a gate nobody can vouch for, and skipped looks
+exactly like passed at a glance. It now always runs and says which case it
+is in, and the branch it takes is decided here where a test can reach it
+(CB-133).
 
 What counts as open is a task heading under `## Open` in
 .claude/BACKLOG.md. Closing an item means moving it to `## Closed` as a
@@ -17,9 +25,11 @@ one-line entry, which is the shape that section already has.
 
 Usage:
   scripts/check-release-ready              check .claude/BACKLOG.md
+  scripts/check-release-ready --base REF   apply only when REF is main
   scripts/check-release-ready --path FILE  check another file
 
-Exit: 0 nothing open · 1 items still open · 2 the backlog could not be read
+Exit: 0 nothing open, or the gate does not apply · 1 items still open
+      · 2 the backlog could not be read
 """
 import pathlib
 import re
@@ -52,6 +62,14 @@ def main():
     path = DEFAULT
     if "--path" in sys.argv:
         path = pathlib.Path(sys.argv[sys.argv.index("--path") + 1])
+
+    if "--base" in sys.argv:
+        base = sys.argv[sys.argv.index("--base") + 1]
+        if base != "main":
+            print("check-release-ready: base is %r, not main — this is not a "
+                  "release pull request,\n  so the gate does not apply. Open "
+                  "items are the normal state here." % base)
+            return 0
 
     try:
         text = path.read_text(encoding="utf-8")

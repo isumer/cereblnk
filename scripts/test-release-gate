@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""test-release-gate — the gate decides, and the decision is reachable (CB-133).
+
+The gate protects the one merge nobody gets to redo. Until CB-133 its
+decision lived in a CI `if:` expression, which meant three things at once:
+the job showed as skipped on every pull request, it had never fired, and
+nothing could test it. Skipped looks like passed at a glance, so a wrong
+expression would have surfaced on the day it mattered and not before.
+
+Four cases, and the two that pass matter as much as the two that fail —
+a gate that only ever says no is indistinguishable from a broken one:
+
+  base is not main, items open      passes, says it does not apply
+  base is not main, nothing open    passes
+  base is main, items open          refuses, names every item
+  base is main, nothing open        passes
+
+Exit: 0 all pass · 1 any failure
+"""
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+GATE = ROOT / "scripts/check-release-ready"
+
+OPEN = """# Backlog
+
+---
+
+## Open — 1.4.0
+
+### CB-901 — Something not finished
+
+Body.
+
+### CB-902 — Something else not finished
+
+Body.
+
+---
+
+## Closed
+
+- [x] **CB-900** — Done
+"""
+
+EMPTY = """# Backlog
+
+---
+
+## Open — 1.4.0
+
+Nothing open.
+
+---
+
+## Closed
+
+- [x] **CB-900** — Done
+"""
+
+
+def run(path, base=None):
+    args = [sys.executable, str(GATE), "--path", str(path)]
+    if base is not None:
+        args += ["--base", base]
+    return subprocess.run(args, capture_output=True, text=True,
+                          env=dict(os.environ))
+
+
+def main():
+    fails = []
+    with tempfile.TemporaryDirectory() as td:
+        d = pathlib.Path(td)
+        opened, empty = d / "open.md", d / "empty.md"
+        opened.write_text(OPEN)
+        empty.write_text(EMPTY)
+
+        r = run(opened, "feature/1.4.0")
+        if r.returncode != 0:
+            fails.append("open items on a feature base were refused; the "
+                         "gate would block every release-branch merge")
+        if "does not apply" not in r.stdout:
+            fails.append("the gate passed on a feature base without saying "
+                         "why — a silent pass is the skipped job again")
+
+        r = run(empty, "feature/1.4.0")
+        if r.returncode != 0:
+            fails.append("an empty backlog on a feature base was refused")
+
+        r = run(opened, "main")
+        if r.returncode != 1:
+            fails.append("open items on a main base returned %d, expected 1"
+                         % r.returncode)
+        for cb in ("CB-901", "CB-902"):
+            if cb not in r.stderr:
+                fails.append("%s was open and went unnamed" % cb)
+
+        r = run(empty, "main")
+        if r.returncode != 0:
+            fails.append("an empty backlog on a main base was refused; the "
+                         "gate would never let a release land")
+
+        # no --base at all: the local invocation, which must still enforce
+        r = run(opened)
+        if r.returncode != 1:
+            fails.append("without --base the gate stopped enforcing, so "
+                         "running it by hand would report a false all-clear")
+
+    if fails:
+        print("test-release-gate: %d failure(s)" % len(fails), file=sys.stderr)
+        for f in fails:
+            print("  %s" % f, file=sys.stderr)
+        return 1
+    print("test-release-gate: applies on main, stands aside elsewhere, and "
+          "says which")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -24,6 +24,7 @@ unsupported paths where the tool has them):
   check-generated         committed bindings match their generator (CB-124)
   check-script-paths      a path named in a prompt exists (CB-123)
   test-host-probe         the probe reports only what it saw (CB-122)
+  test-release-gate       the gate applies on main, stands aside elsewhere (CB-133)
   check-skill-size        no skill exceeds the smallest host ceiling (CB-129)
   check-manifests         host manifests point at things that exist (CB-126)
   check-host-matrix       every published cell traces to evidence (CB-125)
@@ -83,7 +84,7 @@ def main():
                  "test-reachability", "test-env-lifecycle",
                  "test-contract-check", "test-behavior-check",
                  "test-hook-contract", "test-host-adapter",
-                 "test-host-probe"):
+                 "test-host-probe", "test-release-gate"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 

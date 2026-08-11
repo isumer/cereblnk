@@ -56,12 +56,13 @@ jobs:
       - name: Run the deterministic acceptance suite
         run: python3 scripts/verify
 
-  # The release gate. Runs only where the decision is made — a pull
-  # request into main — because open items are the normal state on a
-  # release branch and on every task branch feeding it. That is also why
-  # it is not part of scripts/verify.
+  # The release gate. It always runs and reports which case it is in.
+  # It used to carry an `if:` on the base ref, which meant it showed as
+  # skipped on every pull request and had never once fired — and skipped
+  # looks like passed at a glance. The decision now lives in the script,
+  # where test-release-gate can reach it.
   release-ready:
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -74,4 +75,4 @@ jobs:
           python-version: "3.11"
 
       - name: Refuse a release that still has open backlog items
-        run: python3 scripts/check-release-ready
+        run: python3 scripts/check-release-ready --base "${{ github.base_ref }}"
