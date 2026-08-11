@@ -401,6 +401,38 @@ what ships here. And the effect is unmeasured. The mechanisms are
 inspectable; how much they close the gap on any particular model is not
 something this repository has established.
 
+## Host support
+
+Claude Code is the only bound host. The rest of this table is not a
+roadmap and not a guess: every cell is compared against its evidence by
+`scripts/check-host-matrix`, and a capability nobody has measured reads
+`unmeasured` rather than being filled in from documentation.
+
+`unmeasured` is the accurate answer, not a placeholder awaiting tidying.
+Vendor documentation on host hook systems has contradicted itself across
+quarters — one adjacent host was written up as having no blocking hooks
+in one quarter and a full pre-tool veto in the next — so a cell is earned
+by a run, through `scripts/host-probe`, or it is left alone.
+
+<!-- host-matrix:start -->
+
+| Capability | claude | cursor | codex | gemini |
+|---|---|---|---|---|
+| `pre_tool_veto` | M | unmeasured | unmeasured | unmeasured |
+| `post_tool` | M | unmeasured | unmeasured | unmeasured |
+| `turn_stop` | M | unmeasured | unmeasured | unmeasured |
+| `subagent_stop` | M | unmeasured | unmeasured | unmeasured |
+| `pre_compact` | M | unmeasured | unmeasured | unmeasured |
+| `session_start` | M | unmeasured | unmeasured | unmeasured |
+| `session_end` | M | unmeasured | unmeasured | unmeasured |
+
+<!-- host-matrix:end -->
+
+**M** mechanical, enforced by the host · **D** instruction-driven ·
+**F** absent. Classes are per host: the same capability may be M on one
+and absent on another, which is why `docs/05_EXECUTION_REALITY_MAP.md`
+records them per host rather than once.
+
 ## Risk and gates
 
 Depth is dynamic rather than uniform: low risk moves fast with minimal
