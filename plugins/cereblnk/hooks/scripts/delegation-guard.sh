@@ -29,6 +29,8 @@
 # the escape hatch is the same flag every workflow already manages.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 
 # Armed state, with staleness bounds on BOTH arming flags (CB-099).
@@ -195,11 +197,11 @@ else
 fi
 
 if [ "$MODE" = "disarmed" ]; then
-  echo "Cereblnk DelegationGuard: the run-active flag was removed while the run ledger was still being written. A run ends by completing, not by disarming its own guard. Finish the run through its workflow.$(cb_handoff)" >&2
+  CB_REASON="Cereblnk DelegationGuard: the run-active flag was removed while the run ledger was still being written. A run ends by completing, not by disarming its own guard. Finish the run through its workflow.$(cb_handoff)"
 elif [ "$MODE" = "completed" ]; then
-  echo "Cereblnk DelegationGuard: the last run completed — this is a follow-up, and follow-ups re-enter routing at the top (dispatch step 1), they are not handled freehand.$(cb_handoff)" >&2
+  CB_REASON="Cereblnk DelegationGuard: the last run completed — this is a follow-up, and follow-ups re-enter routing at the top (dispatch step 1), they are not handled freehand.$(cb_handoff)"
 else
   touch "$CB_DIR/flags/run-active.witness" 2>/dev/null || true
-  echo "Cereblnk DelegationGuard: a run is active — file edits belong to the surface specialist subagent (agent-selection-policy §1/§3b), not the conducting conversation. The conductor holds plan, digests, and verdicts only.$(cb_handoff)" >&2
+  CB_REASON="Cereblnk DelegationGuard: a run is active — file edits belong to the surface specialist subagent (agent-selection-policy §1/§3b), not the conducting conversation. The conductor holds plan, digests, and verdicts only.$(cb_handoff)"
 fi
-exit 2
+cb_block "$CB_REASON"

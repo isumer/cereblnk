@@ -23,6 +23,8 @@
 # input. A scratch file is untidy; a blocked legitimate write is worse.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${CB_ROOT:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
@@ -103,5 +105,4 @@ print("%s is a new file at the repository root, created during a run. "
 ' 2>/dev/null || true)"
 
 [ -n "$REASON" ] || exit 0
-echo "cereblnk scratch-guard: $REASON" >&2
-exit 2
+cb_block "cereblnk scratch-guard: $REASON"

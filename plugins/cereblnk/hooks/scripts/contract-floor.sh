@@ -25,6 +25,8 @@
 # Loop safety and fail-open in skill-floor.sh's shape.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 [ -n "${CB_ROOT:-}" ] || exit 0
@@ -92,7 +94,6 @@ print("%s is closing a surface that does not match its contract:\n  %s\n"
 ' 2>/dev/null || true)"
 
 if [ -n "$REASON" ]; then
-  echo "$REASON" >&2
-  exit 2
+  cb_block "$REASON"
 fi
 exit 0

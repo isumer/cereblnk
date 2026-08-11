@@ -20,6 +20,8 @@
 #      no required file, unparseable input -> exit 0.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
@@ -80,7 +82,6 @@ print("%s finished without loading its required skills: %s. Load each one "
 ' 2>/dev/null || true)"
 
 if [ -n "$REASON" ]; then
-  echo "$REASON" >&2
-  exit 2
+  cb_block "$REASON"
 fi
 exit 0

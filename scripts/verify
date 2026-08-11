@@ -20,6 +20,7 @@ unsupported paths where the tool has them):
   test-behavior-check     behavior rulings in a rewrite contract (CB-121)
   test-hooks              four guards, full path matrix
   test-hook-contract      the Claude binding, frozen (CB-127)
+  test-host-adapter       the refusal changes shape per host (CB-128)
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
   rules-layer             constraint files load and resolve (CB-092)
@@ -75,7 +76,7 @@ def main():
                  "test-docindex", "test-exec-floor",
                  "test-reachability", "test-env-lifecycle",
                  "test-contract-check", "test-behavior-check",
-                 "test-hook-contract"):
+                 "test-hook-contract", "test-host-adapter"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 

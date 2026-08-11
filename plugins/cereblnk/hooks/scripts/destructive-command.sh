@@ -4,7 +4,11 @@
 # Allowlisted: routine build-artifact cleanups.
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project
+CB_HOOK_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+export CB_HOOK_LIB
 if [ -z "$PYBIN" ]; then
   echo "cereblnk hook: no usable Python 3 — check skipped (failing open, not blocking your edit). Install Python 3 to re-arm hooks." >&2
   exit 0
@@ -14,6 +18,8 @@ CEREBLNK_HOOK_INPUT="$(cat)"
 export CEREBLNK_HOOK_INPUT CB_DIR
 $PYBIN << 'PY'
 import json, os, re, sys
+sys.path.insert(0, os.environ["CB_HOOK_LIB"])
+from cbhost import block
 try:
     data = json.loads(os.environ.get("CEREBLNK_HOOK_INPUT") or "{}")
 except json.JSONDecodeError:
@@ -37,10 +43,9 @@ patterns = [
 ]
 for pat, label in patterns:
     if re.search(pat, cmd, re.IGNORECASE):
-        print(f"Cereblnk DestructiveCommandHook: blocked irreversible operation ({label}). "
+        block(f"Cereblnk DestructiveCommandHook: blocked irreversible operation ({label}). "
               f"Ask the user for explicit confirmation, or have them disable /cb-careful "
-              f"(remove {os.environ.get('CB_DIR','.claude/cereblnk')}/flags/careful) if intended.", file=sys.stderr)
-        sys.exit(2)
+              f"(remove {os.environ.get('CB_DIR','.claude/cereblnk')}/flags/careful) if intended.")
 sys.exit(0)
 PY
 exit $?
