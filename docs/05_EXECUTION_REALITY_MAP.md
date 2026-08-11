@@ -1,9 +1,24 @@
 # Execution Reality Map
 
-> Status: Living Document v1.0
-> This document maps every Cereblnk concept to the concrete Claude Code
-> mechanism that implements it. It exists to prevent the architecture from
-> floating above reality.
+> Status: Living Document v1.1
+> This document maps every Cereblnk concept to the concrete mechanism that
+> implements it. It exists to prevent the architecture from floating above
+> reality.
+>
+> **Amended CB-124: the class is per host.** Until 1.4.0 a concept bound
+> straight to a Claude Code mechanism, and one class label stood for
+> everywhere. That label was true of exactly one host and said so nowhere.
+> The binding now runs concept → capability → host, and the machine-readable
+> half lives in `plugins/cereblnk/policies/`: `capabilities.yaml` names what
+> must be delivered, `hosts/<host>.yaml` says which event delivers it there
+> and with what class. `scripts/gen-bindings` emits the host's config from
+> the two and `scripts/check-generated` refuses any drift between them.
+>
+> **Read §2 as the Claude Code column.** It is the only host bound in
+> 1.4.0. A capability that is **M** here may be D or absent elsewhere, and
+> claiming otherwise before a probe has run is the error this amendment
+> exists to prevent (CB-122 measures; CB-125 publishes the matrix and
+> checks it).
 >
 > **Rule:** If a concept has no row in this table, it cannot be referenced
 > by any agent, skill, or workflow document until it gets one.
@@ -30,7 +45,10 @@ a paragraph can be.
 
 ---
 
-## 2. Concept → Mechanism Map
+## 2. Concept → Mechanism Map — Claude Code
+
+Host: Claude Code. Class values in this table apply to this host only;
+the machine-readable form is `policies/hosts/claude.yaml`.
 
 | Cereblnk Concept | Class | Claude Code Realization |
 |---|---|---|

@@ -1,0 +1,54 @@
+# Capability Catalogue (CB-124)
+#
+# The host-neutral half of the binding. A capability names something the
+# platform needs done; policies/hosts/<host>.yaml says which event on
+# that host delivers it, and with what enforcement class.
+#
+# Splitting the two is the point. Bound straight to one host's event
+# names, a capability that is mechanical there looks mechanical
+# everywhere, and the first port inherits a claim nobody checked.
+#
+# Schema, one block per capability:
+#   capability:  stable id, <family>.<name>; never renamed once bound
+#   script:      the implementation, under hooks/scripts/
+#
+# A capability with no binding on a host is absent there. Absent is a
+# reportable state, not a silent one — see scripts/check-host-matrix.
+version: 1
+capabilities:
+  - capability: veto.destructive-command
+    script: destructive-command.sh
+  - capability: veto.delegation-guard
+    script: delegation-guard.sh
+  - capability: veto.edit-boundary
+    script: edit-boundary.sh
+  - capability: veto.secret-guard
+    script: secret-guard.sh
+  - capability: veto.scratch-guard
+    script: scratch-guard.sh
+  - capability: veto.doc-floor
+    script: doc-floor.sh
+  - capability: veto.skill-ledger
+    script: skill-ledger.sh
+  - capability: veto.post-edit-test
+    script: post-edit-test.sh
+  - capability: veto.exec-ledger
+    script: exec-ledger.sh
+  - capability: compact.history-archive
+    script: history-archive.sh
+  - capability: turn.run-guard
+    script: run-guard.sh
+  - capability: session.env-teardown
+    script: env-teardown.sh
+  - capability: floor.skill-floor
+    script: skill-floor.sh
+  - capability: floor.exec-floor
+    script: exec-floor.sh
+  - capability: floor.reach-floor
+    script: reach-floor.sh
+  - capability: floor.contract-floor
+    script: contract-floor.sh
+  - capability: floor.digest-cap
+    script: digest-cap.sh
+  - capability: prompt.context-monitor
+    script: context-monitor.sh

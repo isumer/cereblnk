@@ -21,6 +21,7 @@ unsupported paths where the tool has them):
   test-hooks              four guards, full path matrix
   test-hook-contract      the Claude binding, frozen (CB-127)
   test-host-adapter       the refusal changes shape per host (CB-128)
+  check-generated         committed bindings match their generator (CB-124)
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
   rules-layer             constraint files load and resolve (CB-092)
@@ -91,6 +92,10 @@ def main():
           if lk.returncode == 3
           else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
           skipped=(lk.returncode == 3))
+
+    cg = sh([sys.executable, str(S / "check-generated")])
+    suite("check-generated", cg.returncode == 0,
+          (cg.stdout or cg.stderr).strip().splitlines()[0][:100] if cg.returncode else "")
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])
     suite("check-exec-bit", xb.returncode == 0,
