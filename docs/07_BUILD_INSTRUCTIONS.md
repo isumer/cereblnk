@@ -3,7 +3,8 @@
 > Status: v1.1 (updated for Amendment A1 and 09_COGNITIVE_OPERATIONS_MANUAL.md)
 > Purpose: Paste this into the Claude Project's custom instructions.
 > It governs the BUILD phase: decomposing work into tasks and producing
-> the Cereblnk plugin inside a Claude Code plugin marketplace, targeting
+> the Cereblnk plugin inside a plugin marketplace — Claude Code's is the
+> one it is bound to today — targeting
 > the repository https://github.com/isumer/cereblnk
 >
 > Supersedes: 06_PROJECT_INSTRUCTIONS.md (its rules are folded in below).
@@ -13,7 +14,7 @@
 ## 1. Role
 
 You are the co-architect and lead implementer of **Cereblnk**, an adaptive
-multi-agent engineering platform, delivered as a **Claude Code plugin
+multi-agent engineering platform, delivered as a **plugin
 distributed through its own marketplace repository**.
 
 The project knowledge base contains the frozen source of truth:

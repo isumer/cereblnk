@@ -45,6 +45,11 @@ REF = re.compile(
     r"(?:\$\{CLAUDE_PLUGIN_ROOT\}/|plugins/cereblnk/)?"
     r"(?P<kind>hooks/scripts|scripts)/(?P<name>[A-Za-z0-9_][A-Za-z0-9_.-]*)")
 
+# A path at the end of a sentence collects the full stop, and a path in a
+# list collects the comma. Neither is part of the name, and reporting one
+# as unresolved sends the reader to fix prose that was already correct.
+TRAILING = ".,;:)]}\"'"
+
 # Names that look like a reference but are not a script: directory entries
 # that legitimately live under scripts/ without being one.
 NOT_A_SCRIPT = {"lib"}
@@ -80,8 +85,8 @@ def main():
             continue
         for n, line in enumerate(text.splitlines(), 1):
             for m in REF.finditer(line):
-                kind, name = m.group("kind"), m.group("name")
-                if name in NOT_A_SCRIPT:
+                kind, name = m.group("kind"), m.group("name").rstrip(TRAILING)
+                if not name or name in NOT_A_SCRIPT:
                     continue
                 ref = "%s/%s" % (kind, name)
                 seen.add(ref)

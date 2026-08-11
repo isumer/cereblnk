@@ -1,10 +1,10 @@
 # Cereblnk
 
-Cereblnk is a Claude Code plugin that turns engineering discipline into
-mechanism.
+Cereblnk turns engineering discipline into mechanism. It ships as a
+plugin for Claude Code, which is the one host it binds to today.
 
-When Claude Code writes code for you, the quality of the result depends
-on whether the model remembered to check its work. Cereblnk narrows that
+When a coding agent writes code for you, the quality of the result
+depends on whether the model remembered to check its work. Cereblnk narrows that
 dependency. It ships specialist agents, the constraints they work under,
 and — the part that matters — hooks that block an agent from finishing
 when it skipped a step. A rule here is not a paragraph asking nicely. It
@@ -74,10 +74,14 @@ archiving.
 **Constraints** (`rules/`) — loaded per task by `scripts/select-rules`
 rather than all at once, because context is the expensive resource.
 
-**Hooks** (`hooks/`) — eighteen scripts across seven Claude Code events:
+**Hooks** (`hooks/`) — eighteen scripts across seven events of the bound
+host. On Claude Code those are:
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`,
 `SubagentStop`, `SessionEnd`. Twelve of them block; six record or
-observe.
+observe. The scripts themselves name no host: which event carries which
+capability is a binding, and `scripts/gen-bindings` emits the host's
+config from it. See **Host support** below for what is bound and what is
+merely unmeasured.
 
 ### What blocks a tool call
 
@@ -151,6 +155,8 @@ Installing is not the same as enabling. Once installed, commands, agents,
 and skills load automatically **only while the plugin is enabled** in
 `settings.json` via `enabledPlugins`. Set it once and it persists across
 sessions.
+
+Installation below is for Claude Code, the bound host.
 
 **Personal (all your projects)** — add to `~/.claude/settings.json`:
 
@@ -320,16 +326,20 @@ blocking writes outside the given directory during focused work.
 
 ```
 cereblnk/                        # repo root = marketplace
+├── AGENTS.md                    # instructions every host can read
 ├── .claude-plugin/marketplace.json
+├── .agents/plugins/             # repo-local registry for other hosts
 ├── plugins/cereblnk/            # the Cereblnk plugin
 │   ├── .claude-plugin/plugin.json
+│   ├── .codex-plugin/plugin.json
 │   ├── agents/                  # core / engineering / lifecycle / context
 │   ├── skills/                  # entry points at the top level,
 │   │                            #   domain skills grouped below
 │   ├── rules/                   # constraints — the enforceable form
 │   ├── hooks/                   # hard-enforcement hooks
 │   ├── protocols/               # Agent Communication Protocol (ACP)
-│   ├── policies/                # risk model, budgets, quality gates
+│   ├── policies/                # risk model, budgets, quality gates,
+│   │                            #   capabilities and per-host bindings
 │   └── scripts/                 # budget, stack and selection computation
 ├── docs/                        # core documents 00–09
 ├── scripts/                     # verify and its suites

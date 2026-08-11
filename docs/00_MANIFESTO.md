@@ -1,6 +1,6 @@
 # Cereblnk Manifesto
 
-> Status: Frozen v1.1 (Amendment A1 applied — see Appendix)
+> Status: Frozen v1.2 (Amendments A1, A2 applied — see Appendix)
 > This document defines WHY Cereblnk exists. It changes rarely, if ever.
 > All other documents must remain consistent with this one.
 > Procedures for §4 live in 09_COGNITIVE_OPERATIONS_MANUAL.md.
@@ -9,7 +9,8 @@
 
 ## 1. What Cereblnk Is
 
-Cereblnk is an adaptive multi-agent engineering platform for Claude Code.
+Cereblnk is an adaptive multi-agent engineering platform. Claude Code is
+the host it binds to today (A2).
 
 It is not a prompt collection.
 It is not a command wrapper.
@@ -203,3 +204,14 @@ Every contribution to Cereblnk is measured against this sentence.
 - Impact on existing artifacts: skill Philosophy sections must follow
   09 Part IV; SynthesizerAgent must run 09 Part V; PRReviewWorkflow adds
   Principle 9/10 checks. No existing text weakened or removed.
+
+**A2 (v1.1 → v1.2).**
+- §1: "for Claude Code" replaced with a statement that Claude Code is the
+  host bound today. The platform grew a host boundary in 1.4.0 —
+  capabilities are named host-neutrally and bound per host — and the
+  opening sentence was the last place still asserting a single host as
+  a property of the platform rather than a fact about its bindings.
+- Impact on existing artifacts: none. No principle, law or procedure
+  changes. Nothing is claimed for any host that has not been measured;
+  what is bound and what is merely unmeasured is published in README
+  and checked by scripts/check-host-matrix.
