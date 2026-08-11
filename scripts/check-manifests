@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""check-manifests — a manifest points at something that exists (CB-126).
+
+Packaging fails quietly. A manifest naming a directory that is not there
+installs cleanly and delivers nothing, and the first sign is a host that
+loads the plugin and behaves as though it had not.
+
+So every path a manifest declares is resolved against the tree, and the
+version it advertises is compared with the one the plugin actually
+carries. A manifest that agrees with itself and disagrees with the
+repository is the failure worth catching.
+
+What this does NOT check: whether a host's own installer accepts the file.
+That needs the host, and it belongs to CB-131 with the rest of the
+evidence that cannot be produced from a checkout. Passing here means the
+manifest is internally consistent and its paths are real — not that any
+host has ever read it.
+
+Usage: scripts/check-manifests
+
+Exit: 0 every manifest resolves · 1 at least one does not
+"""
+import json
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PLUGIN = ROOT / "plugins/cereblnk"
+
+# manifest -> (base directory its relative paths resolve against,
+#              keys whose values are paths)
+MANIFESTS = {
+    ".claude-plugin/marketplace.json": (ROOT, ("source",)),
+    "plugins/cereblnk/.claude-plugin/plugin.json": (PLUGIN, ()),
+    ".agents/plugins/marketplace.json": (ROOT, ("path",)),
+    "plugins/cereblnk/.codex-plugin/plugin.json": (PLUGIN, ("skills", "agents")),
+}
+
+VERSIONED = ("plugins/cereblnk/.claude-plugin/plugin.json",
+             "plugins/cereblnk/.codex-plugin/plugin.json")
+
+
+def walk(node, keys, found):
+    """Collect every value stored under one of `keys`, at any depth."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k in keys and isinstance(v, str):
+                found.append(v)
+            walk(v, keys, found)
+    elif isinstance(node, list):
+        for item in node:
+            walk(item, keys, found)
+
+
+def main():
+    problems, checked, versions = [], 0, {}
+
+    for rel, (base, path_keys) in MANIFESTS.items():
+        path = ROOT / rel
+        if not path.exists():
+            problems.append("%s: missing" % rel)
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            problems.append("%s: not valid JSON: %s" % (rel, exc))
+            continue
+
+        if not data.get("name"):
+            problems.append("%s: no name" % rel)
+
+        refs = []
+        walk(data, set(path_keys), refs)
+        for ref in refs:
+            if ref.startswith(("http://", "https://")) or ref == "local":
+                continue
+            if not (base / ref).exists():
+                problems.append("%s: declares %s, which does not exist "
+                                "relative to %s"
+                                % (rel, ref, base.relative_to(ROOT) or "."))
+
+        if rel in VERSIONED:
+            versions[rel] = data.get("version")
+        checked += 1
+
+    stated = {r: v for r, v in versions.items() if v}
+    if len(set(stated.values())) > 1:
+        problems.append(
+            "manifests advertise different versions: "
+            + "; ".join("%s=%s" % (r, v) for r, v in sorted(stated.items()))
+            + ". One plugin ships one version, whichever host is asking.")
+    for rel, v in versions.items():
+        if not v:
+            problems.append("%s: no version" % rel)
+
+    if not (ROOT / "AGENTS.md").exists():
+        problems.append("AGENTS.md: missing from the repository root — the "
+                        "one instruction file every host reads")
+
+    if problems:
+        print("check-manifests: %d problem(s)" % len(problems),
+              file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        return 1
+
+    print("check-manifests: %d manifest(s) resolve, all at version %s"
+          % (checked, sorted(set(stated.values()))[0] if stated else "?"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

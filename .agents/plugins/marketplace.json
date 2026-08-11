@@ -1,0 +1,19 @@
+{
+  "name": "cereblnk-marketplace",
+  "description": "Repo-local plugin registry for Cereblnk, an adaptive multi-agent engineering platform.",
+  "owner": {
+    "name": "isumer"
+  },
+  "plugins": [
+    {
+      "name": "cereblnk",
+      "description": "Adaptive multi-agent engineering platform: runtime-orchestrated specialist agents, evidence-driven verification, and context budgeting.",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cereblnk"
+      },
+      "category": "development",
+      "repository": "https://github.com/isumer/cereblnk"
+    }
+  ]
+}

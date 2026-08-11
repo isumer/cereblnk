@@ -72,24 +72,6 @@ that cannot block must say so, not quietly stop blocking.
   as absent, never omitted.
 - **Depends on.** CB-122.
 
-### CB-126 — Manifests for adjacent hosts, without moving a file
-
-Adjacent hosts read repo-local plugin registries, and the layout they
-expect is a per-plugin manifest under `plugins/<name>/` — which is the
-layout this repo already has. Moving assets to the root would move away
-from it, and would collide: the root already holds a `scripts/`
-directory distinct from the plugin's.
-
-- **Deliverable.** `.agents/plugins/marketplace.json`,
-  `plugins/cereblnk/.codex-plugin/plugin.json`, and `AGENTS.md` at the
-  repository root.
-- **Acceptance.** Each manifest passes its host's validator. The Claude
-  manifests and `marketplace.json` are unchanged, verified by diff. This
-  task adds packaging only and claims no capability; nothing in the
-  matrix changes because of it.
-- **Depends on.** Nothing. (Matrix entries for these hosts wait on
-  CB-122.)
-
 ---
 
 ## Closed
