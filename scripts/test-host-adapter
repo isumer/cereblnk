@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""test-host-adapter — the refusal changes shape with the host (CB-128).
+
+test-hook-contract proves the Claude path did not move. That alone would
+also pass if hostio.sh were an empty wrapper around `exit 2`, so it does
+not establish that anything was actually abstracted.
+
+This suite runs the same guard under three hosts and asserts the three
+forms differ in the way each host reads a refusal:
+
+  claude  exit 2, reason on stderr, nothing on stdout
+  cursor  exit 0, a deny object on stdout, nothing on stderr
+  codex   exit 0, a block object on stdout, nothing on stderr
+
+The reason text is required to survive into every form. A port that
+refuses without saying why has dropped the part the reader needs.
+
+Exit: 0 all pass · 1 any failure
+"""
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOOKS = ROOT / "plugins/cereblnk/hooks/scripts"
+
+# Guards whose refusal path a synthetic project can reach. Kept in step
+# with tests/fixtures/hook-contract/cases.json; a guard that stops
+# refusing here has stopped refusing everywhere.
+CASES = [
+    ("delegation-guard.sh", ["run-active"],
+     {"tool_name": "Edit", "tool_input": {"file_path": "src/a.py"}}),
+    ("secret-guard.sh", [],
+     {"tool_name": "Write", "tool_input": {
+         "file_path": "src/a.py",
+         "content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----"}}),
+    ("destructive-command.sh", ["careful"],
+     {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}),
+    ("scratch-guard.sh", ["run-active", "run-context"],
+     {"tool_name": "Write", "tool_input": {"file_path": "tmp.py", "content": "x"}}),
+]
+
+HOSTS = ("claude", "cursor", "codex")
+
+
+def build(root, state):
+    proj = root / "proj"
+    cbd = proj / ".claude/cereblnk"
+    (cbd / "flags").mkdir(parents=True, exist_ok=True)
+    (cbd / "context").mkdir(parents=True, exist_ok=True)
+    (proj / "src").mkdir(parents=True, exist_ok=True)
+    (proj / "src/a.py").write_text("def a():\n    return 1\n")
+    for token in state:
+        if token == "run-context":
+            run = cbd / "context/implement-2026-08-11"
+            run.mkdir(parents=True, exist_ok=True)
+            (run / "plan.md").write_text("task_id: T-1\n")
+        else:
+            (cbd / "flags" / token).touch()
+    return proj
+
+
+def run(script, state, payload, host):
+    with tempfile.TemporaryDirectory() as td:
+        proj = build(pathlib.Path(td), state)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj), CB_HOST=host,
+                   CLAUDE_PLUGIN_ROOT=str(ROOT / "plugins/cereblnk"))
+        p = subprocess.run(["bash", str(HOOKS / script)],
+                           input=json.dumps(payload), capture_output=True,
+                           text=True, env=env, cwd=str(proj))
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-host-adapter: bash not on PATH — skipping")
+        return 0
+
+    fails = []
+    for script, state, payload in CASES:
+        seen = {}
+        for host in HOSTS:
+            rc, out, err = run(script, state, payload, host)
+            seen[host] = (rc, out, err)
+
+            if host == "claude":
+                if rc != 2:
+                    fails.append(f"{script}/claude: expected exit 2, got {rc}")
+                if not err:
+                    fails.append(f"{script}/claude: no reason on stderr")
+                if out:
+                    fails.append(f"{script}/claude: unexpected stdout {out[:60]!r}")
+                continue
+
+            if rc != 0:
+                fails.append(f"{script}/{host}: expected exit 0, got {rc}")
+            if err:
+                fails.append(f"{script}/{host}: unexpected stderr {err[:60]!r}")
+            try:
+                obj = json.loads(out)
+            except Exception:
+                fails.append(f"{script}/{host}: stdout is not JSON: {out[:60]!r}")
+                continue
+            if host == "cursor":
+                if obj.get("permission") != "deny":
+                    fails.append(f"{script}/cursor: permission is {obj.get('permission')!r}")
+                reason = obj.get("agentMessage", "")
+            else:
+                if obj.get("decision") != "block":
+                    fails.append(f"{script}/codex: decision is {obj.get('decision')!r}")
+                reason = obj.get("reason", "")
+            if not reason.strip():
+                fails.append(f"{script}/{host}: refusal carries no reason")
+
+        # the three forms must not be the same bytes, or nothing was adapted
+        shapes = {h: (v[0], bool(v[1]), bool(v[2])) for h, v in seen.items()}
+        if len(set(shapes.values())) < 2:
+            fails.append(f"{script}: every host produced the same shape "
+                         f"{shapes} — the adapter is not adapting")
+
+    if fails:
+        print(f"test-host-adapter: {len(fails)} failure(s)", file=sys.stderr)
+        for f in fails:
+            print(f"  {f}", file=sys.stderr)
+        return 1
+
+    print(f"test-host-adapter: {len(CASES)} guards refuse in "
+          f"{len(HOSTS)} host forms")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

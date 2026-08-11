@@ -5,7 +5,11 @@
 # shell side-effects — accident prevention, not a sandbox (documented).
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project
+CB_HOOK_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+export CB_HOOK_LIB
 if [ -z "$PYBIN" ]; then
   echo "cereblnk hook: no usable Python 3 — check skipped (failing open, not blocking your edit). Install Python 3 to re-arm hooks." >&2
   exit 0
@@ -16,6 +20,8 @@ CEREBLNK_HOOK_INPUT="$(cat)"
 export CEREBLNK_HOOK_INPUT
 $PYBIN - "$FLAG" << 'PY'
 import json, os, sys
+sys.path.insert(0, os.environ["CB_HOOK_LIB"])
+from cbhost import block
 flag = sys.argv[1]
 try:
     data = json.loads(os.environ.get("CEREBLNK_HOOK_INPUT") or "{}")
@@ -32,9 +38,8 @@ for p in prefixes:
     allowed = os.path.realpath(p if os.path.isabs(p) else os.path.join(cwd, p))
     if target == allowed or target.startswith(allowed + os.sep):
         sys.exit(0)
-print(f"Cereblnk EditBoundaryHook: write to '{fp}' is outside the declared "
+block(f"Cereblnk EditBoundaryHook: write to '{fp}' is outside the declared "
       f"boundary ({', '.join(prefixes)}). Adjust the plan or update the "
-      f"boundary with /cb-boundary.", file=sys.stderr)
-sys.exit(2)
+      f"boundary with /cb-boundary.")
 PY
 exit $?

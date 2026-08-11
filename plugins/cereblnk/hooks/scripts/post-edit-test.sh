@@ -5,6 +5,8 @@
 # subset after edits; a failure is reported back (exit 2 → stderr to Claude).
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project
 if [ -z "$PYBIN" ]; then
   echo "cereblnk hook: no usable Python 3 — check skipped (failing open, not blocking your edit). Install Python 3 to re-arm hooks." >&2
@@ -18,8 +20,6 @@ CMD=$(head -n1 "$CFG")
 OUT=$(bash -c "$CMD" 2>&1)
 STATUS=$?
 if [ $STATUS -ne 0 ]; then
-  echo "Cereblnk PostEditTestHook: test command failed after edit (exit $STATUS)." >&2
-  echo "$OUT" | tail -n 30 >&2
-  exit 2
+  cb_block "$(printf 'Cereblnk PostEditTestHook: test command failed after edit (exit %s).\n%s' "$STATUS" "$(printf '%s' "$OUT" | tail -n 30)")"
 fi
 exit 0

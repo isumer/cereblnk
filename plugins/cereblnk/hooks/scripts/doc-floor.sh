@@ -22,6 +22,8 @@
 # blocked legitimate read is worse.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 [ -d "$CB_DIR/docs" ] || exit 0
@@ -107,5 +109,4 @@ print(
 ' 2>/dev/null || true)"
 
 [ -n "$REASON" ] || exit 0
-echo "cereblnk doc-floor: $REASON" >&2
-exit 2
+cb_block "cereblnk doc-floor: $REASON"
