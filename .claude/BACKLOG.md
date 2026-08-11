@@ -59,6 +59,12 @@ open or closed.
 - **Procedure.** `scripts/host-probe install <host>` prints the config to
   paste and the four steps to follow, including the two `attest` calls.
   Run it per host rather than working from this entry.
+- **Cross-check already done (CB-135).** Candidate event names were
+  widened against configurations other projects commit and run. One
+  finding to carry into the run: a working Cursor configuration wires
+  per-tool events and carries no generic pre-tool event, so a pre-write
+  veto there may bind to several events rather than one. Treat it as a
+  hypothesis the probe tests, not a result.
 - **Depends on.** CB-122, CB-132.
 
 ---
