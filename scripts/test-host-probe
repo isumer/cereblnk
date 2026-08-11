@@ -111,6 +111,24 @@ def main():
         if "_attestation" in out:
             fails.append("an attestation was counted among observed events")
 
+        # install must emit a config naming the recorder, and must not
+        # write anything: a probe that edits the operator's editor config
+        # has spent the trust it needs to be believed later
+        for host in ("claude", "cursor", "codex", "gemini"):
+            before = sorted(pathlib.Path(td).rglob("*"))
+            out = run(["install", host], log)
+            if out.returncode != 0:
+                fails.append("install %s exited %d" % (host, out.returncode))
+            if "record" not in out.stdout:
+                fails.append("install %s emitted no recorder command" % host)
+            if "CB_PROBE_EVENT" not in out.stdout:
+                fails.append("install %s emitted no event wiring" % host)
+            if "attest" not in out.stdout:
+                fails.append("install %s did not tell the operator how to "
+                             "record the two provoked facts" % host)
+            if sorted(pathlib.Path(td).rglob("*")) != before:
+                fails.append("install %s wrote to disk" % host)
+
     if fails:
         print("test-host-probe: %d failure(s)" % len(fails), file=sys.stderr)
         for f in fails:

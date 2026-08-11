@@ -56,7 +56,10 @@ open or closed.
 - **Operator task.** This is not implementable from a checkout; it needs
   the hosts. 1.4.0 does not reach main without it, which is correct: the
   matrix CB-125 publishes would otherwise be a table of guesses.
-- **Depends on.** CB-122.
+- **Procedure.** `scripts/host-probe install <host>` prints the config to
+  paste and the four steps to follow, including the two `attest` calls.
+  Run it per host rather than working from this entry.
+- **Depends on.** CB-122, CB-132.
 
 ---
 
