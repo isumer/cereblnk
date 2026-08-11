@@ -27,6 +27,8 @@
 #   4. Fail open on every error path.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
@@ -109,7 +111,6 @@ print("%s edited %s and finished without running it. Run the configured "
 ' 2>/dev/null || true)"
 
 if [ -n "$REASON" ]; then
-  echo "$REASON" >&2
-  exit 2
+  cb_block "$REASON"
 fi
 exit 0

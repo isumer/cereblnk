@@ -29,6 +29,8 @@
 #      when it cannot measure is worse than one that does not run.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
@@ -129,5 +131,4 @@ print(f"{agent} returned {len(lines)} lines; the cap is {cap} "
 ' 2>/dev/null || true)"
 
 [ -n "$REASON" ] || exit 0
-echo "cereblnk digest-cap: $REASON" >&2
-exit 2
+cb_block "cereblnk digest-cap: $REASON"

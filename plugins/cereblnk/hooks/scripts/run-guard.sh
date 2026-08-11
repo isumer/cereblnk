@@ -24,6 +24,8 @@
 #   5. Fail open on every error path.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+# shellcheck source=../lib/hostio.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/hostio.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 
 FLAG="$CB_DIR/flags/run-active"
@@ -61,5 +63,6 @@ fi
 
 COUNT=$((COUNT+1))
 printf '%s %s %s\n' "$COUNT" "$BLOCKS" "$RUNKEY" > "$STATE" 2>/dev/null || true
-printf '{"decision":"block","reason":"A Cereblnk run is still active%s — continue nudge %s/%s. Reconcile the run ledger (plan.md vs Response Blocks), execute the NEXT unconfirmed task, then gates and synthesis. Nudges continue only while the ledger grows; if you are intentionally waiting for the user, remove flags/run-active first and ask."}\n' "$PENDING" "$COUNT" "$MAX_NUDGES"
+CB_REASON="$(printf 'A Cereblnk run is still active%s — continue nudge %s/%s. Reconcile the run ledger (plan.md vs Response Blocks), execute the NEXT unconfirmed task, then gates and synthesis. Nudges continue only while the ledger grows; if you are intentionally waiting for the user, remove flags/run-active first and ask.' "$PENDING" "$COUNT" "$MAX_NUDGES")"
+cb_block_turn "$CB_REASON"
 exit 0
