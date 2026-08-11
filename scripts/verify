@@ -23,6 +23,7 @@ unsupported paths where the tool has them):
   test-host-adapter       the refusal changes shape per host (CB-128)
   check-generated         committed bindings match their generator (CB-124)
   check-script-paths      a path named in a prompt exists (CB-123)
+  test-host-probe         the probe reports only what it saw (CB-122)
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
   rules-layer             constraint files load and resolve (CB-092)
@@ -78,7 +79,8 @@ def main():
                  "test-docindex", "test-exec-floor",
                  "test-reachability", "test-env-lifecycle",
                  "test-contract-check", "test-behavior-check",
-                 "test-hook-contract", "test-host-adapter"):
+                 "test-hook-contract", "test-host-adapter",
+                 "test-host-probe"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 

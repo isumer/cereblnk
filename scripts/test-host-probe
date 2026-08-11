@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""test-host-probe — the probe reports what it saw, and nothing else (CB-122).
+
+The failure this guards is not a crash. It is a probe that quietly fills
+a gap: an event that never fired coming back as present, an operator's
+say-so recorded as an observation, a host with no run at all producing a
+profile that looks measured. Any of those and the published matrix (CB-125)
+inherits a claim nobody checked, which is the exact failure CB-122 exists
+to prevent.
+
+So the assertions run in both directions. Fired events must come back
+present; unfired ones must come back unmeasured, and that second half is
+the one worth having.
+
+Exit: 0 all pass · 1 any failure
+"""
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PROBE = ROOT / "scripts/host-probe"
+
+
+def run(args, log, stdin="", env=None):
+    e = dict(os.environ, CB_PROBE_LOG=str(log))
+    e.update(env or {})
+    return subprocess.run([sys.executable, str(PROBE)] + args, input=stdin,
+                          capture_output=True, text=True, env=e)
+
+
+def field(text, key):
+    for line in text.splitlines():
+        if line.startswith(key + ":"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def status_of(text, capability):
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "- capability: %s" % capability:
+            for follow in lines[i + 1:i + 3]:
+                if follow.strip().startswith("status:"):
+                    return follow.split(":", 1)[1].strip()
+    return None
+
+
+def main():
+    fails = []
+    with tempfile.TemporaryDirectory() as td:
+        log = pathlib.Path(td) / "events.jsonl"
+
+        # a host with no run at all must not produce a measured profile
+        out = run(["collect", "gemini"], log).stdout
+        if status_of(out, "pre_tool_veto") != "unmeasured":
+            fails.append("a host with no recording reported pre_tool_veto as "
+                         "%r" % status_of(out, "pre_tool_veto"))
+        if field(out, "events_recorded") != "0":
+            fails.append("a host with no recording reported events")
+
+        # record two of the seven events
+        run(["record"], log, stdin=json.dumps(
+            {"tool_name": "Edit", "tool_input": {}, "session_id": "s"}),
+            env={"CB_PROBE_HOST": "claude", "CB_PROBE_EVENT": "PreToolUse"})
+        run(["record"], log, stdin=json.dumps(
+            {"agent_id": "a", "stop_hook_active": False}),
+            env={"CB_PROBE_HOST": "claude", "CB_PROBE_EVENT": "SubagentStop"})
+        run(["record"], log, stdin="{}",
+            env={"CB_PROBE_HOST": "claude", "CB_PROBE_EVENT": "SomethingNew"})
+
+        out = run(["collect", "claude"], log).stdout
+
+        for present in ("pre_tool_veto", "subagent_stop"):
+            if status_of(out, present) != "present":
+                fails.append("%s fired but came back %r"
+                             % (present, status_of(out, present)))
+
+        # the half that matters: nothing fired, nothing claimed
+        for absent in ("post_tool", "turn_stop", "pre_compact",
+                       "session_start", "session_end"):
+            got = status_of(out, absent)
+            if got != "unmeasured":
+                fails.append("%s never fired but came back %r" % (absent, got))
+
+        if "'session_id'" not in out or "'tool_name'" not in out:
+            fails.append("payload field names were not recorded")
+
+        if "SomethingNew" not in out:
+            fails.append("an event under an unrecognised name was dropped "
+                         "instead of reported")
+
+        # provoked facts stay unmeasured until someone provokes them
+        if field(out, "refusal_enforced") != "unmeasured":
+            fails.append("refusal_enforced was claimed without an attestation")
+        if field(out, "failure_mode") != "unmeasured":
+            fails.append("failure_mode was claimed without an attestation")
+
+        run(["attest", "claude", "--refusal-enforced", "yes"], log)
+        out = run(["collect", "claude"], log).stdout
+        if field(out, "refusal_enforced") != "attested:yes":
+            fails.append("an attestation did not reach the profile, or was "
+                         "not labelled as one: %r"
+                         % field(out, "refusal_enforced"))
+        if field(out, "failure_mode") != "unmeasured":
+            fails.append("attesting one fact silently set the other")
+        # an attestation is not an observation
+        if "_attestation" in out:
+            fails.append("an attestation was counted among observed events")
+
+    if fails:
+        print("test-host-probe: %d failure(s)" % len(fails), file=sys.stderr)
+        for f in fails:
+            print("  %s" % f, file=sys.stderr)
+        return 1
+    print("test-host-probe: measured is measured, unmeasured stays unmeasured")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
