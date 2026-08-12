@@ -7,6 +7,15 @@
   },
   "homepage": "https://github.com/isumer/cereblnk",
   "repository": "https://github.com/isumer/cereblnk",
+  "license": "MIT",
+  "keywords": ["engineering", "agents", "verification"],
   "skills": "./skills/",
-  "agents": "./agents/"
+  "interface": {
+    "displayName": "Cereblnk",
+    "shortDescription": "Engineering discipline as mechanism, not instruction",
+    "longDescription": "Routes work to specialist subagents, budgets context, and blocks a finish that skipped its checks. Every constraint names the script that detects its violation.",
+    "developerName": "isumer",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/isumer/cereblnk"
+  }
 }
