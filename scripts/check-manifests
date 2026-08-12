@@ -40,11 +40,15 @@ MANIFESTS = {
     ".claude-plugin/marketplace.json": (ROOT, ("source",)),
     "plugins/cereblnk/.claude-plugin/plugin.json": (PLUGIN, ()),
     ".agents/plugins/marketplace.json": (ROOT, ("path",)),
+    ".cursor-plugin/marketplace.json": (ROOT, ("source",)),
+    "plugins/cereblnk/.cursor-plugin/plugin.json": (PLUGIN,
+        ("skills", "agents", "rules", "hooks")),
     "plugins/cereblnk/.codex-plugin/plugin.json": (PLUGIN, ("skills", "agents")),
 }
 
 VERSIONED = ("plugins/cereblnk/.claude-plugin/plugin.json",
-             "plugins/cereblnk/.codex-plugin/plugin.json")
+             "plugins/cereblnk/.codex-plugin/plugin.json",
+             "plugins/cereblnk/.cursor-plugin/plugin.json")
 
 # Per-manifest schema rules, each traceable to a published specification.
 # `forbidden` is not pedantry: a field the schema does not define may be
@@ -56,6 +60,18 @@ SCHEMA = {
         "required": ("name", "interface.displayName"),
         "required_per_plugin": ("name", "source.path", "policy.installation",
                                 "policy.authentication", "category"),
+        "forbidden": (),
+    },
+    ".cursor-plugin/marketplace.json": {
+        "spec": "https://cursor.com/docs/reference/plugins",
+        "required": ("name", "owner.name"),
+        "required_per_plugin": ("name", "source"),
+        "forbidden": (),
+    },
+    "plugins/cereblnk/.cursor-plugin/plugin.json": {
+        "spec": "https://cursor.com/docs/reference/plugins",
+        "required": ("name",),
+        "required_per_plugin": (),
         "forbidden": (),
     },
     "plugins/cereblnk/.codex-plugin/plugin.json": {

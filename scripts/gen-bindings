@@ -24,10 +24,26 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 POLICY = ROOT / "plugins/cereblnk/policies"
-# Codex loads hooks/hooks.json by default, which is Claude's file, so the
-# Codex binding is emitted beside it and the Codex manifest points at it.
+# Codex and Cursor both load hooks/hooks.json by default, which is
+# Claude's file, so each gets its own emitted beside it and its manifest
+# points there.
 OUT = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json",
-       "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json"}
+       "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json",
+       "cursor": ROOT / "plugins/cereblnk/hooks/cursor-hooks.json"}
+
+# Per-host dialect. The binding says which event carries which capability;
+# this says how that host wants it written down. Two hosts agreeing on an
+# event name and disagreeing on the surrounding shape is the ordinary
+# case, not the surprise — keeping both in one table is what stops the
+# difference from being retyped into eighteen scripts.
+#
+#   nested  {"Event": [{"matcher": M, "hooks": [{"type","command"}]}]}
+#   flat    {"event": [{"command", "matcher"}]}
+DIALECT = {
+    "claude": {"shape": "nested", "root": "${CLAUDE_PLUGIN_ROOT}"},
+    "codex": {"shape": "nested", "root": "${CLAUDE_PLUGIN_ROOT}"},
+    "cursor": {"shape": "flat", "root": "${PLUGIN_ROOT}"},
+}
 
 
 def read_blocks(path, first_key):
@@ -90,16 +106,26 @@ def build(host):
     if errors:
         return None, errors
 
+    dialect = DIALECT.get(host, DIALECT["claude"])
+    root = dialect["root"]
     hooks = {}
     for b in binds:
         if b["class"].endswith("F"):
             continue  # absent on this host; nothing to emit
         event = b["event"]
-        entry = {"type": "command",
-                 "command": '"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/%s"'
-                            % known[b["capability"]]["script"]}
+        command = '"%s/hooks/scripts/%s"' % (root,
+                                             known[b["capability"]]["script"])
         group = hooks.setdefault(event, [])
         matcher = b.get("matcher")
+
+        if dialect["shape"] == "flat":
+            entry = {"command": command}
+            if matcher is not None:
+                entry["matcher"] = matcher
+            group.append(entry)
+            continue
+
+        entry = {"type": "command", "command": command}
         # consecutive rows sharing an event and matcher become one group,
         # which is how the generated file reproduces the hand-written one
         if group and group[-1].get("matcher") == matcher:

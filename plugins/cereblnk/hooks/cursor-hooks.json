@@ -1,0 +1,73 @@
+{
+  "description": "Cereblnk hooks for Cursor \u2014 declared from the published plugin reference, not yet measured (CB-140).",
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/destructive-command.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/delegation-guard.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/edit-boundary.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/secret-guard.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/scratch-guard.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/doc-floor.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/skill-ledger.sh\""
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/post-edit-test.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/exec-ledger.sh\""
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/history-archive.sh\""
+      }
+    ],
+    "stop": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/run-guard.sh\""
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/env-teardown.sh\""
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/skill-floor.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/exec-floor.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/reach-floor.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/contract-floor.sh\""
+      },
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/digest-cap.sh\""
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/context-monitor.sh\""
+      }
+    ]
+  }
+}
