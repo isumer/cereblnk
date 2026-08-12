@@ -254,5 +254,28 @@ read.
 - [x] **CB-118** — Every README claim re-derived from the tree; five were wrong
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
+- [x] **CB-147** — Manifest review — displayName, convention discovery, a contested field recorded
+- [x] **CB-146** — A session opened knowing nothing about the run it was resuming
+- [x] **CB-145** — Gemini binds further than the first reading said
+- [x] **CB-144** — Recovering a correction that missed its merge window
+- [x] **CB-142** — Host references get a home in the frozen documents
+- [x] **CB-141** — Gemini CLI stopped serving most tiers before this release
+- [x] **CB-140** — Cursor gets manifests and a binding, declared from the reference
+- [x] **CB-139** — Codex gets a binding, declared from the published reference
+- [x] **CB-138** — Evidence has three states, and the middle one carries its citation
+- [x] **CB-137** — The Codex manifests did not match the published schema
+- [x] **CB-136** — Say bound host where the text meant Claude Code
+- [x] **CB-135** — Cross-check candidate events against configurations that run
+- [x] **CB-134** — Revert the split — compression did the job
+- [x] **CB-133** — The gate always runs and says which case it is in
+- [x] **CB-132** — Install prints a config the operator can paste
+- [x] **CB-130** — A release branch reaches main empty
+- [x] **CB-129** — The loop moves to a policy, the ceiling gets a checker
+- [x] **CB-128** — The refusal is decided in eighteen places and expressed in one
+- [x] **CB-126** — Manifests for adjacent hosts, without moving a file
+- [x] **CB-125** — Every published matrix cell traces to evidence
+- [x] **CB-124** — Concept to capability to host — the binding grows a middle hop
+- [x] **CB-123** — A path named in a prompt has to exist
+- [x] **CB-122** — Host capability is measured by running it, not read off a page
 - [x] **CB-127** — The Claude binding is frozen before anything moves
 - [x] **CB-121** — Rewrite: the old behaviour is ruled, not transcribed

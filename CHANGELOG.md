@@ -7,6 +7,99 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.0] — A capability belongs to the platform; an event belongs to a host
+
+Every mechanism in this plugin was bound to one host's event names, and
+one class label — mechanical, instruction-driven, absent — stood for
+everywhere. That label was true of exactly one runtime and said so
+nowhere. The first port would have inherited a claim nobody checked.
+
+### Added
+
+- **The host boundary.** `policies/capabilities.yaml` names what must be
+  delivered, host-neutrally. `policies/hosts/<host>.yaml` says which
+  event delivers it there and with what class. `scripts/gen-bindings`
+  emits the host's config from the two, in that host's own dialect —
+  nested or flat, and whichever root variable it substitutes.
+- **`check-generated`.** Host configs are generated and still committed,
+  because a plugin has to work from a checkout. Committed and generated
+  at once invites a hand fix the next regeneration silently reverts, so
+  the committed file is compared against the generator the way a
+  lockfile is. Without it, the binding is a diagram.
+- **Three evidence states.** A run yields `M`/`D`/`F`. A cited
+  first-party specification yields `declared:*`. Nothing yields
+  `unmeasured`. A run outranks a specification. `declared` is published
+  and does not open a support claim: whether an event exists is
+  interface knowledge, whether our hook fires on it is not. A declared
+  row without a `source:` URL fails, because the citation is the only
+  thing keeping the middle state from holding guesses.
+- **`check-host-matrix`.** No cell in the published support matrix is
+  written by hand. Each is compared with the binding or profile that
+  earns it, in both directions — a cell claiming more than its evidence
+  fails, and so does evidence the matrix has not caught up with.
+- **`scripts/host-probe`.** What a host does, recorded from running it,
+  because vendor documentation on this subject contradicted itself twice
+  during this release. Anything a run did not establish reads
+  `unmeasured`. Two facts no ordinary session shows — that a refusal
+  stopped an action, and whether an erroring hook fails open — are
+  provoked and recorded as attestations, labelled as weaker than
+  observation.
+- **`hooks/lib/hostio.sh` and `cbhost.py`.** The refusal is decided in
+  eighteen places and expressed in one. Guards say `cb_block`; the
+  adapter says it in the host's form.
+- **`SessionBootstrapHook`.** A session opened knowing nothing about the
+  run it was resuming. The orchestrator was *told* to check the ledger,
+  which holds while the model remembers. It is now told the state, read
+  off disk, before the first prompt — including the case where a run
+  died mid-flight and left `DelegationGuard` refusing edits for a run
+  that no longer exists.
+- **Packaging for three further hosts.** Codex, Cursor and Gemini CLI
+  marketplace entries and plugin manifests, each written against its
+  vendor's published schema and enforced field by field by
+  `check-manifests`, with the specification URL in every message.
+- **`check-release-ready`, `check-script-paths`, `check-skill-size`,
+  `test-hook-contract`, `test-host-adapter`, `test-host-probe`,
+  `test-release-gate`.** The verify suite went from 24 checks to 37.
+
+### Changed
+
+- **05 records the class per host.** §2 is the Claude Code column and
+  says so. The same capability may be M on one runtime and absent on
+  another.
+- **The front page says bound host where it meant Claude Code.** The
+  architecture is host-neutral; Claude Code is the host bound by a run.
+- **`orchestrate/SKILL.md` compressed from 9983 to 7877 bytes**, all 28
+  operative concepts intact. An earlier attempt moved its pipeline into
+  a policy file and was reverted: inline, the platform delivers the
+  text; split, the skill asks the model to read a file and nothing
+  checks the read happened. Six load-bearing instructions lived only in
+  the moved file, including the one that arms three blocking hooks.
+- **Amendments.** 00 gains A2 (the host is a binding, not a property)
+  and A3 (prior art is described by class; a vendor's own reference is
+  cited by URL). 07 gains A4 (§9 Host References).
+
+### Fixed
+
+- **The matrix over-claimed.** Cells resolved by capability-id family,
+  and a family collapsed `SessionStart` with `SessionEnd`, so a binding
+  for either filled both. Claude was published as having `session_start`
+  when nothing bound it.
+- **The release gate had never fired.** Its decision lived in a CI `if:`,
+  so the job showed as skipped on twenty pull requests — and skipped
+  looks like passed. The decision moved into the script where a test can
+  reach it.
+- **`check-script-paths` read a full stop as part of a path**, and found
+  that by failing on correct prose.
+
+### Known and recorded
+
+Three hosts carry `declared:` rows and no verified ones. Nothing claims
+otherwise: `check-host-matrix` reports 7 verified, 21 declared, 0
+unmeasured, and would refuse a cell that claimed more. CB-131 measures,
+CB-148 settles a manifest field its own specification contradicts, and
+CB-143 decides whether the fourth host is worth following to its
+successor.
+
 ## [1.3.0] — A rewrite that transcribes is not a rewrite
 
 The four floors before this one ask whether a change works. This one
