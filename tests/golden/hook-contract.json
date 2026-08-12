@@ -139,6 +139,26 @@
     "stderr": "Cereblnk SecretGuardHook: blocked write containing a likely secret (private key material). Redact it or load it from the environment/secret store; never commit credentials to artifacts.",
     "stdout": ""
   },
+  "session-bootstrap: armed flag, no ledger": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Cereblnk: the run-active flag is armed but no run ledger exists under <PROJ>/.claude/cereblnk/context/. A run ended without completing, and DelegationGuard will refuse conductor edits until this is resolved. Finish the run through its workflow, or remove flags/run-active deliberately."
+  },
+  "session-bootstrap: nothing on disk": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "session-bootstrap: plan but flag down": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Cereblnk: run implement-2026-08-11 left 0 response block(s) on disk and its run-active flag is down, so the last run completed or was disarmed. A follow-up re-enters routing at the top rather than continuing that graph."
+  },
+  "session-bootstrap: resume, plan and flag": {
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Cereblnk: run implement-2026-08-11 is active with 0 response block(s) on disk. This session is a resume \u2014 reconcile <PROJ>/.claude/cereblnk/context/implement-2026-08-11//plan.md against the ledger and re-issue only the tasks without a completed block, never the whole graph."
+  },
   "skill-floor: already looping": {
     "rc": 0,
     "stderr": "",

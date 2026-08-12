@@ -80,3 +80,6 @@ bindings:
   - capability: prompt.context-monitor
     event: UserPromptSubmit
     class: M
+  - capability: session.session-bootstrap
+    event: SessionStart
+    class: M
