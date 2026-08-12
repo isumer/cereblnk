@@ -434,13 +434,13 @@ programs meeting, and only a session settles those.
 
 | Capability | claude | cursor | codex | gemini |
 |---|---|---|---|---|
-| `pre_tool_veto` | M | unmeasured | unmeasured | unmeasured |
-| `post_tool` | M | unmeasured | unmeasured | unmeasured |
-| `turn_stop` | M | unmeasured | unmeasured | unmeasured |
-| `subagent_stop` | M | unmeasured | unmeasured | unmeasured |
-| `pre_compact` | M | unmeasured | unmeasured | unmeasured |
-| `session_start` | M | unmeasured | unmeasured | unmeasured |
-| `session_end` | M | unmeasured | unmeasured | unmeasured |
+| `pre_tool_veto` | M | unmeasured | declared:M | unmeasured |
+| `post_tool` | M | unmeasured | declared:M | unmeasured |
+| `turn_stop` | M | unmeasured | declared:M | unmeasured |
+| `subagent_stop` | M | unmeasured | declared:M | unmeasured |
+| `pre_compact` | M | unmeasured | declared:M | unmeasured |
+| `session_start` | unmeasured | unmeasured | unmeasured | unmeasured |
+| `session_end` | M | unmeasured | declared:M | unmeasured |
 
 <!-- host-matrix:end -->
 

@@ -92,22 +92,28 @@ def binding_source(host):
 
 
 def bound_classes(host):
-    """Capability -> class, from a host binding. Absent if unbound."""
+    """Matrix capability -> class, from a host binding. Absent if unbound.
+
+    Keyed on the event a row binds, so a cell is filled only when
+    something is actually bound to the event that delivers it.
+    """
     path = HOSTS_DIR / ("%s.yaml" % host)
     if not path.exists():
         return None
-    out, current = {}, None
+    alias = EVENT_CAPABILITY.get(host, {})
+    out, event = {}, None
     for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^\s*-\s*capability:\s*(\S+)", line)
+        m = re.match(r"^\s*-\s*capability:\s*\S+", line)
         if m:
-            current = m.group(1)
+            event = None
+            continue
+        m = re.match(r"^\s+event:\s*(\S+)", line)
+        if m:
+            event = m.group(1)
             continue
         m = re.match(r"^\s+class:\s*(\S+)", line)
-        if m and current:
-            # a capability id in a binding is <family>.<script>; the
-            # matrix asks about families, so several rows collapse to one
-            family = current.split(".", 1)[0]
-            out.setdefault(family, m.group(1))
+        if m and event and event in alias:
+            out.setdefault(alias[event], m.group(1))
     return out
 
 
@@ -128,9 +134,26 @@ def probed_status(host):
     return out
 
 
-FAMILY = {"pre_tool_veto": "veto", "post_tool": "veto", "turn_stop": "turn",
-          "subagent_stop": "floor", "pre_compact": "compact",
-          "session_start": "session", "session_end": "session"}
+# Capability <- the host event that delivers it. Resolved per event, not
+# per capability-id family: an id family collapses SessionStart and
+# SessionEnd into one bucket, so a binding for either filled both cells
+# and the matrix claimed a capability nothing bound. Same table as
+# scripts/host-probe reads the other direction.
+EVENT_CAPABILITY = {
+    "claude": {"PreToolUse": "pre_tool_veto", "PostToolUse": "post_tool",
+               "PostToolUseFailure": "post_tool", "Stop": "turn_stop",
+               "SubagentStop": "subagent_stop", "PreCompact": "pre_compact",
+               "SessionStart": "session_start", "SessionEnd": "session_end"},
+    "codex": {"PreToolUse": "pre_tool_veto", "PostToolUse": "post_tool",
+              "Stop": "turn_stop", "SubagentStop": "subagent_stop",
+              "PreCompact": "pre_compact", "SessionStart": "session_start",
+              "SessionEnd": "session_end"},
+    "cursor": {"preToolUse": "pre_tool_veto", "postToolUse": "post_tool",
+               "stop": "turn_stop", "subagentStop": "subagent_stop",
+               "preCompact": "pre_compact", "sessionStart": "session_start",
+               "sessionEnd": "session_end"},
+    "gemini": {"BeforeTool": "pre_tool_veto", "AfterTool": "post_tool"},
+}
 
 
 def cell(host, capability):
@@ -143,7 +166,7 @@ def cell(host, capability):
 
     classes = bound_classes(host)
     if classes is not None:
-        got = classes.get(FAMILY.get(capability, capability))
+        got = classes.get(capability)
         if got:
             return got
     return UNMEASURED

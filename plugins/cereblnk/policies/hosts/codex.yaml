@@ -1,0 +1,85 @@
+# Codex binding (CB-139)
+#
+# Declared, not verified. Every class here is prefixed `declared:` because
+# it comes from the vendor's own reference for its own product, not from a
+# run. That reference is good evidence about an interface — whether an
+# event exists is interface knowledge — and no evidence at all about
+# whether our hook fires on it, survives the trust prompt, or stops the
+# action. CB-131 measures; until it does, none of this opens a support
+# claim.
+#
+# Matchers are where Codex and Claude Code actually diverge. The event
+# names line up; the tool names do not. `Bash` is attested on both. Codex
+# edits files through `apply_patch` rather than Write/Edit/MultiEdit, and
+# no Codex tool name is attested for Claude's `Read` or `Skill`. Where a
+# matcher has no attested counterpart it is omitted: the hook then fires
+# on every tool call and filters itself, which costs work per call but
+# not enforcement.
+#
+# Codex loads `hooks/hooks.json` by default, which is Claude's file. The
+# Codex manifest therefore points at hooks/codex-hooks.json instead, per
+# the manifest path rules in the source below.
+version: 1
+source: https://developers.openai.com/codex/hooks
+description: "Cereblnk hooks for Codex — declared from the published hook reference, not yet measured (CB-139)."
+bindings:
+  - capability: veto.destructive-command
+    event: PreToolUse
+    matcher: 'Bash'
+    class: declared:M
+  - capability: veto.delegation-guard
+    event: PreToolUse
+    matcher: 'apply_patch'
+    class: declared:M
+  - capability: veto.edit-boundary
+    event: PreToolUse
+    matcher: 'apply_patch'
+    class: declared:M
+  - capability: veto.secret-guard
+    event: PreToolUse
+    matcher: 'apply_patch'
+    class: declared:M
+  - capability: veto.scratch-guard
+    event: PreToolUse
+    matcher: 'apply_patch'
+    class: declared:M
+  - capability: veto.doc-floor
+    event: PreToolUse
+    class: declared:M
+  - capability: veto.skill-ledger
+    event: PreToolUse
+    class: declared:M
+  - capability: veto.post-edit-test
+    event: PostToolUse
+    matcher: 'apply_patch'
+    class: declared:M
+  - capability: veto.exec-ledger
+    event: PostToolUse
+    class: declared:M
+  - capability: compact.history-archive
+    event: PreCompact
+    class: declared:M
+  - capability: turn.run-guard
+    event: Stop
+    class: declared:M
+  - capability: session.env-teardown
+    event: SessionEnd
+    class: declared:M
+  - capability: floor.skill-floor
+    event: SubagentStop
+    class: declared:M
+  - capability: floor.exec-floor
+    event: SubagentStop
+    class: declared:M
+  - capability: floor.reach-floor
+    event: SubagentStop
+    class: declared:M
+  - capability: floor.contract-floor
+    event: SubagentStop
+    class: declared:M
+  - capability: floor.digest-cap
+    event: SubagentStop
+    class: declared:M
+  - capability: prompt.context-monitor
+    event: UserPromptSubmit
+    class: declared:M
