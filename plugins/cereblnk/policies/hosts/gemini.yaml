@@ -1,0 +1,92 @@
+# Gemini CLI binding (CB-145)
+#
+# Declared, not verified. Classes come from the vendor's own hook
+# reference; whether our hooks fire, and whether the tiers that still
+# have access run them, is unmeasured.
+#
+# The refusal contract is identical to Claude Code's. Exit 2 is a System
+# Block: the target action — tool, turn or stop — is aborted and stderr
+# is the rejection reason. cb_block's default branch works here unchanged,
+# so no dialect entry is needed beyond the path variable.
+#
+# Six of seven capabilities map. subagent_stop does not: this host has
+# subagents but no subagent lifecycle event, so the five finish floors
+# have nothing to attach to. That is declared:F — absent by the
+# reference, not merely unlooked-at.
+#
+# Two impacts are advisory rather than blocking, PreCompress and
+# SessionEnd. Both capabilities bound to them record rather than refuse,
+# so nothing is lost; a blocking capability bound to an advisory event
+# would be a false M and is not written here.
+#
+# Delivery is unresolved and CB-143 holds it. Hooks are read from
+# hooks/hooks.json inside the extension root with no manifest field to
+# point elsewhere, and that file is Claude Code's. The reference does
+# leave a way out — project settings outrank extension hooks — so
+# Cereblnk could ship this as install-time configuration rather than as
+# extension packaging. Nothing here assumes either.
+version: 1
+source: https://geminicli.com/docs/hooks/
+description: "Cereblnk hooks for Gemini CLI — declared from the published hook reference, not yet measured (CB-145)."
+bindings:
+  - capability: veto.destructive-command
+    event: BeforeTool
+    matcher: 'run_shell_command'
+    class: declared:M
+  - capability: veto.delegation-guard
+    event: BeforeTool
+    matcher: 'write_file|replace'
+    class: declared:M
+  - capability: veto.edit-boundary
+    event: BeforeTool
+    matcher: 'write_file|replace'
+    class: declared:M
+  - capability: veto.secret-guard
+    event: BeforeTool
+    matcher: 'write_file|replace'
+    class: declared:M
+  - capability: veto.scratch-guard
+    event: BeforeTool
+    matcher: 'write_file|replace'
+    class: declared:M
+  - capability: veto.doc-floor
+    event: BeforeTool
+    matcher: 'read_file'
+    class: declared:M
+  - capability: veto.skill-ledger
+    event: BeforeTool
+    class: declared:M
+  - capability: veto.post-edit-test
+    event: AfterTool
+    matcher: 'write_file|replace'
+    class: declared:M
+  - capability: veto.exec-ledger
+    event: AfterTool
+    class: declared:M
+  - capability: compact.history-archive
+    event: PreCompress
+    class: declared:M
+  - capability: turn.run-guard
+    event: AfterAgent
+    class: declared:M
+  - capability: session.env-teardown
+    event: SessionEnd
+    class: declared:M
+  - capability: floor.skill-floor
+    event: SubagentStop
+    class: declared:F
+  - capability: floor.exec-floor
+    event: SubagentStop
+    class: declared:F
+  - capability: floor.reach-floor
+    event: SubagentStop
+    class: declared:F
+  - capability: floor.contract-floor
+    event: SubagentStop
+    class: declared:F
+  - capability: floor.digest-cap
+    event: SubagentStop
+    class: declared:F
+  - capability: prompt.context-monitor
+    event: BeforeAgent
+    class: declared:M

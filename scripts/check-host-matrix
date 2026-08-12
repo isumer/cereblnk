@@ -152,7 +152,10 @@ EVENT_CAPABILITY = {
                "postToolUseFailure": "post_tool", "stop": "turn_stop",
                "subagentStop": "subagent_stop", "preCompact": "pre_compact",
                "sessionStart": "session_start", "sessionEnd": "session_end"},
-    "gemini": {"BeforeTool": "pre_tool_veto", "AfterTool": "post_tool"},
+    "gemini": {"BeforeTool": "pre_tool_veto", "AfterTool": "post_tool",
+               "AfterAgent": "turn_stop", "SubagentStop": "subagent_stop",
+               "PreCompress": "pre_compact", "SessionStart": "session_start",
+               "SessionEnd": "session_end"},
 }
 
 
