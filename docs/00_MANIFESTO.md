@@ -1,6 +1,6 @@
 # Cereblnk Manifesto
 
-> Status: Frozen v1.2 (Amendments A1, A2 applied — see Appendix)
+> Status: Frozen v1.3 (Amendments A1–A3 applied — see Appendix)
 > This document defines WHY Cereblnk exists. It changes rarely, if ever.
 > All other documents must remain consistent with this one.
 > Procedures for §4 live in 09_COGNITIVE_OPERATIONS_MANUAL.md.
@@ -215,3 +215,18 @@ Every contribution to Cereblnk is measured against this sentence.
   changes. Nothing is claimed for any host that has not been measured;
   what is bound and what is merely unmeasured is published in README
   and checked by scripts/check-host-matrix.
+
+**A3 (v1.2 → v1.3).**
+- §6: prior art is described by class and never by name — unchanged. Added
+  that a *host vendor's own reference for its own product* is a different
+  thing from prior art and is cited by URL, in `policies/hosts/<host>.yaml`
+  and in `07 §9 Host References`.
+- Reason: the two were being conflated. A competing implementation is
+  described by class because naming it adds nothing a reader needs. A
+  specification is cited by URL because the reader has to be able to check
+  the claim against it, and a rule that cannot be checked is the thing this
+  document exists to refuse.
+- What a specification is not: evidence of behaviour. It settles what an
+  interface offers, never whether our code meets it on that runtime. The
+  `declared:` class exists to hold that difference.
+- Impact on existing artifacts: none. No principle or law changes.

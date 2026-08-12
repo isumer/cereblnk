@@ -1,6 +1,6 @@
 # Cereblnk Build Instructions
 
-> Status: v1.1 (updated for Amendment A1 and 09_COGNITIVE_OPERATIONS_MANUAL.md)
+> Status: v1.2 (Amendment A4 — host references)
 > Purpose: Paste this into the Claude Project's custom instructions.
 > It governs the BUILD phase: decomposing work into tasks and producing
 > the Cereblnk plugin inside a plugin marketplace — Claude Code's is the
@@ -243,6 +243,53 @@ in the response that makes it.
 
 ---
 
+## 9. Host References
+
+First-party documentation for every host Cereblnk packages for. These are
+authoritative for a *format* — manifest fields, file locations, event
+names — and authoritative for nothing about runtime behaviour. A
+specification tells you an event exists; only a run tells you our hook
+fires on it, survives a trust prompt and stops the action. That
+distinction is why `check-manifests` is strict while `check-host-matrix`
+publishes `declared:` rather than a support claim.
+
+Every `declared:` row in `policies/hosts/<host>.yaml` cites one of these
+in its `source:` field, and a declared row without a citation fails the
+matrix check.
+
+**Claude Code**
+- Plugins: https://docs.claude.com/en/docs/claude-code/plugins
+- Hooks: https://docs.claude.com/en/docs/claude-code/hooks
+- Skills: https://docs.claude.com/en/docs/claude-code/skills
+
+**OpenAI Codex**
+- Build plugins: https://developers.openai.com/codex/plugins/build
+- Hooks: https://developers.openai.com/codex/hooks
+- Config reference: https://developers.openai.com/codex/config-reference
+
+**Cursor**
+- Plugins reference: https://cursor.com/docs/reference/plugins
+- Hooks: https://cursor.com/docs/hooks
+- Plugin template: https://github.com/cursor/plugin-template
+
+**Gemini CLI**
+- Extension reference: https://geminicli.com/docs/extensions/reference/
+- Writing extensions: https://geminicli.com/docs/extensions/writing-extensions/
+- Hooks: https://geminicli.com/docs/hooks/
+
+**Cross-host**
+- Agent Plugins standard: https://agent-plugins.org
+- AGENTS.md: the repository root file every listed host reads
+
+These pages change. Two of them contradicted their own earlier versions
+during 1.4.0: one host was written up as having no blocking hooks in one
+quarter and a full pre-tool veto the next, and a working third-party
+configuration was missing an event its vendor's reference lists. Read the
+page before trusting a memory of the page, and record what you read in
+the `source:` field rather than in a commit message nobody re-opens.
+
+---
+
 ## Appendix — Amendment Log
 
 **A2 (v1.0 → v1.1).**
@@ -274,3 +321,17 @@ in the response that makes it.
 - Impact: description only. No agent, skill, workflow, policy or gate
   reads `examples/`; reproducible fixtures live under `tests/` and are
   unaffected.
+
+**A4 (v1.1 → v1.2).**
+- New §9 Host References: first-party documentation for Claude Code,
+  Codex, Cursor and Gemini CLI, plus the cross-host standard.
+- Reason: 1.4.0 packages for four hosts and every `declared:` row in a
+  host binding has to cite the reference it came from. The URLs lived in
+  commit messages and pull request bodies, which nobody re-opens, so the
+  same page kept being re-found.
+- The section states what these sources are authoritative for — format,
+  not runtime behaviour — because treating a specification as evidence of
+  behaviour is the specific error the three-state evidence model exists
+  to prevent.
+- Impact on existing artifacts: none. No rule changes; a location is
+  named that previously had none.
