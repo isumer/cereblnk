@@ -27,7 +27,13 @@
     "a synthetic project cannot produce cheaply. Their refusal paths stay",
     "covered by their own suites (test-exec-floor, test-reachability,",
     "test-contract-check, test-skill-selection). This file says so rather",
-    "than letting four exit-0 rows look like coverage."
+    "than letting four exit-0 rows look like coverage.",
+    "",
+    "CB-146 added SessionStart and four cases for it. The golden was",
+    "re-taken deliberately, which is the only way it is ever re-taken: the",
+    "binding gained an event, so the frozen file described a tree that no",
+    "longer exists. A re-capture without a task saying why is the failure",
+    "this file guards against."
   ],
   "cases": [
     {
@@ -423,6 +429,45 @@
         "agent_id": "abc",
         "agent_type": "backend",
         "stop_hook_active": true
+      }
+    },
+    {
+      "name": "session-bootstrap: nothing on disk",
+      "script": "session-bootstrap.sh",
+      "state": [],
+      "stdin": {
+        "source": "startup"
+      }
+    },
+    {
+      "name": "session-bootstrap: armed flag, no ledger",
+      "script": "session-bootstrap.sh",
+      "state": [
+        "run-active"
+      ],
+      "stdin": {
+        "source": "startup"
+      }
+    },
+    {
+      "name": "session-bootstrap: resume, plan and flag",
+      "script": "session-bootstrap.sh",
+      "state": [
+        "run-active",
+        "run-context"
+      ],
+      "stdin": {
+        "source": "resume"
+      }
+    },
+    {
+      "name": "session-bootstrap: plan but flag down",
+      "script": "session-bootstrap.sh",
+      "state": [
+        "run-context"
+      ],
+      "stdin": {
+        "source": "startup"
       }
     }
   ]

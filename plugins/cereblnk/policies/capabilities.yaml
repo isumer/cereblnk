@@ -52,3 +52,5 @@ capabilities:
     script: digest-cap.sh
   - capability: prompt.context-monitor
     script: context-monitor.sh
+  - capability: session.session-bootstrap
+    script: session-bootstrap.sh

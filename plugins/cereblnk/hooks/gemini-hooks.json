@@ -108,6 +108,16 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/session-bootstrap.sh\""
+          }
+        ]
+      }
     ]
   }
 }

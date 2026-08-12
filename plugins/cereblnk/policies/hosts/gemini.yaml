@@ -90,3 +90,6 @@ bindings:
   - capability: prompt.context-monitor
     event: BeforeAgent
     class: declared:M
+  - capability: session.session-bootstrap
+    event: SessionStart
+    class: declared:M

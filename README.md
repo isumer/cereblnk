@@ -74,11 +74,11 @@ archiving.
 **Constraints** (`rules/`) — loaded per task by `scripts/select-rules`
 rather than all at once, because context is the expensive resource.
 
-**Hooks** (`hooks/`) — eighteen scripts across seven events of the bound
+**Hooks** (`hooks/`) — nineteen scripts across eight events of the bound
 host. On Claude Code those are:
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`,
-`SubagentStop`, `SessionEnd`. Twelve of them block; six record or
-observe. The scripts themselves name no host: which event carries which
+`SubagentStop`, `SessionStart`, `SessionEnd`. Twelve of them block;
+seven record or observe. The scripts themselves name no host: which event carries which
 capability is a binding, and `scripts/gen-bindings` emits the host's
 config from it. See **Host support** below for what is bound and what is
 merely unmeasured.
@@ -441,7 +441,7 @@ programs meeting, and only a session settles those.
 | `turn_stop` | M | declared:M | declared:M | declared:M |
 | `subagent_stop` | M | declared:M | declared:M | declared:F |
 | `pre_compact` | M | declared:M | declared:M | declared:M |
-| `session_start` | unmeasured | unmeasured | unmeasured | unmeasured |
+| `session_start` | M | declared:M | declared:M | declared:M |
 | `session_end` | M | declared:M | declared:M | declared:M |
 
 <!-- host-matrix:end -->
@@ -471,7 +471,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **27 agents · 94 skills (17 of them entry points) ·
-176 constraint files · 18 hooks · 28 verify suites** (count them:
+176 constraint files · 19 hooks · 37 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`

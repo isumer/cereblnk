@@ -68,6 +68,11 @@
       {
         "command": "\"${PLUGIN_ROOT}/hooks/scripts/context-monitor.sh\""
       }
+    ],
+    "sessionStart": [
+      {
+        "command": "\"${PLUGIN_ROOT}/hooks/scripts/session-bootstrap.sh\""
+      }
     ]
   }
 }
