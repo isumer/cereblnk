@@ -1,0 +1,80 @@
+# Cursor binding (CB-140)
+#
+# Declared, not verified. Every class carries the declared: prefix: the
+# events below are named in Cursor's own plugin reference, which is good
+# evidence about an interface and none at all about whether our hooks
+# fire on it. CB-131 measures.
+#
+# Event parity is complete for what Cereblnk binds — preToolUse,
+# postToolUse, preCompact, stop, sessionEnd, subagentStop and
+# beforeSubmitPrompt all exist. This corrects CB-135, which read the
+# absence of preToolUse from a working third-party configuration as a
+# possible gap. The reference lists it; that configuration simply routed
+# through the per-tool events instead. Absence from someone else's file
+# meant unused, which is the reading CB-135 said to prefer.
+#
+# No matcher is set anywhere. Cursor filters by its own tool vocabulary
+# and none of Claude's names are attested for it, so every hook fires on
+# each call and filters itself — work per call, not enforcement.
+#
+# Cursor discovers hooks/hooks.json by default, which is Claude's file,
+# and a manifest path replaces folder discovery rather than adding to it.
+# The manifest therefore points at hooks/cursor-hooks.json.
+version: 1
+source: https://cursor.com/docs/reference/plugins
+description: "Cereblnk hooks for Cursor — declared from the published plugin reference, not yet measured (CB-140)."
+bindings:
+  - capability: veto.destructive-command
+    event: preToolUse
+    class: declared:M
+  - capability: veto.delegation-guard
+    event: preToolUse
+    class: declared:M
+  - capability: veto.edit-boundary
+    event: preToolUse
+    class: declared:M
+  - capability: veto.secret-guard
+    event: preToolUse
+    class: declared:M
+  - capability: veto.scratch-guard
+    event: preToolUse
+    class: declared:M
+  - capability: veto.doc-floor
+    event: preToolUse
+    class: declared:M
+  - capability: veto.skill-ledger
+    event: preToolUse
+    class: declared:M
+  - capability: veto.post-edit-test
+    event: postToolUse
+    class: declared:M
+  - capability: veto.exec-ledger
+    event: postToolUse
+    class: declared:M
+  - capability: compact.history-archive
+    event: preCompact
+    class: declared:M
+  - capability: turn.run-guard
+    event: stop
+    class: declared:M
+  - capability: session.env-teardown
+    event: sessionEnd
+    class: declared:M
+  - capability: floor.skill-floor
+    event: subagentStop
+    class: declared:M
+  - capability: floor.exec-floor
+    event: subagentStop
+    class: declared:M
+  - capability: floor.reach-floor
+    event: subagentStop
+    class: declared:M
+  - capability: floor.contract-floor
+    event: subagentStop
+    class: declared:M
+  - capability: floor.digest-cap
+    event: subagentStop
+    class: declared:M
+  - capability: prompt.context-monitor
+    event: beforeSubmitPrompt
+    class: declared:M

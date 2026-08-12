@@ -328,10 +328,12 @@ blocking writes outside the given directory during focused work.
 cereblnk/                        # repo root = marketplace
 ├── AGENTS.md                    # instructions every host can read
 ├── .claude-plugin/marketplace.json
-├── .agents/plugins/             # repo-local registry for other hosts
+├── .agents/plugins/             # repo-local registry, Codex
+├── .cursor-plugin/marketplace.json
 ├── plugins/cereblnk/            # the Cereblnk plugin
 │   ├── .claude-plugin/plugin.json
 │   ├── .codex-plugin/plugin.json
+│   ├── .cursor-plugin/plugin.json
 │   ├── agents/                  # core / engineering / lifecycle / context
 │   ├── skills/                  # entry points at the top level,
 │   │                            #   domain skills grouped below
@@ -434,13 +436,13 @@ programs meeting, and only a session settles those.
 
 | Capability | claude | cursor | codex | gemini |
 |---|---|---|---|---|
-| `pre_tool_veto` | M | unmeasured | declared:M | unmeasured |
-| `post_tool` | M | unmeasured | declared:M | unmeasured |
-| `turn_stop` | M | unmeasured | declared:M | unmeasured |
-| `subagent_stop` | M | unmeasured | declared:M | unmeasured |
-| `pre_compact` | M | unmeasured | declared:M | unmeasured |
+| `pre_tool_veto` | M | declared:M | declared:M | unmeasured |
+| `post_tool` | M | declared:M | declared:M | unmeasured |
+| `turn_stop` | M | declared:M | declared:M | unmeasured |
+| `subagent_stop` | M | declared:M | declared:M | unmeasured |
+| `pre_compact` | M | declared:M | declared:M | unmeasured |
 | `session_start` | unmeasured | unmeasured | unmeasured | unmeasured |
-| `session_end` | M | unmeasured | declared:M | unmeasured |
+| `session_end` | M | declared:M | declared:M | unmeasured |
 
 <!-- host-matrix:end -->
 

@@ -1,0 +1,20 @@
+{
+  "name": "cereblnk-marketplace",
+  "owner": {
+    "name": "isumer"
+  },
+  "metadata": {
+    "description": "Cereblnk — engineering discipline as mechanism, not instruction."
+  },
+  "plugins": [
+    {
+      "name": "cereblnk",
+      "source": "plugins/cereblnk",
+      "description": "Routes work to specialist subagents, budgets context, and blocks a finish that skipped its checks.",
+      "repository": "https://github.com/isumer/cereblnk",
+      "license": "MIT",
+      "keywords": ["engineering", "agents", "verification"],
+      "category": "Productivity"
+    }
+  ]
+}

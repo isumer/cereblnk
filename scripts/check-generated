@@ -26,7 +26,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 GEN = ROOT / "scripts/gen-bindings"
 HOSTS = ROOT / "plugins/cereblnk/policies/hosts"
 COMMITTED = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json",
-             "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json"}
+             "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json",
+             "cursor": ROOT / "plugins/cereblnk/hooks/cursor-hooks.json"}
 
 
 def main():
