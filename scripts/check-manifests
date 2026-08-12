@@ -43,12 +43,14 @@ MANIFESTS = {
     ".cursor-plugin/marketplace.json": (ROOT, ("source",)),
     "plugins/cereblnk/.cursor-plugin/plugin.json": (PLUGIN,
         ("skills", "agents", "rules", "hooks")),
+    "plugins/cereblnk/gemini-extension.json": (PLUGIN, ("contextFileName",)),
     "plugins/cereblnk/.codex-plugin/plugin.json": (PLUGIN, ("skills", "agents")),
 }
 
 VERSIONED = ("plugins/cereblnk/.claude-plugin/plugin.json",
              "plugins/cereblnk/.codex-plugin/plugin.json",
-             "plugins/cereblnk/.cursor-plugin/plugin.json")
+             "plugins/cereblnk/.cursor-plugin/plugin.json",
+             "plugins/cereblnk/gemini-extension.json")
 
 # Per-manifest schema rules, each traceable to a published specification.
 # `forbidden` is not pedantry: a field the schema does not define may be
@@ -61,6 +63,15 @@ SCHEMA = {
         "required_per_plugin": ("name", "source.path", "policy.installation",
                                 "policy.authentication", "category"),
         "forbidden": (),
+    },
+    "plugins/cereblnk/gemini-extension.json": {
+        "spec": "https://geminicli.com/docs/extensions/reference/",
+        "required": ("name", "version"),
+        "required_per_plugin": (),
+        # the manifest carries mcpServers, contextFileName, excludeTools,
+        # settings and themes; hooks, skills and agents are discovered by
+        # folder and declaring them here would be read by nobody
+        "forbidden": ("hooks", "skills", "agents", "commands"),
     },
     ".cursor-plugin/marketplace.json": {
         "spec": "https://cursor.com/docs/reference/plugins",

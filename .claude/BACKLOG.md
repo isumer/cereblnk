@@ -38,6 +38,32 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
+### CB-143 — Gemini enforcement is blocked, and by what
+
+CB-141 packaged Cereblnk as a Gemini extension. The enforcement layer did
+not follow, for two reasons that are properties of the host rather than
+gaps in our work:
+
+- Hooks are read from `hooks/hooks.json` inside the extension root and
+  the manifest offers **no field to point elsewhere**. That file is
+  Claude Code's binding, in Claude Code's shape. Codex and Cursor hit the
+  same default and both let a manifest redirect it.
+- Hook commands substitute `${extensionPath}`, not the plugin-root
+  variable Cereblnk's hooks are written against, and extensions do not
+  inherit the shell environment — only standard variables and those the
+  manifest declares. Several Cereblnk hooks read variables declared
+  nowhere.
+
+- **Deliverable.** Either a way to bind without owning `hooks/hooks.json`,
+  or a recorded decision that Gemini carries skills and sub-agents only.
+- **Acceptance.** Whichever it is, `check-host-matrix` reflects it and no
+  cell claims more than the resolution supports.
+- **Before spending on this.** The extension reference carries a notice
+  that Gemini CLI is being replaced by another CLI for some tiers. A port
+  target on its way out may not be worth a binding layer, and that is a
+  decision to take deliberately rather than by drifting into the work.
+- **Depends on.** CB-141.
+
 ### CB-131 — The probe has to be run on the hosts it measures
 
 CB-122 lands the harness and the discipline; it cannot land the evidence.
