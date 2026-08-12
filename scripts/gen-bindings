@@ -29,7 +29,8 @@ POLICY = ROOT / "plugins/cereblnk/policies"
 # points there.
 OUT = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json",
        "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json",
-       "cursor": ROOT / "plugins/cereblnk/hooks/cursor-hooks.json"}
+       "cursor": ROOT / "plugins/cereblnk/hooks/cursor-hooks.json",
+       "gemini": ROOT / "plugins/cereblnk/hooks/gemini-hooks.json"}
 
 # Per-host dialect. The binding says which event carries which capability;
 # this says how that host wants it written down. Two hosts agreeing on an
@@ -43,6 +44,10 @@ DIALECT = {
     "claude": {"shape": "nested", "root": "${CLAUDE_PLUGIN_ROOT}"},
     "codex": {"shape": "nested", "root": "${CLAUDE_PLUGIN_ROOT}"},
     "cursor": {"shape": "flat", "root": "${PLUGIN_ROOT}"},
+    # Gemini nests like Claude Code and shares its refusal contract —
+    # exit 2 aborts the target action, stderr carries the reason — so
+    # only the path variable differs.
+    "gemini": {"shape": "nested", "root": "${extensionPath}"},
 }
 
 

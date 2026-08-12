@@ -38,40 +38,41 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
-### CB-143 — Gemini CLI is not the port target; its successor is
+### CB-143 — Where Gemini hooks are delivered from
 
-CB-141 packaged Cereblnk as a Gemini CLI extension and found the
-enforcement layer blocked. Checking the retirement notice on that page
-turned the question into a different one.
+CB-145 bound Gemini against its published hook reference: six of seven
+capabilities have an event, the refusal contract is identical to Claude
+Code's, and `subagent_stop` is absent because the host exposes no
+sub-agent lifecycle hook. Capability is not the open question.
 
-Gemini CLI stopped serving Google AI Pro, Ultra and free tiers on
-18 June 2026 — before this release was written. Access continues only
-for Code Assist Standard/Enterprise licences and paid API keys. The
-successor is a different, closed-source binary, and it carries the same
-capability family forward: agent skills, hooks, subagents and extensions,
-the last reimplemented as that platform's own plugin format. Its vendor
-states there is no day-one feature parity.
+Delivery is. Hooks are read from `hooks/hooks.json` inside the extension
+root, the manifest offers no field to point elsewhere, and that file is
+Claude Code's binding. Codex and Cursor hit the same default and both let
+a manifest redirect it.
 
-So the two blockers CB-141 recorded are real and no longer worth solving
-against that host. Nothing here is wasted: the extension manifest and
-context file still serve the tiers that retain access, and cost almost
-nothing to keep.
+The reference leaves one way out that costs nothing to try: hook layers
+are ordered project settings, user settings, system settings, extensions.
+Project settings outrank extension hooks, so `hooks/gemini-hooks.json`
+could be delivered as install-time configuration rather than as extension
+packaging.
 
-- **Decision to take.** Retarget the fourth host to the successor, or
-  record that Cereblnk ports to three and stop. Do not spend a binding
-  layer on a CLI that stopped serving most of its users two months ago.
-- **If retargeting.** Treat it as a new host from scratch — new manifest
-  format, new event names, `declared:` from its own reference, and a row
-  in `EVENT_CAPABILITY`. The Gemini rows are not a starting point; a
-  successor that ships without feature parity is a different host, not a
-  rename.
-- **Acceptance.** `check-host-matrix` reflects whichever is chosen, and
-  no cell claims more than it supports. If Cereblnk ports to three, the
-  fourth column comes out of the matrix rather than standing at
-  `unmeasured` forever, which reads as work pending rather than work
-  declined.
-- **Source.** https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
-- **Depends on.** CB-141.
+- **Deliverable.** Either that install path, documented and checkable, or
+  a recorded decision that Cereblnk ships skills and sub-agents to this
+  host and nothing more.
+- **Acceptance.** Whichever is chosen, `check-host-matrix` reflects it.
+  If the decision is to stop, the declared rows come out rather than
+  standing as an implied promise.
+- **Weigh this first.** The CLI stopped serving Google AI Pro, Ultra and
+  free tiers on 18 June 2026; access continues for Code Assist
+  Standard/Enterprise licences and paid API keys. Its successor carries
+  the same capability family under a different plugin format, with no
+  day-one parity per its vendor. The work below is worth something to the
+  tiers that retain access and nothing to the rest, and that is the
+  trade to take deliberately.
+- **Sources.**
+  https://geminicli.com/docs/hooks/ ·
+  https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
+- **Depends on.** CB-145.
 
 ### CB-131 — The probe has to be run on the hosts it measures
 

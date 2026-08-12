@@ -5,26 +5,30 @@ context Gemini CLI loads for the extension; the host-neutral instructions
 every agent works under are in `AGENTS.md` at the repository root, and
 that is the file to read first.
 
-## Packaging only, on this host
+## What binds here, and what does not
 
 Skills under `skills/` and sub-agents under `agents/` are discovered by
-folder, so they load. The enforcement layer does not: two things block
-it, both recorded in `.claude/BACKLOG.md` under CB-141.
+folder, so they load. The enforcement layer maps further than the first
+reading of these docs suggested, and `policies/hosts/gemini.yaml` records
+it against the published hook reference.
 
-Hooks are read from `hooks/hooks.json` inside the extension root and the
-manifest offers no field to point elsewhere. That file is Claude Code's
-binding, written in Claude Code's shape. Codex and Cursor both hit the
-same default and both let a manifest redirect it; here there is nothing
-to redirect with.
+Six of seven capabilities have an event: `BeforeTool`, `AfterTool`,
+`AfterAgent`, `PreCompress`, `SessionStart`, `SessionEnd`. The refusal
+contract is the same one Claude Code uses — exit 2 aborts the target
+action and stderr carries the reason — so the guards need no translation
+to speak here.
 
-Extension hook commands substitute `${extensionPath}`, not the plugin
-root variable Cereblnk's hooks are written against, and extensions do not
-inherit the shell environment — only standard variables and those a
-manifest declares. Cereblnk's hooks read several that are declared
-nowhere.
+`subagent_stop` has no event. This host runs sub-agents but exposes no
+sub-agent lifecycle hook, so Cereblnk's five finish floors have nothing
+to attach to. They are absent here, not unmeasured, and nothing pretends
+otherwise.
 
-So on this host Cereblnk is a skill and sub-agent bundle. The floors do
-not arm, and nothing here claims they do.
+What is unresolved is delivery, not capability. Hooks are read from
+`hooks/hooks.json` inside the extension root and the manifest offers no
+field to point elsewhere — and that file is Claude Code's binding. The
+reference does leave a way out: project settings outrank extension hooks,
+so these could ship as install-time configuration rather than extension
+packaging. CB-143 holds that decision.
 
 ## Read this if you are on a consumer tier
 

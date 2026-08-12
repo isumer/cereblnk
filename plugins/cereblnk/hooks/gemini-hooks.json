@@ -1,0 +1,113 @@
+{
+  "description": "Cereblnk hooks for Gemini CLI \u2014 declared from the published hook reference, not yet measured (CB-145).",
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/destructive-command.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/delegation-guard.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/edit-boundary.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/secret-guard.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/scratch-guard.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "read_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/doc-floor.sh\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/skill-ledger.sh\""
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/post-edit-test.sh\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/exec-ledger.sh\""
+          }
+        ]
+      }
+    ],
+    "PreCompress": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/history-archive.sh\""
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/run-guard.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/env-teardown.sh\""
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${extensionPath}/hooks/scripts/context-monitor.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -71,7 +71,8 @@ ALIASES = {
     "codex": {"PreToolUse": "pre_tool_veto", "PostToolUse": "post_tool",
               "Stop": "turn_stop", "SessionStart": "session_start"},
     "gemini": {"BeforeTool": "pre_tool_veto", "AfterTool": "post_tool",
-               "BeforeModel": "turn_stop"},
+               "AfterAgent": "turn_stop", "PreCompress": "pre_compact",
+               "SessionStart": "session_start", "SessionEnd": "session_end"},
 }
 
 # What the port needs to know it has. Named host-neutrally on purpose:
@@ -290,7 +291,9 @@ CANDIDATE_EVENTS = {
                "beforeTabFileRead", "afterTabFileEdit"],
     "codex": ["PreToolUse", "PostToolUse", "Stop", "SessionStart",
               "SessionEnd", "UserPromptSubmit"],
-    "gemini": ["BeforeTool", "AfterTool", "BeforeModel", "AfterModel"],
+    "gemini": ["SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent",
+               "BeforeModel", "AfterModel", "BeforeToolSelection",
+               "BeforeTool", "AfterTool", "PreCompress", "Notification"],
 }
 
 
