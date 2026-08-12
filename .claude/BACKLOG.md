@@ -38,6 +38,35 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
+### CB-148 — The Codex `hooks` manifest field is contested by its own specification
+
+`plugins/cereblnk/.codex-plugin/plugin.json` declares
+`"hooks": "./hooks/codex-hooks.json"`. The vendor's plugin-json spec
+supports and contradicts that in the same file: it documents the field,
+carries it in the example manifest, and states that string-valued
+`skills`, `hooks` and `mcpServers` supplement default discovery — while
+also saying validation rejects unsupported manifest fields such as
+`hooks`, which is why its scaffold omits them.
+
+Both readings are first-party, so no amount of further reading settles
+it. This is the boundary of the rule that a specification is
+authoritative for a format: it holds only while the specification agrees
+with itself.
+
+The field stays in the meantime. The default it would fall back to is
+`hooks/hooks.json`, which is Claude Code's binding — omitting the field
+to satisfy one reading loads the wrong hooks under the other, and a
+rejected manifest fails loudly where wrong hooks fail silently.
+
+- **Deliverable.** Run the vendor's own `validate_plugin.py` against the
+  manifest, and install the plugin into a real Codex session. Record
+  which reading holds, with the command and its output.
+- **Acceptance.** The manifest either keeps the field with a recorded
+  validator pass, or drops it with a recorded rejection and a resolution
+  for the `hooks/hooks.json` collision that does not involve Claude Code
+  losing its own file.
+- **Depends on.** Nothing. It needs Codex installed, not more reading.
+
 ### CB-143 — Where Gemini hooks are delivered from
 
 CB-145 bound Gemini against its published hook reference: six of seven
