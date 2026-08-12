@@ -8,8 +8,13 @@
   "homepage": "https://github.com/isumer/cereblnk",
   "repository": "https://github.com/isumer/cereblnk",
   "license": "MIT",
-  "keywords": ["engineering", "agents", "verification"],
+  "keywords": [
+    "engineering",
+    "agents",
+    "verification"
+  ],
   "skills": "./skills/",
+  "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "Cereblnk",
     "shortDescription": "Engineering discipline as mechanism, not instruction",

@@ -24,7 +24,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 POLICY = ROOT / "plugins/cereblnk/policies"
-OUT = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json"}
+# Codex loads hooks/hooks.json by default, which is Claude's file, so the
+# Codex binding is emitted beside it and the Codex manifest points at it.
+OUT = {"claude": ROOT / "plugins/cereblnk/hooks/hooks.json",
+       "codex": ROOT / "plugins/cereblnk/hooks/codex-hooks.json"}
 
 
 def read_blocks(path, first_key):
