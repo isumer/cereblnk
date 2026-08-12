@@ -10,15 +10,25 @@ and the row was copied.
 So no cell is written by hand. Each is compared with the source that
 earns it:
 
-  a bound host      policies/hosts/<host>.yaml, the class field
-  an unbound host   context/host-profile.<host>.yaml, the status field
-  neither           the cell must read `unmeasured`
+  a run                context/host-profile.<host>.yaml    -> verified
+  a first-party spec   policies/hosts/<host>.yaml + source  -> declared
+  neither                                                   -> unmeasured
 
-That last line is the point of the whole checker. `unmeasured` is not a
-placeholder to be tidied away later; it is the accurate answer until a
-run says otherwise, and this refuses any cell that claims more than its
-evidence does. A host with no profile cannot have a supported capability
-printed against it, however confident the documentation is.
+Three states, not two, and the middle one earns its place (CB-138). A
+vendor's own reference for its own product is real information: whether
+an event exists is interface knowledge, and refusing to record it left
+the matrix reading `unmeasured` where something was in fact known. But
+it is not a run. Whether *our* hook fires on that event, survives a trust
+prompt and actually stops the action are facts about two programs
+meeting, and only a session settles those.
+
+So `declared` is published and `declared` does not open a support claim.
+Every declared row carries the URL it came from, and a row without one is
+a violation rather than a shortcut — the citation is what keeps the
+middle state from becoming a place to put guesses.
+
+`unmeasured` still means nobody looked. It is the accurate answer until
+someone does, not a placeholder to be tidied away.
 
 The reverse is checked too: evidence that exists and is not published is
 also a difference, because a matrix that omits a measured absence reads
@@ -43,11 +53,42 @@ README = ROOT / "README.md"
 MARK_START = "<!-- host-matrix:start -->"
 MARK_END = "<!-- host-matrix:end -->"
 
-HOSTS = ("claude", "cursor", "codex", "gemini")
+# Hosts the matrix reports on. The base list names the ports in scope
+# even before any of them has a file; anything with a binding or a
+# profile is added, so a host cannot acquire evidence and stay off the
+# published table. A hardcoded list would let a codex.yaml land and
+# never appear.
+BASE_HOSTS = ("claude", "cursor", "codex", "gemini")
+
+
+def hosts():
+    found = set(BASE_HOSTS)
+    found.update(p.stem for p in HOSTS_DIR.glob("*.yaml"))
+    found.update(p.name.split(".")[1] for p in PROFILE_DIR.glob("host-profile.*.yaml")
+                 if len(p.name.split(".")) > 2)
+    ordered = [h for h in BASE_HOSTS if h in found]
+    ordered += sorted(found - set(BASE_HOSTS))
+    return tuple(ordered)
 CAPABILITIES = ("pre_tool_veto", "post_tool", "turn_stop", "subagent_stop",
                 "pre_compact", "session_start", "session_end")
 
 UNMEASURED = "unmeasured"
+DECLARED = "declared"
+# Class letters carry evidence strength: M/D/F come from a run, and the
+# declared_* forms come from a cited specification.
+DECLARED_PREFIX = "declared:"
+
+
+def binding_source(host):
+    """The `source:` URL a host binding cites for its declared rows."""
+    path = HOSTS_DIR / ("%s.yaml" % host)
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^source:\s*(\S+)", line)
+        if m:
+            return m.group(1)
+    return None
 
 
 def bound_classes(host):
@@ -93,25 +134,28 @@ FAMILY = {"pre_tool_veto": "veto", "post_tool": "veto", "turn_stop": "turn",
 
 
 def cell(host, capability):
-    classes = bound_classes(host)
-    if classes is not None:
-        got = classes.get(FAMILY.get(capability, capability))
-        if got:
-            return got
+    """A run outranks a specification, and a specification outranks nothing."""
     status = probed_status(host)
     if status is not None:
         got = status.get(capability)
         if got and got != UNMEASURED:
             return got
+
+    classes = bound_classes(host)
+    if classes is not None:
+        got = classes.get(FAMILY.get(capability, capability))
+        if got:
+            return got
     return UNMEASURED
 
 
 def supported_matrix():
-    rows = ["| Capability | " + " | ".join(HOSTS) + " |",
-            "|---|" + "---|" * len(HOSTS)]
+    hs = hosts()
+    rows = ["| Capability | " + " | ".join(hs) + " |",
+            "|---|" + "---|" * len(hs)]
     for cap in CAPABILITIES:
         rows.append("| `%s` | %s |"
-                    % (cap, " | ".join(cell(h, cap) for h in HOSTS)))
+                    % (cap, " | ".join(cell(h, cap) for h in hs)))
     return "\n".join(rows)
 
 
@@ -126,11 +170,39 @@ def published():
                      if l.strip().startswith("|"))
 
 
+def citation_problems():
+    """A declared row without a source is a guess wearing a class letter."""
+    out = []
+    for path in sorted(HOSTS_DIR.glob("*.yaml")):
+        host = path.stem
+        classes = bound_classes(host) or {}
+        declared = [c for c, v in classes.items()
+                    if str(v).startswith(DECLARED_PREFIX)]
+        if declared and not binding_source(host):
+            out.append(
+                "policies/hosts/%s.yaml declares %d capability(ies) but cites "
+                "no source:.\n    A declared row is only worth more than "
+                "unmeasured because it can be\n    checked. Add the "
+                "first-party specification URL it came from." % (host, len(declared)))
+    return out
+
+
 def main():
     want = supported_matrix()
     if "--show" in sys.argv:
-        print(want)
+        try:
+            print(want)
+        except BrokenPipeError:
+            pass
         return 0
+
+    problems = citation_problems()
+    if problems:
+        print("check-host-matrix: %d citation problem(s)" % len(problems),
+              file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        return 1
 
     got = published()
     if got is None:
@@ -156,10 +228,13 @@ def main():
               file=sys.stderr)
         return 1
 
-    counted = sum(1 for cap in CAPABILITIES for h in HOSTS
-                  if cell(h, cap) != UNMEASURED)
-    print("check-host-matrix: %d cell(s) traced to evidence, %d unmeasured"
-          % (counted, len(CAPABILITIES) * len(HOSTS) - counted))
+    cells = [cell(h, cap) for cap in CAPABILITIES for h in hosts()]
+    verified = sum(1 for c in cells
+                   if c != UNMEASURED and not c.startswith(DECLARED_PREFIX))
+    declared = sum(1 for c in cells if c.startswith(DECLARED_PREFIX))
+    print("check-host-matrix: %d verified, %d declared, %d unmeasured "
+          "(declared does not open a support claim)"
+          % (verified, declared, len(cells) - verified - declared))
     return 0
 
 

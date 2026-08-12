@@ -76,15 +76,20 @@ def build(host):
         if b["capability"] not in known:
             errors.append("line %d: %s is not in capabilities.yaml"
                           % (b["line"], b["capability"]))
-        if b.get("class") not in ("M", "D", "F"):
-            errors.append("line %d: %s has class %r, expected M, D or F"
-                          % (b["line"], b["capability"], b.get("class")))
+        cls = b.get("class", "")
+        base = cls.split(":", 1)[1] if cls.startswith("declared:") else cls
+        if base not in ("M", "D", "F"):
+            errors.append(
+                "line %d: %s has class %r. Expected M, D or F, optionally "
+                "prefixed declared: for a class taken from a cited "
+                "specification rather than a run."
+                % (b["line"], b["capability"], cls))
     if errors:
         return None, errors
 
     hooks = {}
     for b in binds:
-        if b["class"] == "F":
+        if b["class"].endswith("F"):
             continue  # absent on this host; nothing to emit
         event = b["event"]
         entry = {"type": "command",

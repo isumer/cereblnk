@@ -413,16 +413,22 @@ something this repository has established.
 
 ## Host support
 
-Claude Code is the only bound host. The rest of this table is not a
-roadmap and not a guess: every cell is compared against its evidence by
-`scripts/check-host-matrix`, and a capability nobody has measured reads
-`unmeasured` rather than being filled in from documentation.
+Claude Code is the only host bound by a run. Every cell below is compared
+against its evidence by `scripts/check-host-matrix`, which reads three
+states and refuses anything a source does not support:
 
-`unmeasured` is the accurate answer, not a placeholder awaiting tidying.
-Vendor documentation on host hook systems has contradicted itself across
-quarters — one adjacent host was written up as having no blocking hooks
-in one quarter and a full pre-tool veto in the next — so a cell is earned
-by a run, through `scripts/host-probe`, or it is left alone.
+- **`M` / `D` / `F`** — established by an actual run on that host.
+- **`declared:*`** — taken from the host vendor's own first-party
+  reference, with the URL recorded in `policies/hosts/<host>.yaml`. A
+  declared row without a citation is a violation, not a shortcut.
+- **`unmeasured`** — nobody has looked. It is the accurate answer until
+  someone does, not a placeholder awaiting tidying.
+
+Declared is published because a vendor's reference for its own product is
+real information: whether an event exists is interface knowledge. It does
+not open a support claim, because whether *our* hook fires on that event,
+survives a trust prompt and actually stops the action are facts about two
+programs meeting, and only a session settles those.
 
 <!-- host-matrix:start -->
 
