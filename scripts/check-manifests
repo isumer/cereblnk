@@ -10,11 +10,18 @@ version it advertises is compared with the one the plugin actually
 carries. A manifest that agrees with itself and disagrees with the
 repository is the failure worth catching.
 
-What this does NOT check: whether a host's own installer accepts the file.
-That needs the host, and it belongs to CB-131 with the rest of the
-evidence that cannot be produced from a checkout. Passing here means the
-manifest is internally consistent and its paths are real — not that any
-host has ever read it.
+Required and forbidden fields come from each host's published manifest
+specification, and a specification is authoritative for a *format* in a
+way no document is authoritative for runtime behaviour. That distinction
+is the whole reason this checker can be strict while the capability
+matrix stays cautious: whether `policy.installation` is required is a
+fact about a schema, whether a hook actually blocks is a fact about two
+programs meeting.
+
+What this does NOT check: whether a host's own installer accepts the
+file. That needs the host and belongs to CB-131. Passing here means the
+manifest conforms to the published schema and its paths are real — not
+that any host has ever read it.
 
 Usage: scripts/check-manifests
 
@@ -38,6 +45,36 @@ MANIFESTS = {
 
 VERSIONED = ("plugins/cereblnk/.claude-plugin/plugin.json",
              "plugins/cereblnk/.codex-plugin/plugin.json")
+
+# Per-manifest schema rules, each traceable to a published specification.
+# `forbidden` is not pedantry: a field the schema does not define may be
+# silently ignored, which reads in a diff as though a surface were wired
+# when nothing wired it.
+SCHEMA = {
+    ".agents/plugins/marketplace.json": {
+        "spec": "https://developers.openai.com/codex/plugins/build",
+        "required": ("name", "interface.displayName"),
+        "required_per_plugin": ("name", "source.path", "policy.installation",
+                                "policy.authentication", "category"),
+        "forbidden": (),
+    },
+    "plugins/cereblnk/.codex-plugin/plugin.json": {
+        "spec": "https://developers.openai.com/codex/plugins/build",
+        "required": ("name", "version", "description"),
+        "required_per_plugin": (),
+        # the manifest defines skills, mcpServers, apps and hooks; agents
+        # is not among them
+        "forbidden": ("agents", "commands"),
+    },
+}
+
+
+def dig(node, dotted):
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
 
 
 def walk(node, keys, found):
@@ -68,6 +105,27 @@ def main():
 
         if not data.get("name"):
             problems.append("%s: no name" % rel)
+
+        schema = SCHEMA.get(rel)
+        if schema:
+            for field in schema["required"]:
+                if dig(data, field) in (None, "", {}, []):
+                    problems.append("%s: %s is required by %s"
+                                    % (rel, field, schema["spec"]))
+            for field in schema["forbidden"]:
+                if field in data:
+                    problems.append(
+                        "%s: %s is not a field in %s. An undefined field is "
+                        "read by nobody, and a diff that adds one looks like "
+                        "a surface was wired when nothing was."
+                        % (rel, field, schema["spec"]))
+            for entry in data.get("plugins", []):
+                label = entry.get("name", "<unnamed>")
+                for field in schema["required_per_plugin"]:
+                    if dig(entry, field) in (None, "", {}, []):
+                        problems.append(
+                            "%s: plugin %s is missing %s, required by %s"
+                            % (rel, label, field, schema["spec"]))
 
         refs = []
         walk(data, set(path_keys), refs)
