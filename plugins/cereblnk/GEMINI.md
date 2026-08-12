@@ -25,3 +25,11 @@ nowhere.
 
 So on this host Cereblnk is a skill and sub-agent bundle. The floors do
 not arm, and nothing here claims they do.
+
+## Read this if you are on a consumer tier
+
+Gemini CLI stopped serving Google AI Pro, Ultra and free tiers on
+18 June 2026. Access continues for Code Assist Standard and Enterprise
+licences and for paid API keys. If you are outside those, this extension
+is not the file you need — its successor uses a different plugin format,
+and CB-143 records the decision of whether Cereblnk follows.
