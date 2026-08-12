@@ -19,12 +19,13 @@
 # so nothing is lost; a blocking capability bound to an advisory event
 # would be a false M and is not written here.
 #
-# Delivery is unresolved and CB-143 holds it. Hooks are read from
-# hooks/hooks.json inside the extension root with no manifest field to
-# point elsewhere, and that file is Claude Code's. The reference does
-# leave a way out — project settings outrank extension hooks — so
-# Cereblnk could ship this as install-time configuration rather than as
-# extension packaging. Nothing here assumes either.
+# Delivery is unresolved and CB-143 holds it. The gap is ours, not this
+# host's: Gemini supports extension hooks natively, in hooks/hooks.json
+# inside the extension root, which is exactly the filename Claude Code's
+# binding already occupies here. Three ways out are weighed in
+# docs/hosts/gemini.md — install-time configuration, a host-specific
+# distribution build, or shipping skills and sub-agents only. Nothing
+# here assumes any of them.
 version: 1
 source: https://geminicli.com/docs/hooks/
 description: "Cereblnk hooks for Gemini CLI — declared from the published hook reference, not yet measured (CB-145)."

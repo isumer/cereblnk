@@ -23,17 +23,13 @@ sub-agent lifecycle hook, so Cereblnk's five finish floors have nothing
 to attach to. They are absent here, not unmeasured, and nothing pretends
 otherwise.
 
-What is unresolved is delivery, not capability. Hooks are read from
-`hooks/hooks.json` inside the extension root and the manifest offers no
-field to point elsewhere — and that file is Claude Code's binding. The
-reference does leave a way out: project settings outrank extension hooks,
-so these could ship as install-time configuration rather than extension
-packaging. CB-143 holds that decision.
+Sub-agents are a preview feature on this host. The `agents/` directory
+is discovered, but a preview surface is not the promise a stable one is,
+and nothing in the capability matrix rests on it.
 
-## Read this if you are on a consumer tier
-
-Gemini CLI stopped serving Google AI Pro, Ultra and free tiers on
-18 June 2026. Access continues for Code Assist Standard and Enterprise
-licences and for paid API keys. If you are outside those, this extension
-is not the file you need — its successor uses a different plugin format,
-and CB-143 records the decision of whether Cereblnk follows.
+What is unresolved is delivery, not capability, and the gap is ours
+rather than this host's. Gemini supports extension hooks natively, in
+`hooks/hooks.json` inside the extension root — which is exactly the
+filename Claude Code's binding already occupies in this repository. The
+options and the trade between them are in `docs/hosts/gemini.md`;
+CB-143 holds the decision.

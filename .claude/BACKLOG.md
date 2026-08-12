@@ -79,11 +79,21 @@ root, the manifest offers no field to point elsewhere, and that file is
 Claude Code's binding. Codex and Cursor hit the same default and both let
 a manifest redirect it.
 
-The reference leaves one way out that costs nothing to try: hook layers
-are ordered project settings, user settings, system settings, extensions.
-Project settings outrank extension hooks, so `hooks/gemini-hooks.json`
-could be delivered as install-time configuration rather than as extension
-packaging.
+The gap is ours, not the host's — Gemini supports extension hooks
+natively and `hooks/hooks.json` is the documented place for them. Three
+ways out, weighed in `docs/hosts/gemini.md`:
+
+1. **Install-time configuration.** Hook layers run project settings,
+   user settings, system settings, extensions. Project settings outrank
+   extension hooks, so the generated binding could be delivered into
+   `.gemini/settings.json` rather than packaged. Cheapest to try.
+2. **A host-specific distribution.** Build `dist/<host>/cereblnk/` from
+   the core, where each host's conventional filename holds that host's
+   generated binding. Source of truth stays single. Costs a build step
+   and a second tree that has to stay honest — `check-generated` would
+   have to cover it or the tree forks quietly.
+3. **Ship skills and sub-agents only** on this host, and record that the
+   enforcement layer does not reach it.
 
 - **Deliverable.** Either that install path, documented and checkable, or
   a recorded decision that Cereblnk ships skills and sub-agents to this
@@ -254,6 +264,7 @@ read.
 - [x] **CB-118** — Every README claim re-derived from the tree; five were wrong
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
+- [x] **CB-150** — Gemini review: durable instruction separated from product policy
 - [x] **CB-147** — Manifest review — displayName, convention discovery, a contested field recorded
 - [x] **CB-146** — A session opened knowing nothing about the run it was resuming
 - [x] **CB-145** — Gemini binds further than the first reading said
