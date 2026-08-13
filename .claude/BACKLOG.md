@@ -38,6 +38,35 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
+### CB-154 — The runtime workflows, one host at a time
+
+CB-153 laid the shared contract: stage vocabulary, status vocabulary,
+schema, checker, fixtures, README. What it deliberately did not do is
+write four CI workflows that cannot be run from here.
+
+A workflow that installs a vendor binary, authenticates, drives a host
+and uploads an artifact is code, and code nobody has run is a wish with
+YAML syntax. The pattern has to be proven on one host before the other
+three inherit it.
+
+- **Order.** Codex first, because its packaging contract is the one
+  already measured (CB-151) and its failure mode is known. Then Claude
+  Code as the reference profile, then Cursor, then Gemini.
+- **Tiers.** Deterministic packaging stages run on relevant pull
+  requests. Authenticated runtime stages run on dispatch or a release
+  candidate, because mandatory CI that depends on a vendor session is
+  flaky CI, and flaky mandatory CI teaches people to ignore red.
+- **Acceptance, per host.** The workflow runs, records host version and
+  source commit, emits an artifact that passes
+  `scripts/check-runtime-evidence`, uploads no credentials, and leaves
+  `verify` and `check-generated` green. Stages without credentials are
+  `BLOCKED` with a reason, which is valid evidence and not a failure.
+- **Boundary.** A workflow may prove a distribution problem exists. It
+  must not introduce `dist/` to make a stage pass — that is CB-143, and
+  a distribution tree outside `check-generated` recreates the drift this
+  architecture exists to prevent.
+- **Depends on.** CB-153.
+
 ### CB-143 — Three hosts want the same hooks filename, and it is Claude's
 
 This began as a Gemini question and is not one. Codex auto-discovers
@@ -226,6 +255,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-153** — Runtime evidence had no contract, so no artifact could be trusted
 - [x] **CB-152** — A smoke run returned one verdict for the whole host
 - [x] **CB-151** — The Codex manifest fails its vendor's own validator, measured by running it
 - [x] **CB-150** — Gemini review: durable instruction separated from product policy

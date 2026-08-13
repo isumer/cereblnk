@@ -471,7 +471,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **27 agents · 94 skills (17 of them entry points) ·
-176 constraint files · 19 hooks · 37 verify suites** (count them:
+176 constraint files · 19 hooks · 38 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`

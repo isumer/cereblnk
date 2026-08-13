@@ -8,3 +8,10 @@ __pycache__/
 *.iml
 # host-probe recordings: evidence in progress, not a committed artefact
 .cb-probe/
+
+# runtime evidence: reproduced, never committed. The repository stores how
+# to produce it; a particular run's results belong in CI artifacts, where
+# they cannot become stale truth nobody re-derives.
+tests/runtime/**/*.log
+tests/runtime/**/summary.json
+tests/runtime/**/evidence/

@@ -128,17 +128,30 @@ def main():
                  "probably"], log)
         if r.returncode == 0:
             fails.append("a result outside the fixed vocabulary was accepted")
+        # the vocabulary went uppercase in CB-153; lowercase is the old
+        # spelling and accepting it would let two runs disagree silently
+        r = run(["attest", "claude", "--stage", "hook", "--result", "pass"],
+                log)
+        if r.returncode == 0:
+            fails.append("the superseded lowercase result spelling was "
+                         "accepted")
+        # a status that says a thing did not happen must say why, and
+        # UNSUPPORTED is the one a host earns rather than a run
+        r = run(["attest", "claude", "--stage", "subagent", "--result",
+                 "UNSUPPORTED"], log)
+        if r.returncode != 0:
+            fails.append("UNSUPPORTED was refused as a stage result")
 
         before = status_of(run(["collect", "claude"], log).stdout,
                            "pre_tool_veto")
-        r = run(["attest", "claude", "--stage", "veto", "--result", "fail",
-                 "--capability", "veto.secret-guard",
+        r = run(["attest", "claude", "--stage", "veto",
+                 "--capability", "veto.secret-guard", "--result", "FAIL",
                  "--evidence", "hook ran, action not stopped"], log)
         if r.returncode != 0:
             fails.append("a valid staged attestation was refused: %s"
                          % r.stderr.strip()[:80])
         out = run(["collect", "claude"], log).stdout
-        for want in ("- stage: veto", "result: fail",
+        for want in ("- stage: veto", "result: FAIL",
                      "capability: veto.secret-guard", "observed_at:"):
             if want not in out:
                 fails.append("staged attestation lost %r on the way to the "

@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""check-runtime-evidence — an artifact says what it measured (CB-153).
+
+Runtime evidence is produced on a machine this repository does not
+control, from a host version nobody here pinned, and read later by
+someone deciding whether a release is certified. Between production and
+reading there is nothing but the file, so the file has to carry its own
+provenance.
+
+Validated without a JSON Schema library, because `verify` is offline and
+adding a dependency to read one file would cost more than the file is
+worth. The schema at tests/runtime/schema/runtime-evidence.schema.json is
+the written contract; this is the executable one, and they are checked
+against each other on the fields that matter.
+
+Three rules earn their place over the rest:
+
+  A stage cannot be omitted to avoid saying UNSUPPORTED. Every stage the
+  host can reach must appear, because a missing stage reads as untested
+  and untested is not unsupported.
+
+  BLOCKED and UNSUPPORTED must carry a reason. A status that says a thing
+  did not happen without saying why is a note to nobody.
+
+  A cited capability must exist in policies/capabilities.yaml. Evidence
+  cites the catalogue; it never extends it.
+
+Usage:
+  scripts/check-runtime-evidence FILE...
+  scripts/check-runtime-evidence --self-test   check the schema and this
+                                               agree on stages and statuses
+
+Exit: 0 valid · 1 invalid · 2 unreadable
+"""
+import json
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SCHEMA = ROOT / "tests/runtime/schema/runtime-evidence.schema.json"
+CAPABILITIES = ROOT / "plugins/cereblnk/policies/capabilities.yaml"
+
+STAGES = ("install", "context", "marketplace", "plugin", "skill", "agent",
+          "subagent", "hook", "veto", "finish")
+STATUSES = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
+NEEDS_REASON = ("BLOCKED", "UNSUPPORTED")
+HOSTS = ("claude", "codex", "cursor", "gemini")
+REQUIRED = ("schema_version", "host", "host_version", "repository",
+            "source_sha", "observed_at", "stages")
+
+# Anything that should never reach an artifact. Not a secret scanner —
+# a last look before upload, aimed at the shapes a host config leaks.
+SECRET_HINTS = re.compile(
+    r"(api[_-]?key|oauth|bearer\s|authorization:|secret|token|"
+    r"BEGIN [A-Z ]*PRIVATE KEY)", re.I)
+
+
+def known_capabilities():
+    if not CAPABILITIES.exists():
+        return set()
+    return set(re.findall(r"^\s*-\s*capability:\s*(\S+)",
+                          CAPABILITIES.read_text(encoding="utf-8"), re.M))
+
+
+def self_test():
+    """The written schema and this checker must not drift apart."""
+    problems = []
+    try:
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return ["cannot read %s: %s" % (SCHEMA.name, exc)]
+
+    stages = schema["properties"]["stages"]
+    declared = tuple(stages["propertyNames"]["enum"])
+    if declared != STAGES:
+        problems.append("stage vocabulary differs: schema %s, checker %s"
+                        % (list(declared), list(STAGES)))
+    status = stages["additionalProperties"]["properties"]["status"]["enum"]
+    if tuple(status) != STATUSES:
+        problems.append("status vocabulary differs: schema %s, checker %s"
+                        % (status, list(STATUSES)))
+    if tuple(schema["required"]) != REQUIRED:
+        problems.append("required fields differ: schema %s, checker %s"
+                        % (schema["required"], list(REQUIRED)))
+    return problems
+
+
+def validate(path, capabilities):
+    problems = []
+    try:
+        doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return ["%s: unreadable: %s" % (path, exc)]
+
+    def bad(msg):
+        problems.append("%s: %s" % (path, msg))
+
+    for field in REQUIRED:
+        if not doc.get(field):
+            bad("%s is required" % field)
+    if doc.get("schema_version") not in (None, "1"):
+        bad("schema_version %r is not 1; this checker cannot read it"
+            % doc["schema_version"])
+    if doc.get("host") and doc["host"] not in HOSTS:
+        bad("host %r is not one of %s" % (doc["host"], ", ".join(HOSTS)))
+    if doc.get("source_sha") and not re.fullmatch(r"[0-9a-f]{7,40}",
+                                                  doc["source_sha"]):
+        bad("source_sha %r is not a commit id" % doc["source_sha"])
+
+    stages = doc.get("stages")
+    if not isinstance(stages, dict):
+        bad("stages must be an object keyed by stage name")
+        return problems
+
+    for name, entry in sorted(stages.items()):
+        if name not in STAGES:
+            bad("stage %r is outside the vocabulary" % name)
+            continue
+        if not isinstance(entry, dict):
+            bad("stage %s must be an object" % name)
+            continue
+        status = entry.get("status")
+        if status not in STATUSES:
+            bad("stage %s has status %r, expected one of %s"
+                % (name, status, ", ".join(STATUSES)))
+            continue
+        if status in NEEDS_REASON and not entry.get("reason"):
+            bad("stage %s is %s without a reason. A status that says a "
+                "thing did not happen, without saying why, is a note to "
+                "nobody." % (name, status))
+        for cap in entry.get("capabilities", []):
+            if cap not in capabilities:
+                bad("stage %s cites capability %r, which is not in "
+                    "policies/capabilities.yaml. Evidence cites the "
+                    "catalogue; it does not extend it." % (name, cap))
+
+    blob = json.dumps(doc)
+    hit = SECRET_HINTS.search(blob)
+    if hit:
+        bad("something matching %r is in this artifact. Evidence is "
+            "uploaded and kept; credentials are neither."
+            % hit.group(0)[:24])
+
+    return problems
+
+
+def main():
+    argv = sys.argv[1:]
+    problems = []
+
+    if "--self-test" in argv or not argv:
+        problems += self_test()
+        if not argv or argv == ["--self-test"]:
+            if problems:
+                print("check-runtime-evidence: %d problem(s)" % len(problems),
+                      file=sys.stderr)
+                for p in problems:
+                    print("  %s" % p, file=sys.stderr)
+                return 1
+            print("check-runtime-evidence: schema and checker agree on "
+                  "%d stages and %d statuses" % (len(STAGES), len(STATUSES)))
+            return 0
+
+    caps = known_capabilities()
+    files = [a for a in argv if not a.startswith("--")]
+    for path in files:
+        problems += validate(path, caps)
+
+    if problems:
+        print("check-runtime-evidence: %d problem(s)" % len(problems),
+              file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        return 1
+    print("check-runtime-evidence: %d artifact(s) valid" % len(files))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
