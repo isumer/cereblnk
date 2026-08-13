@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""render-evidence — the artifact says it out loud (CB-166).
+
+Runtime evidence was correct and unread. Reading it meant opening the
+Actions page, finding the run, downloading a zip and unpacking it — and
+an evidence layer whose output needs a download to see is an evidence
+layer nobody sees. That was true for the reviewer and for me both.
+
+This renders a summary.json as markdown for a step summary or a pull
+request comment, where the result is at the top of the page nobody has
+to navigate to.
+
+Sanitised by construction, not by scrubbing. Only fields the schema
+defines are read, and free text — the `reason` a stage gives, which can
+carry a provider's own words — is truncated and stripped of newlines so
+a multi-line error cannot smuggle structure into the output. Nothing
+reads the raw logs.
+
+Usage:
+  scripts/render-evidence FILE...            markdown to stdout
+  scripts/render-evidence FILE... --title T  with a heading
+
+Exit: 0 rendered · 1 nothing readable
+"""
+import json
+import pathlib
+import sys
+
+MARK = {"PASS": "PASS", "FAIL": "**FAIL**", "BLOCKED": "BLOCKED",
+        "UNMEASURED": "unmeasured", "UNSUPPORTED": "unsupported"}
+REASON_LIMIT = 150
+
+# The order a run walks them, so a reader sees where it stopped rather
+# than an alphabetical list that hides the sequence.
+ORDER = ("install", "context", "marketplace", "plugin", "skill", "agent",
+         "subagent", "hook", "veto", "finish")
+
+
+def clean(text):
+    """One line, bounded, and unable to be a table.
+
+    Free text from a provider is not trusted to be any of those. Newlines
+    would add rows and an unescaped pipe would split a cell into columns
+    — neither is a security problem, but a garbled table is a table
+    nobody reads, and this exists to be read.
+    """
+    flat = " ".join(str(text).split()).replace("|", "\\|")
+    return flat[:REASON_LIMIT] + ("…" if len(flat) > REASON_LIMIT else "")
+
+
+def render(doc):
+    out = []
+    out.append("### %s — `%s`" % (doc.get("host", "?"),
+                                  clean(doc.get("host_version", "unknown"))))
+    out.append("")
+    out.append("commit `%s` · %s"
+               % (clean(doc.get("source_sha", "?"))[:12],
+                  clean(doc.get("observed_at", "?"))))
+    out.append("")
+    out.append("| stage | status | reason |")
+    out.append("|---|---|---|")
+    stages = doc.get("stages", {})
+    for name in list(ORDER) + [s for s in stages if s not in ORDER]:
+        entry = stages.get(name)
+        if not entry:
+            continue
+        status = entry.get("status", "?")
+        out.append("| `%s` | %s | %s |"
+                   % (name, MARK.get(status, status),
+                      clean(entry.get("reason", ""))))
+    caps = sorted({c for e in stages.values()
+                   for c in e.get("capabilities", [])})
+    if caps:
+        out.append("")
+        out.append("capabilities cited: %s"
+                   % ", ".join("`%s`" % clean(c) for c in caps))
+    return "\n".join(out)
+
+
+def main():
+    argv = sys.argv[1:]
+    title = None
+    if "--title" in argv:
+        i = argv.index("--title")
+        title = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+
+    blocks = []
+    for arg in argv:
+        path = pathlib.Path(arg)
+        if not path.is_file():
+            continue
+        try:
+            blocks.append(render(json.loads(path.read_text(encoding="utf-8"))))
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            blocks.append("### unreadable evidence\n\n`%s`: %s"
+                          % (path.name, clean(exc)))
+
+    if not blocks:
+        print("render-evidence: nothing readable", file=sys.stderr)
+        return 1
+
+    if title:
+        print("## %s\n" % title)
+    print("\n\n".join(blocks))
+    print("\nBLOCKED is not a failure — an external prerequisite was "
+          "missing. unmeasured is not a failure either; nobody looked.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

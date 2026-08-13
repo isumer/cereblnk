@@ -80,6 +80,11 @@ on:
 
 permissions:
   contents: read
+  # The evidence is rendered into the run summary and, on a pull request,
+  # into a comment. Correct evidence that needs a zip download to read is
+  # evidence nobody reads — which is what happened for the first several
+  # runs, to reviewer and author alike.
+  pull-requests: write
 
 concurrency:
   group: runtime-smoke-${{ github.ref }}-${{ inputs.host || 'all' }}
@@ -199,6 +204,35 @@ jobs:
           mkdir -p "$CB_RUNTIME_WORKDIR"
           python3 tests/runtime/run-host "${{ matrix.host }}" \
             --out "$CB_RUNTIME_WORKDIR/summary.json"
+
+      # Before the guard, because a rendered table of a failed run is the
+      # thing somebody needs; and after the stages, because that is when
+      # there is something to render. It reads only fields the schema
+      # defines and never touches the raw logs.
+      - name: Say the result out loud
+        if: always()
+        run: |
+          if [ -f "${{ runner.temp }}/cb-runtime/summary.json" ]; then
+            python3 scripts/render-evidence \
+              "${{ runner.temp }}/cb-runtime/summary.json" \
+              --title "Runtime evidence — ${{ matrix.host }}" \
+              | tee -a "$GITHUB_STEP_SUMMARY" \
+              > "${{ runner.temp }}/evidence.md"
+          else
+            echo "No summary.json — the stages did not run." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment the result on the pull request
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f "${{ runner.temp }}/evidence.md" ] || exit 0
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file "${{ runner.temp }}/evidence.md"
 
       # Last look before anything leaves. Everything upstream is careful;
       # this assumes something upstream was not. It fails the job rather
