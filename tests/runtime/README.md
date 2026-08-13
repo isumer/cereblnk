@@ -94,6 +94,11 @@ nobody had opened one.
 summary and, on a pull request, a comment. The result is at the top of a
 page rather than behind a download.
 
+The leak guard runs **before** it, and before the comment. A comment on a
+public repository cannot be recalled, and an earlier ordering posted one
+first — a credential reaching `summary.json` would have been public
+before anything checked.
+
 It is sanitised by construction rather than by scrubbing: only fields the
 schema defines are read, free text is flattened to one line, pipes are
 escaped so a provider's error cannot split a cell, and everything is
