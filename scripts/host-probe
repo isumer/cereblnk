@@ -86,10 +86,41 @@ ALIASES = {
 # The vocabulary is fixed rather than free text so that "the host worked"
 # stops being one result. When a run fails, the profile says which layer
 # it failed at.
-STAGES = ("install", "context", "skill", "agent", "subagent", "hook",
-          "veto", "finish")
+STAGES = ("install", "context", "marketplace", "plugin", "skill", "agent",
+          "subagent", "hook", "veto", "finish")
 
-RESULTS = ("pass", "fail", "blocked", "skipped")
+# Uppercase, deliberately. A capability state in the matrix is lowercase
+# (`M`, `declared:M`, `unmeasured`); a stage result is uppercase. They are
+# different namespaces answering different questions — did this layer run,
+# versus does this host have this capability — and one word appearing in
+# both would invite exactly the conflation this evidence layer exists to
+# avoid.
+#
+#   PASS         the expected behaviour was observed
+#   FAIL         the stage ran and contradicted the contract
+#   BLOCKED      an external dependency stopped it: no credentials, a
+#                runner restriction, a vendor outage
+#   UNMEASURED   no valid measurement exists yet
+#   UNSUPPORTED  the host exposes no equivalent capability
+#
+# BLOCKED never becomes FAIL and UNMEASURED never becomes PASS. The first
+# would blame this project for a missing credential; the second is the
+# failure the whole probe exists to refuse.
+RESULTS = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
+
+# Stages each host can reach at all. A stage outside this set is recorded
+# UNSUPPORTED rather than dropped: a stage missing from a report reads as
+# untested, and untested and unsupported are not the same finding.
+HOST_STAGES = {
+    "claude": ("install", "context", "plugin", "skill", "agent", "subagent",
+               "hook", "veto", "finish"),
+    "codex": ("install", "marketplace", "plugin", "skill", "agent", "hook",
+              "veto", "finish"),
+    "cursor": ("install", "marketplace", "plugin", "skill", "agent",
+               "subagent", "hook", "veto", "finish"),
+    "gemini": ("install", "context", "skill", "subagent", "hook", "veto",
+               "finish"),
+}
 
 # What the port needs to know it has. Named host-neutrally on purpose:
 # each host's own event name is whatever the recording says it was.

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/isumer/cereblnk/tests/runtime/schema/runtime-evidence.schema.json",
+  "title": "Cereblnk runtime evidence",
+  "description": "One host, one run, one Cereblnk commit. This file answers: which host, at which version, running which commit of this repository, reached which stage, with what result, and where the evidence is. A PASS without a host version is weak evidence, because host behaviour changes independently of anything here — so host_version is required and may be the string 'unknown' only when the host would not report one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "host",
+    "host_version",
+    "repository",
+    "source_sha",
+    "observed_at",
+    "stages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Bumped when the shape changes, so an old artifact stays readable instead of being silently misread."
+    },
+    "host": {
+      "enum": ["claude", "codex", "cursor", "gemini"]
+    },
+    "host_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "As the host reports it. 'unknown' is allowed and is itself a finding."
+    },
+    "repository": { "type": "string", "minLength": 1 },
+    "source_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "observed_at": {
+      "type": "string",
+      "description": "ISO 8601, UTC."
+    },
+    "runner": {
+      "type": "string",
+      "description": "Operating system and image of the machine that observed this."
+    },
+    "workflow_sha": {
+      "type": "string",
+      "description": "Commit of the workflow that produced this, so a change in the measuring instrument is distinguishable from a change in what it measured."
+    },
+    "stages": {
+      "type": "object",
+      "description": "Keyed by stage name. A stage the host cannot reach is recorded UNSUPPORTED rather than omitted: a missing stage reads as untested, and untested is not unsupported.",
+      "propertyNames": {
+        "enum": [
+          "install", "context", "marketplace", "plugin", "skill",
+          "agent", "subagent", "hook", "veto", "finish"
+        ]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "enum": ["PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED"],
+            "description": "BLOCKED never becomes FAIL: a missing credential is not a defect in this repository. UNMEASURED never becomes PASS."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Capability ids from policies/capabilities.yaml. This field cites the catalogue; it never extends it."
+          },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Paths inside the artifact, or short observations. Never credentials, never a whole host config directory."
+          },
+          "observed_at": { "type": "string" },
+          "reason": {
+            "type": "string",
+            "description": "Required reading for BLOCKED and UNSUPPORTED, where the status alone does not say why."
+          }
+        }
+      }
+    }
+  }
+}
