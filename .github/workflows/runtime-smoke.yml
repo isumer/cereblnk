@@ -78,7 +78,7 @@ jobs:
         run: ./scripts/verify
 
       - name: Set up Node
-        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        if: ${{ (inputs.host || 'codex') != 'cursor' }}
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -86,10 +86,20 @@ jobs:
       # Tier 2. Best effort by design: a vendor package that will not
       # install is a fact about today, and the install stage records it as
       # BLOCKED rather than failing the job.
+      #
+      # Cursor has no entry here, and that absence is deliberate rather
+      # than an oversight. Its install stage says so, because a blank line
+      # in a workflow and a host with no published CLI install look the
+      # same from the outside.
       - name: Install the host CLI
-        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        if: ${{ (inputs.host || 'codex') != 'cursor' }}
         continue-on-error: true
-        run: npm install -g @openai/codex
+        run: |
+          case "${{ inputs.host || 'codex' }}" in
+            codex)  npm install -g @openai/codex ;;
+            claude) npm install -g @anthropic-ai/claude-code ;;
+            gemini) npm install -g @google/gemini-cli ;;
+          esac
 
       - name: Fetch the vendor plugin validator
         if: ${{ (inputs.host || 'codex') == 'codex' }}
@@ -109,6 +119,8 @@ jobs:
           # Tier 3 credentials. Absent on pull requests by design; the
           # stages report BLOCKED with a reason, which is evidence.
           CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           mkdir -p "$CB_RUNTIME_WORKDIR"
           python3 tests/runtime/run-host "${{ inputs.host || 'codex' }}" \

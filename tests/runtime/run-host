@@ -13,10 +13,17 @@ without printing a status is FAIL; a stage the host does not offer is
 UNSUPPORTED and says why; a stage that could not run because something
 outside this repository was missing is BLOCKED and says what.
 
-Stages run in order and a failed prerequisite does not silently take the
-rest with it. When `install` is BLOCKED, everything downstream is
-UNMEASURED rather than BLOCKED — nobody measured them, and saying they
-were blocked would claim knowledge of why.
+Every stage runs, including when an earlier one failed. An earlier
+version halted after a BLOCKED install, on the reasoning that downstream
+results would be meaningless without the host binary. Running it proved
+otherwise: several stages measure facts about this tree rather than about
+a session — whether a manifest points at a file that exists, whether the
+extension root's hooks file belongs to another host — and halting
+suppressed exactly the findings a runtime test exists to surface.
+
+So each stage decides for itself. A stage that needs something missing
+reports BLOCKED and says what; a stage that can answer offline answers.
+The runner does not infer on their behalf.
 
 Usage:
   tests/runtime/run-host <host> [--out FILE]
@@ -141,20 +148,9 @@ def main():
         "stages": {},
     }
 
-    halted = None
     for stage in HOST_STAGES[host]:
-        if halted:
-            # Nobody measured this. Calling it BLOCKED would claim to know
-            # why, and the honest answer is that the run stopped earlier.
-            doc["stages"][stage] = {
-                "status": "UNMEASURED",
-                "reason": "the run stopped at %s" % halted,
-            }
-            continue
         entry = run_stage(script, stage, workdir)
         doc["stages"][stage] = entry
-        if stage == "install" and entry["status"] in ("BLOCKED", "FAIL"):
-            halted = stage
         version = None
         for line in entry.get("evidence", []):
             m = re.match(r"host_version=(.+)", line)

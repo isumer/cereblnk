@@ -53,8 +53,9 @@ a stream nobody reads while the tool call goes through underneath, so the
 assertion is that the target file was not written. Never that a message
 appeared.
 
-- **Deliverable.** A driver per stage for Codex, then the same for Claude
-  Code, Cursor and Gemini, replacing the stub scripts.
+- **Deliverable.** Session drivers for the stages credentials unlock. The
+  offline half is done (CB-156): every host now measures what a runner
+  can reach without a session, and the stub scripts are gone.
 - **Acceptance.** With credentials configured, each stage returns PASS or
   FAIL on its own evidence rather than UNMEASURED. The veto stage asserts
   absence of the target file.
@@ -248,6 +249,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-156** — All four hosts measure what a runner can reach without a session
 - [x] **CB-154** — The runtime workflow, proven on one host before three inherit it
 - [x] **CB-153** — Runtime evidence had no contract, so no artifact could be trusted
 - [x] **CB-152** — A smoke run returned one verdict for the whole host

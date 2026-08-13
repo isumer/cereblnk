@@ -124,10 +124,26 @@ When `install` is BLOCKED or FAIL the run halts, and everything
 downstream is recorded UNMEASURED rather than BLOCKED. Nobody measured
 them; calling them blocked would claim to know why.
 
-Only Codex has a driver. The other three report UNMEASURED with that as
-the reason, which is what is true — Codex is first because its packaging
-contract is already measured and its failure mode known, so the pattern
-is proven somewhere real before three hosts inherit it.
+All four have drivers. What each measures without credentials differs,
+because the hosts differ:
+
+| host | measured offline |
+|---|---|
+| claude | marketplace source resolves; the committed binding matches its generator |
+| codex | the repo-local registry parses; the vendor validator's verdict on the manifest |
+| cursor | marketplace source resolves; the hooks redirect points at the generated binding |
+| gemini | the context file resolves; **the hooks collision, as FAIL** |
+
+Gemini's `hook` stage is the one to look at. It needs no session: this
+host reads `hooks/hooks.json` from the extension root, that file is
+Claude Code's binding, and whether it is Claude's is a fact about this
+tree. It reports FAIL, because surfacing that is the point — a runtime
+test that hid a known collision would be worse than no runtime test.
+
+Cursor's stages distinguish two things a single BLOCKED would blur: no
+credentials, and no way to reach the surface from a runner at all. The
+second is a finding about the host, and its install stage says so rather
+than leaving an absent install step to look like an oversight.
 
 ## In CI
 
