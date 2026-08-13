@@ -84,6 +84,20 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## A/B, when removing something is the question
+
+The Codex `plugin` stage validates twice: the tree as it ships, and a
+copy in the work directory with the contested `hooks` field removed. The
+copy is never merged.
+
+The difference between the two verdicts is the finding. If A is rejected
+and B passes, that field is the only thing between the package and a
+valid one. If both are rejected, it is not — and that is what happened:
+the copy still fails on skill structure.
+
+Changing production configuration to learn something a copy can teach is
+the habit this guards against.
+
 ## A harness failure is not a finding
 
 The first Codex run recorded `plugin FAIL`. The manifest was not the
