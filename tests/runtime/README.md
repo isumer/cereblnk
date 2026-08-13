@@ -84,6 +84,24 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## A harness failure is not a finding
+
+The first Codex run recorded `plugin FAIL`. The manifest was not the
+reason: the vendor validator imports PyYAML, the runner had none, and it
+crashed before reading a field. Both a crash and a rejection exit 1, and
+reading the first as the second blames this repository for the runner's
+environment.
+
+The stage now tells them apart — a validator that reached a verdict says
+so in its output, and one that did not gets `UNMEASURED` with what went
+wrong. The workflow also installs the dependency, so the distinction is a
+safety net rather than the plan.
+
+This is the general rule for every stage that shells out to something
+external. **If the thing you were measuring with did not run, you
+measured nothing.** `FAIL` is reserved for the subject failing, never for
+the instrument.
+
 ## The veto stage, and the trap in it
 
 A veto stage proves two things, not one: the guard refused, **and the

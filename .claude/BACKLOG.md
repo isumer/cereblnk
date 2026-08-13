@@ -254,6 +254,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-159** — A crashed validator was recorded as a rejected manifest
 - [x] **CB-158** — The measurement sat behind a token scope instead of a decision
 - [x] **CB-157** — A pull request probed one host and three drivers went untested
 - [x] **CB-156** — All four hosts measure what a runner can reach without a session

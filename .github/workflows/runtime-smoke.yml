@@ -151,6 +151,19 @@ jobs:
             gemini) npm install -g @google/gemini-cli ;;
           esac
 
+      # The validator imports PyYAML, and a runner without it crashes
+      # before reading a single manifest field. The first Codex run
+      # recorded plugin FAIL for that reason, which read as a rejected
+      # manifest and was not one. The stage now tells the two apart, and
+      # this step removes the cause rather than relying only on the
+      # distinction.
+      #
+      # Here rather than in scripts/verify: this file is the online
+      # integration layer, and the core gate stays offline.
+      - name: Install the validator's dependencies
+        if: ${{ matrix.host == 'codex' }}
+        run: python -m pip install 'PyYAML>=6,<7'
+
       - name: Fetch the vendor plugin validator
         if: ${{ matrix.host == 'codex' }}
         continue-on-error: true

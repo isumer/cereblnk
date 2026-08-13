@@ -30,7 +30,7 @@ say() { printf '%s\n' "$*"; }
 needs_auth() {
   if [ -z "${CODEX_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
     say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Codex credentials on this runner; authenticated stages run on workflow_dispatch with secrets configured"
+    say "CB_REASON=no Codex credentials on this runner; authenticated stages need CODEX_API_KEY as a repository secret and run wherever it is present"
     return 0
   fi
   return 1
@@ -80,9 +80,20 @@ plugin)
     if python3 "$CODEX_VALIDATOR" "$ROOT/plugins/cereblnk" >"$OUT" 2>&1; then
       say "CB_STATUS=PASS"
       say "CB_EVIDENCE=validator.log"
-    else
+    elif grep -q "Plugin validation" "$OUT" 2>/dev/null; then
+      # The validator ran and reached a verdict. This is a fact about the
+      # manifest.
       say "CB_STATUS=FAIL"
       say "CB_REASON=$(head -3 "$OUT" | tr '\n' ' ')"
+      say "CB_EVIDENCE=validator.log"
+    else
+      # The validator did not reach a verdict — a missing import, a
+      # Python it cannot run under, a file that is not what it claimed.
+      # Both cases exit 1, and reading that as a rejected manifest would
+      # blame this repository for the runner's environment. The whole
+      # evidence layer rests on not doing that.
+      say "CB_STATUS=UNMEASURED"
+      say "CB_REASON=the vendor validator did not reach a verdict: $(head -1 "$OUT" | cut -c1-90). Nothing here is established about the manifest."
       say "CB_EVIDENCE=validator.log"
     fi
   else

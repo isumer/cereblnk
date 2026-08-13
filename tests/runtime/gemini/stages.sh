@@ -21,7 +21,7 @@ say() { printf '%s\n' "$*"; }
 needs_auth() {
   if [ -z "${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}" ]; then
     say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Gemini credentials on this runner; authenticated stages run on workflow_dispatch with secrets configured"
+    say "CB_REASON=no Gemini credentials on this runner; authenticated stages need GEMINI_API_KEY as a repository secret and run wherever it is present"
     return 0
   fi
   return 1
