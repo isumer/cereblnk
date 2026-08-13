@@ -23,17 +23,20 @@ WORK="${CB_WORKDIR:?}"
 
 say() { printf '%s\n' "$*"; }
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/authprobe.sh"
+
 # A stage that needs an authenticated session, on a runner with no
 # credentials, is BLOCKED — not FAIL. A missing credential is a fact
 # about the environment, and calling it a failure would blame this
 # repository for the runner's configuration.
+# Was: "is the variable set?". A set variable proves a repository
+# secret exists, not that the provider accepted it — and the two failed
+# in ways somebody would act on differently while reporting the same
+# thing. The probe runs once per stage, which is a trivial call, and
+# says which of the two it was.
 needs_auth() {
-  if [ -z "${CODEX_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
-    say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Codex credentials on this runner; authenticated stages need CODEX_API_KEY as a repository secret and run wherever it is present. Which variable the CLI reads is unmeasured, so the workflow sets both CODEX_API_KEY and OPENAI_API_KEY from that one secret."
-    return 0
-  fi
-  return 1
+  _r="$(cb_auth_probe codex CODEX_API_KEY "$WORK")"
+  cb_auth_report "$_r" CODEX_API_KEY
 }
 
 case "$STAGE" in
