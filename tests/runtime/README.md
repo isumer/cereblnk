@@ -240,6 +240,38 @@ anything here — a stage that passed last month and fails today is either
 a regression or a vendor contract change, and only the version tells you
 which.
 
+## Credentials, and the trust boundary
+
+Each host receives its own credential and no other. An earlier version
+handed all three to every job, so the Cursor probe — which needs none —
+ran with three providers' keys in its environment. Nothing was going to
+read them on purpose; a credential reachable by code with no use for it
+is a credential one edit away from leaving.
+
+A host with no secret configured gets an empty string, its stage script
+reports BLOCKED, and no session opens. Configuring one host does not
+require configuring the rest.
+
+`scripts/check-artifact-safe` runs before every upload. It refuses a file
+named like an auth store whatever it contains — inspecting the contents
+to decide would mean reading credentials to prove we are not publishing
+them — and refuses a file containing the exact value of a configured
+secret. It names the file and nothing else: a guard that explains itself
+in detail explains the secret.
+
+**The boundary worth stating plainly.** A push to `main` or `feature/**`
+runs with repository secrets. Fork pull requests do not get them, and
+that protection must not be traded away — `pull_request_target` would
+hand credentials to arbitrary code and is not used here. Which means
+write access to these paths is credential access:
+
+    .github/workflows/**
+    tests/runtime/**
+    scripts/ invoked by the workflow
+
+Treat a change to any of them as security-sensitive, and keep whatever
+branch protection the repository already has.
+
 ## What is not committed
 
 Run results are not. The repository stores how to reproduce evidence; a

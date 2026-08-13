@@ -30,7 +30,7 @@ say() { printf '%s\n' "$*"; }
 needs_auth() {
   if [ -z "${CODEX_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
     say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Codex credentials on this runner; authenticated stages need CODEX_API_KEY as a repository secret and run wherever it is present"
+    say "CB_REASON=no Codex credentials on this runner; authenticated stages need CODEX_API_KEY as a repository secret and run wherever it is present. Which variable the CLI reads is unmeasured, so the workflow sets both CODEX_API_KEY and OPENAI_API_KEY from that one secret."
     return 0
   fi
   return 1

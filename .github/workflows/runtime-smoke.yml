@@ -176,18 +176,43 @@ jobs:
             echo "validator not reachable; the plugin stage will report UNMEASURED"
           fi
 
+      # Each host receives its own credential and no other. The earlier
+      # version handed all three to every job, so the Cursor probe — which
+      # needs none — ran with three providers' keys in its environment,
+      # and a Gemini stage script could have read the Codex key. Neither
+      # was going to happen on purpose; a credential reachable by code
+      # that has no use for it is a credential one edit away from leaving.
+      #
+      # A host with no secret configured gets an empty string, its stage
+      # script reports BLOCKED, and no session opens.
       - name: Walk the stages
         env:
           CB_RUNTIME_WORKDIR: ${{ runner.temp }}/cb-runtime
-          # Tier 3 credentials. Absent on pull requests by design; the
-          # stages report BLOCKED with a reason, which is evidence.
-          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CODEX_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
+          # The CLI may read either name; which one is unmeasured, and
+          # setting both from one secret costs nothing while guessing
+          # wrong costs a run.
+          OPENAI_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
         run: |
           mkdir -p "$CB_RUNTIME_WORKDIR"
           python3 tests/runtime/run-host "${{ matrix.host }}" \
             --out "$CB_RUNTIME_WORKDIR/summary.json"
+
+      # Last look before anything leaves. Everything upstream is careful;
+      # this assumes something upstream was not. It fails the job rather
+      # than the upload, because an artifact that had to be caught here is
+      # a defect somewhere else that nobody would otherwise see.
+      - name: Refuse to publish a leaked credential
+        if: always()
+        env:
+          CODEX_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
+        run: |
+          python3 scripts/check-artifact-safe "${{ runner.temp }}/cb-runtime" \
+            --secrets CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY
 
       # The artifact is the point of the run. It is uploaded even when the
       # stages failed, because a failed run is the evidence somebody needs

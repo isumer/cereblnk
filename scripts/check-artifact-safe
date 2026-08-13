@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""check-artifact-safe — nothing leaves with a credential in it (CB-161).
+
+Runtime evidence is uploaded and kept for a month, on a public
+repository. Everything upstream of this is careful; this is the place
+that assumes something upstream was not.
+
+Two checks, and both are deliberately dumb:
+
+  A file named like an auth store does not get uploaded, whatever is in
+  it. `.env`, a provider config directory, a session database — the name
+  is enough, because inspecting the contents to decide would mean
+  reading credentials to prove we are not publishing credentials.
+
+  A file containing the exact value of a configured secret does not get
+  uploaded. The values come from the environment, are compared, and are
+  never printed — not in a match, not in an error, not in a count that
+  would narrow which one it was.
+
+The failure message names the file and says nothing else. A guard that
+explains itself in detail explains the secret.
+
+Usage:
+  scripts/check-artifact-safe DIR [--secrets VAR,VAR,...]
+
+--secrets names environment variables whose values must not appear.
+Empty and unset ones are skipped, so a job with no credentials configured
+passes for the right reason rather than by accident.
+
+Exit: 0 safe to publish · 1 do not publish · 2 the directory is unreadable
+"""
+import os
+import pathlib
+import sys
+
+# Names that are an auth store whatever they contain. Matched on the
+# path, never on the contents.
+FORBIDDEN_NAMES = (
+    ".env", ".netrc", "credentials", "credentials.json", "auth.json",
+    "token.json", "session.json", "id_rsa", "id_ed25519",
+)
+FORBIDDEN_DIRS = (".codex", ".claude", ".cursor", ".gemini", ".aws", ".ssh")
+
+# Shortest value worth searching for. A two-character secret would match
+# everywhere and a guard that always fires is a guard that gets removed.
+MIN_SECRET_LEN = 8
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        return 2
+
+    root = pathlib.Path(argv[0])
+    if not root.is_dir():
+        print("check-artifact-safe: %s is not a directory" % root,
+              file=sys.stderr)
+        return 2
+
+    names = []
+    if "--secrets" in argv:
+        names = [n.strip() for n in argv[argv.index("--secrets") + 1].split(",")
+                 if n.strip()]
+
+    values = []
+    for name in names:
+        value = os.environ.get(name, "")
+        if len(value) >= MIN_SECRET_LEN:
+            values.append(value)
+
+    problems = []
+    checked = 0
+
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        parts = set(rel.parts)
+        if parts & set(FORBIDDEN_DIRS):
+            problems.append("%s is inside an auth directory" % rel)
+            continue
+        if not path.is_file():
+            continue
+        if path.name in FORBIDDEN_NAMES:
+            problems.append("%s is named like an auth store" % rel)
+            continue
+        checked += 1
+        if not values:
+            continue
+        try:
+            blob = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            problems.append("%s could not be read to check it" % rel)
+            continue
+        for value in values:
+            if value in blob:
+                # Deliberately not saying which secret, or where in the
+                # file. Either would narrow it.
+                problems.append("%s contains a configured credential" % rel)
+                break
+
+    if problems:
+        print("check-artifact-safe: refusing to publish", file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        return 1
+
+    print("check-artifact-safe: %d file(s) clear, %d secret value(s) searched"
+          % (checked, len(values)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
