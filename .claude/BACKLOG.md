@@ -90,8 +90,11 @@ open or closed.
   the hosts. 1.4.0 does not reach main without it, which is correct: the
   matrix CB-125 publishes would otherwise be a table of guesses.
 - **Procedure.** `scripts/host-probe install <host>` prints the config to
-  paste and the four steps to follow, including the two `attest` calls.
-  Run it per host rather than working from this entry.
+  paste and the stages to walk. Attest each stage as you reach it —
+  install, context, skill, agent, subagent, hook, veto, finish — so a run
+  that fails says which layer it failed at instead of returning one
+  verdict for the whole host. Run it per host rather than working from
+  this entry.
 - **Cross-check already done (CB-135).** Candidate event names were
   widened against configurations other projects commit and run. One
   finding to carry into the run: a working Cursor configuration wires
@@ -223,6 +226,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-152** — A smoke run returned one verdict for the whole host
 - [x] **CB-151** — The Codex manifest fails its vendor's own validator, measured by running it
 - [x] **CB-150** — Gemini review: durable instruction separated from product policy
 - [x] **CB-147** — Manifest review — displayName, convention discovery, a contested field recorded

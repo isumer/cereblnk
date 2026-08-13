@@ -111,6 +111,44 @@ def main():
         if "_attestation" in out:
             fails.append("an attestation was counted among observed events")
 
+        # a stage classifies an observation and must not be able to
+        # invent a capability; the boundary is the whole reason --stage
+        # is allowed to exist
+        r = run(["attest", "claude", "--stage", "hook", "--result", "pass",
+                 "--capability", "veto.not-a-real-capability"], log)
+        if r.returncode == 0:
+            fails.append("a stage accepted a capability that is not in the "
+                         "catalogue — host-probe has become a second model "
+                         "of what the platform does")
+        r = run(["attest", "claude", "--stage", "invented", "--result",
+                 "pass"], log)
+        if r.returncode == 0:
+            fails.append("a stage outside the fixed vocabulary was accepted")
+        r = run(["attest", "claude", "--stage", "hook", "--result",
+                 "probably"], log)
+        if r.returncode == 0:
+            fails.append("a result outside the fixed vocabulary was accepted")
+
+        before = status_of(run(["collect", "claude"], log).stdout,
+                           "pre_tool_veto")
+        r = run(["attest", "claude", "--stage", "veto", "--result", "fail",
+                 "--capability", "veto.secret-guard",
+                 "--evidence", "hook ran, action not stopped"], log)
+        if r.returncode != 0:
+            fails.append("a valid staged attestation was refused: %s"
+                         % r.stderr.strip()[:80])
+        out = run(["collect", "claude"], log).stdout
+        for want in ("- stage: veto", "result: fail",
+                     "capability: veto.secret-guard", "observed_at:"):
+            if want not in out:
+                fails.append("staged attestation lost %r on the way to the "
+                             "profile" % want)
+        # a stage classifies an observation; it must not move a status
+        if status_of(out, "pre_tool_veto") != before:
+            fails.append("a staged attestation moved a capability status "
+                         "from %r to %r" % (before,
+                                            status_of(out, "pre_tool_veto")))
+
         # install must emit a config naming the recorder, and must not
         # write anything: a probe that edits the operator's editor config
         # has spent the trust it needs to be believed later

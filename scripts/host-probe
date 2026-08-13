@@ -36,6 +36,7 @@ Exit: 0 fine · 1 the command failed · 2 bad usage
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 
@@ -43,6 +44,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 LOG_ENV = "CB_PROBE_LOG"
 DEFAULT_LOG = ROOT / ".cb-probe/events.jsonl"
 PROFILES = ROOT / "plugins/cereblnk/context"
+PLUGIN_POLICIES = ROOT / "plugins/cereblnk/policies"
 
 # Where each host reads its hook config, and the key names it uses. These
 # are the claims under test — install writes here, and collect reports
@@ -74,6 +76,20 @@ ALIASES = {
                "AfterAgent": "turn_stop", "PreCompress": "pre_compact",
                "SessionStart": "session_start", "SessionEnd": "session_end"},
 }
+
+# Stages of a smoke run, in the order they can fail. A stage classifies
+# an observation and nothing else: it never names a capability, because
+# capabilities come from capabilities.yaml and a host binding. Two models
+# of what this platform can do would be one too many, and the second one
+# always wins by being closer to hand.
+#
+# The vocabulary is fixed rather than free text so that "the host worked"
+# stops being one result. When a run fails, the profile says which layer
+# it failed at.
+STAGES = ("install", "context", "skill", "agent", "subagent", "hook",
+          "veto", "finish")
+
+RESULTS = ("pass", "fail", "blocked", "skipped")
 
 # What the port needs to know it has. Named host-neutrally on purpose:
 # each host's own event name is whatever the recording says it was.
@@ -189,10 +205,24 @@ def cmd_collect(host, write=False):
         lines.append("unmapped_events: [%s]"
                      % ", ".join("'%s'" % n for n in unmapped))
 
-    attested = {}
+    attested, stages = {}, []
     for e in events:
-        if e.get("attested"):
+        if e.get("attested") == "stage":
+            stages.append(e)
+        elif e.get("attested"):
             attested[e["attested"]] = e.get("value")
+
+    lines.append("stages:")
+    if not stages:
+        lines.append("  # none — no smoke run has been attested")
+    for e in stages:
+        lines.append("  - stage: %s" % e["stage"])
+        lines.append("    result: %s" % e["result"])
+        if e.get("capability"):
+            lines.append("    capability: %s" % e["capability"])
+        if e.get("evidence"):
+            lines.append("    evidence: %s" % json.dumps(e["evidence"]))
+        lines.append("    observed_at: %s" % e.get("observed_at", "unknown"))
 
     lines += [
         "# Provoked facts. No recording of ordinary use can show either, so",
@@ -218,27 +248,99 @@ def cmd_collect(host, write=False):
     return 0
 
 
+def known_capabilities():
+    """Capability ids, read from the catalogue rather than accepted."""
+    path = PLUGIN_POLICIES / "capabilities.yaml"
+    if not path.exists():
+        return set()
+    return set(re.findall(r"^\s*-\s*capability:\s*(\S+)", 
+                          path.read_text(encoding="utf-8"), re.M))
+
+
 def cmd_attest(args):
     """Record an operator's observation, labelled as one.
 
-    Two facts cannot be read off a recording of ordinary use, so a person
-    has to provoke them and say what happened. That is weaker evidence
-    than an observation, and the profile says which it is rather than
-    letting the two blur.
+    Some facts cannot be read off a recording of ordinary use, so a
+    person provokes them and says what happened. That is weaker evidence
+    than an observation, and the profile keeps the two apart rather than
+    letting them blur.
+
+    A staged attestation classifies where in a smoke run the observation
+    came from. It does not create capability semantics: --capability is
+    checked against capabilities.yaml and rejected if absent, so this
+    command cannot quietly become a second model of what the platform
+    does.
     """
-    if len(args) < 3 or args[1] not in ("--refusal-enforced", "--failure-mode"):
-        print("host-probe: attest <host> --refusal-enforced yes|no\n"
-              "            attest <host> --failure-mode open|closed",
-              file=sys.stderr)
+    usage = ("host-probe attest <host> --refusal-enforced yes|no\n"
+             "            attest <host> --failure-mode open|closed\n"
+             "            attest <host> --stage STAGE --result RESULT\n"
+             "                          [--capability ID] [--evidence TEXT]\n"
+             "\n"
+             "  stages:  %s\n"
+             "  results: %s" % (" ".join(STAGES), " ".join(RESULTS)))
+
+    if not args:
+        print(usage, file=sys.stderr)
         return 2
-    host, key, value = args[0], args[1].lstrip("-"), args[2]
-    entry = {"at": time.time(), "host": host, "attested": key,
-             "value": value, "event": "_attestation", "fields": []}
+    host = args[0]
+    flags = {}
+    rest = args[1:]
+    while rest:
+        key = rest[0]
+        if not key.startswith("--") or len(rest) < 2:
+            print(usage, file=sys.stderr)
+            return 2
+        flags[key[2:]] = rest[1]
+        rest = rest[2:]
+
+    entry = {"at": time.time(), "host": host, "event": "_attestation",
+             "fields": [],
+             "observed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                          time.gmtime())}
+
+    if "stage" in flags:
+        stage = flags["stage"]
+        if stage not in STAGES:
+            print("host-probe: unknown stage %r. The vocabulary is fixed so "
+                  "that a failed run\n  says which layer it failed at: %s"
+                  % (stage, ", ".join(STAGES)), file=sys.stderr)
+            return 2
+        result = flags.get("result")
+        if result not in RESULTS:
+            print("host-probe: --stage needs --result, one of: %s"
+                  % ", ".join(RESULTS), file=sys.stderr)
+            return 2
+        capability = flags.get("capability")
+        if capability is not None:
+            known = known_capabilities()
+            if capability not in known:
+                print("host-probe: %r is not in capabilities.yaml.\n"
+                      "  A stage classifies an observation; it does not name "
+                      "a new capability.\n  Bind it in the catalogue first, "
+                      "or leave --capability off for a stage\n  that is not "
+                      "about one." % capability, file=sys.stderr)
+                return 2
+        entry.update({"attested": "stage", "stage": stage, "result": result,
+                      "capability": capability,
+                      "evidence": flags.get("evidence", "")})
+        label = "%s=%s" % (stage, result)
+    elif "refusal-enforced" in flags:
+        entry.update({"attested": "refusal-enforced",
+                      "value": flags["refusal-enforced"]})
+        label = "refusal-enforced=%s" % flags["refusal-enforced"]
+    elif "failure-mode" in flags:
+        entry.update({"attested": "failure-mode",
+                      "value": flags["failure-mode"]})
+        label = "failure-mode=%s" % flags["failure-mode"]
+    else:
+        print(usage, file=sys.stderr)
+        return 2
+
     path = log_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, sort_keys=True) + "\n")
-    print("host-probe: attested %s=%s for %s" % (key, value, host))
+    print("host-probe: attested %s for %s" % (label, host))
     return 0
 
 
@@ -328,10 +430,28 @@ def cmd_install(host):
     print("   fail to gather it. Adjust the key shape to whatever the host")
     print("   actually accepts; the recorder itself does not care.")
     print()
-    print("2. Use the host normally for a few turns. Edit a file, run a")
-    print("   command, let a subagent finish, end the session.")
+    print("2. Walk the stages, attesting each as you go. The vocabulary is")
+    print("   fixed so a failed run says which layer it failed at:")
     print()
-    print("3. Provoke the two facts step 2 cannot show.")
+    for stage, what in (
+            ("install", "the host accepts the plugin or extension"),
+            ("context", "its context file is loaded"),
+            ("skill", "a Cereblnk skill is discovered and invoked"),
+            ("agent", "a specialist is selected"),
+            ("subagent", "a subagent runs and finishes"),
+            ("hook", "a hook script is reached at all"),
+            ("veto", "a hook refuses and the action is actually stopped"),
+            ("finish", "the run guard is reached at the end of a turn")):
+        print("     %-9s %s" % (stage, what))
+    print()
+    print("   host-probe attest %s --stage hook --result pass \\" % host)
+    print("       --capability veto.destructive-command \\")
+    print("       --evidence \"what you saw\"")
+    print()
+    print("   --capability is checked against capabilities.yaml. A stage")
+    print("   classifies an observation; it never names a new capability.")
+    print()
+    print("3. Provoke the two facts a normal session cannot show.")
     print("   a. Make a hook refuse something — return the host's refusal")
     print("      form from a pre-tool hook — and see whether the action")
     print("      was actually stopped or merely complained about:")
