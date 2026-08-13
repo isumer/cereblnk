@@ -84,6 +84,25 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## Installation is the gate
+
+Every session driver sits behind one question nobody had asked: does the
+host accept this package at all? A hook cannot fire from a plugin that
+never loaded, so the `plugin` stage — and Gemini's `hook` stage — now
+attempt a real install and record the outcome:
+
+    install_result=ACCEPTED | REFUSED
+    install_attempt=no_cli | no_install_subcommand
+
+The subcommand is **discovered**, not assumed. Each host's help output is
+read and the first recognised verb is used. A CLI that offers none tells
+us something about the host; a guess that fails tells us nothing.
+
+For Codex this also answers CB-148 directly. The vendor's validator
+refuses the manifest; whether its runtime does is a different contract,
+and `install_result` is the measurement that settles it. Validation is
+what a marketplace asks. Installation is what a user does.
+
 ## A/B, when removing something is the question
 
 The Codex `plugin` stage validates twice: the tree as it ships, and a
