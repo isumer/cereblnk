@@ -84,6 +84,21 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## The result is said out loud
+
+Evidence that needs a zip download to read is evidence nobody reads. That
+was true for several runs: the results were correct, in an artifact, and
+nobody had opened one.
+
+`scripts/render-evidence` turns a `summary.json` into a table for the run
+summary and, on a pull request, a comment. The result is at the top of a
+page rather than behind a download.
+
+It is sanitised by construction rather than by scrubbing: only fields the
+schema defines are read, free text is flattened to one line, pipes are
+escaped so a provider's error cannot split a cell, and everything is
+truncated. Raw logs are never touched.
+
 ## Counting files is not counting capability
 
 A vendor validator reported that one host sees 17 of this plugin's 94

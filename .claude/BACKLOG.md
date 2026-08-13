@@ -260,6 +260,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-166** — Correct evidence that nobody could read
 - [x] **CB-165** — Seventeen of ninety-four was the right number, and the alarm was mine
 - [x] **CB-162** — Closed by CB-165: the premise was wrong, no capability is lost
 - [x] **CB-164** — A set variable was being read as a working credential
