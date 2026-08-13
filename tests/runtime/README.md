@@ -153,7 +153,7 @@ than leaving an absent install step to look like an oversight.
 |---|---|---|
 | 1 | packaging and generation, no host binary | relevant pull requests, once |
 | 2 | host CLI install, version, discovery | relevant pull requests, all four hosts |
-| 3 | authenticated session — skill, hook, veto | `workflow_dispatch` |
+| 3 | authenticated session — skill, hook, veto | wherever secrets exist |
 
 A pull request probes **all four hosts**, not one. A change to the shared
 runner or to `capabilities.yaml` reaches every host, and a workflow that
@@ -165,10 +165,26 @@ Tier 1 runs once as a gate rather than inside each probe: a runtime
 result measured against a tree nobody vouched for is worth nothing, and
 four identical verifications of the same commit is three wasted runners.
 
-Tier 3 is not mandatory on pull requests, and that is a decision rather
-than an omission. CI that depends on a vendor session is flaky CI, and
-flaky mandatory CI teaches people to ignore red. Without credentials
-those stages report BLOCKED with a reason, which is evidence.
+Tier 3 is not mandatory, and that is a decision rather than an omission.
+CI that depends on a vendor session is flaky CI, and flaky mandatory CI
+teaches people to ignore red. Without credentials those stages report
+BLOCKED with a reason, which is evidence — so the workflow costs nothing
+extra until a secret exists, and needs no change when one does.
+
+## Taking the measurement
+
+Configure whichever of these the repository has access to:
+
+    CODEX_API_KEY · ANTHROPIC_API_KEY · GEMINI_API_KEY
+
+Then a push to a release branch runs the matrix with them. Dispatch works
+too, but it needs an `actions:write` token, and a measurement should sit
+behind a decision rather than behind a permission. A merge is a thing
+that happens anyway.
+
+Nothing else changes. The stage scripts check for a credential and take
+the authenticated path when they find one; until then, `needs_auth`
+returns BLOCKED and no session is opened, so no cost is incurred.
 
 The artifact uploads even when stages failed. A failed run is the
 evidence somebody needs most, and discarding it leaves only a red tick.

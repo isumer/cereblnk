@@ -59,6 +59,11 @@ appeared.
 - **Acceptance.** With credentials configured, each stage returns PASS or
   FAIL on its own evidence rather than UNMEASURED. The veto stage asserts
   absence of the target file.
+- **How to start it.** Configure CODEX_API_KEY, ANTHROPIC_API_KEY or
+  GEMINI_API_KEY as repository secrets. The next push to a release branch
+  runs the matrix with them; no dispatch and no token scope is needed
+  (CB-158). Stages without a credential stay BLOCKED, so configuring one
+  host does not require configuring all four.
 - **Depends on.** CB-154, and credentials somebody decides to configure.
 
 ### CB-143 — Three hosts want the same hooks filename, and it is Claude's
@@ -249,6 +254,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-158** — The measurement sat behind a token scope instead of a decision
 - [x] **CB-157** — A pull request probed one host and three drivers went untested
 - [x] **CB-156** — All four hosts measure what a runner can reach without a session
 - [x] **CB-154** — The runtime workflow, proven on one host before three inherit it
