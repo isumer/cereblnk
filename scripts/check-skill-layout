@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""check-skill-layout — entry points are host-discoverable, craft is not (CB-165).
+
+A host's skill discovery walks `skills/*` and reads a SKILL.md in each
+entry. Most do not descend. That looked like a finding — one host seeing
+17 of 94 skills — and it was not: the 17 are exactly the `cb-*` entry
+points, and the other 77 are craft skills that agents open by path,
+resolved by scripts/select-agents. They never pass through a host's
+discovery at all.
+
+The alarm came from counting files instead of asking what each file is
+for. This encodes the distinction so the same alarm cannot be raised
+twice:
+
+  An entry point sits flat at skills/<name>/SKILL.md, because a host has
+  to find it.
+
+  A craft skill sits under a category, because select-agents resolves it
+  by path and a flat tree would lose the grouping that resolution reads.
+
+  A craft skill does not name itself cb-*, because that is the shape a
+  host offers a user.
+
+What this does not check is whether a host's packaging tolerates the
+category directories. It does not — one vendor's validator names each of
+them as a skill missing its SKILL.md — but that is a complaint about
+directory shape, not about a capability, and it belongs with the
+packaging contract (CB-148, CB-163).
+
+Usage: scripts/check-skill-layout
+
+Exit: 0 the layout holds · 1 it does not
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SKILLS = ROOT / "plugins/cereblnk/skills"
+NAME = re.compile(r"^name:\s*(\S+)\s*$", re.M)
+
+
+def declared_name(path):
+    m = NAME.search(path.read_text(encoding="utf-8")[:800])
+    return m.group(1) if m else None
+
+
+def main():
+    if not SKILLS.is_dir():
+        print("check-skill-layout: %s is missing" % SKILLS, file=sys.stderr)
+        return 1
+
+    problems, flat, nested = [], [], []
+
+    for path in sorted(SKILLS.rglob("SKILL.md")):
+        rel = path.relative_to(SKILLS)
+        depth = len(rel.parts) - 1
+        name = declared_name(path)
+        if name is None:
+            problems.append("%s declares no name" % rel)
+            continue
+        entry = name.startswith("cb-")
+
+        if depth == 1:
+            flat.append(name)
+            if not entry:
+                problems.append(
+                    "%s sits flat but is not an entry point. Flat is where a "
+                    "host looks; a craft skill there is offered to users as a "
+                    "command it was not written to be." % rel)
+        else:
+            nested.append(name)
+            if entry:
+                problems.append(
+                    "%s is an entry point under a category. A host walking "
+                    "skills/* will not descend to it, so it would be "
+                    "documented and unreachable." % rel)
+
+    if not flat:
+        problems.append("no entry points are flat; nothing is discoverable")
+
+    if problems:
+        print("check-skill-layout: %d problem(s)" % len(problems),
+              file=sys.stderr)
+        for p in problems:
+            print("  %s" % p, file=sys.stderr)
+        print("\n  Entry points are flat because a host has to find them.\n"
+              "  Craft skills are grouped because select-agents resolves "
+              "them by path.", file=sys.stderr)
+        return 1
+
+    print("check-skill-layout: %d entry point(s) discoverable, %d craft "
+          "skill(s) resolved by path" % (len(flat), len(nested)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -84,6 +84,23 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## Counting files is not counting capability
+
+A vendor validator reported that one host sees 17 of this plugin's 94
+skills, and that looked like a finding. It was not. The 17 are exactly
+the `cb-*` entry points; the other 77 are craft skills that agents open
+by path, resolved by `select-agents`, and they never pass through a
+host's skill discovery at all.
+
+The alarm came from counting files instead of asking what each file is
+for. `scripts/check-skill-layout` now holds the distinction so the same
+alarm cannot be raised twice.
+
+What remains real is narrower: that validator also objects to the
+category directories themselves, which is a complaint about directory
+shape rather than about a capability. It belongs with the packaging
+contract, not here.
+
 ## Authentication is a prerequisite, never a capability
 
 A stage used to ask "is the variable set?". A set variable proves a

@@ -30,6 +30,7 @@ unsupported paths where the tool has them):
   check-host-matrix       every published cell traces to evidence (CB-125)
   check-runtime-evidence  the evidence schema and its checker agree (CB-153)
   check-artifact-safe     nothing publishes with a credential in it (CB-161)
+  check-skill-layout      entry points are discoverable, craft is not (CB-165)
   test-run-quiet          tool-output gate contract (CB-085)
   skill-frontmatter       every skill loads: fm present, names sane (CB-088)
   rules-layer             constraint files load and resolve (CB-092)
@@ -101,6 +102,10 @@ def main():
           if lk.returncode == 3
           else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
           skipped=(lk.returncode == 3))
+
+    sl = sh([sys.executable, str(S / "check-skill-layout")])
+    suite("check-skill-layout", sl.returncode == 0,
+          (sl.stdout or sl.stderr).strip().splitlines()[0][:100] if sl.returncode else "")
 
     fx = sh([sys.executable, str(S / "check-artifact-safe"),
               str(ROOT / "tests/runtime/fixtures")])
