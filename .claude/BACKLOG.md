@@ -56,6 +56,12 @@ appeared.
 - **Deliverable.** Session drivers for the stages credentials unlock. The
   offline half is done (CB-156): every host now measures what a runner
   can reach without a session, and the stub scripts are gone.
+- **Read `install_result` first.** CB-163 measures whether each host
+  accepts the package. A driver written against a host that refuses the
+  install has nothing to attach to, and the first credentialed run
+  established that credentials do reach the stage scripts — `skill` came
+  back UNMEASURED rather than BLOCKED — so the driver is the only thing
+  missing, and the install result says whether it can work.
 - **Acceptance.** With credentials configured, each stage returns PASS or
   FAIL on its own evidence rather than UNMEASURED. The veto stage asserts
   absence of the target file.
@@ -285,6 +291,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-163** — Nobody had asked whether the host accepts the package at all
 - [x] **CB-161** — Every host job held every provider's credential
 - [x] **CB-160** — The Codex manifest was rejected for two reasons, not one
 - [x] **CB-159** — A crashed validator was recorded as a rejected manifest

@@ -119,6 +119,43 @@ json.dump(d, open(sys.argv[2], 'w'), indent=2)
   say "CB_EVIDENCE=validator-a.log"
   say "CB_EVIDENCE=validator-b.log"
 
+  # The validator's verdict and the runtime's are two contracts, and
+  # CB-148 is the question of whether they agree. Validation is what the
+  # marketplace asks; installation is what a user does. Measuring only
+  # the first would leave every downstream stage waiting on a driver that
+  # may have nothing to attach to — a hook cannot fire from a plugin that
+  # never loaded.
+  #
+  # The subcommand is discovered rather than assumed. A CLI that does not
+  # offer it tells us something; a guess that fails tells us nothing.
+  if command -v codex >/dev/null 2>&1; then
+    HELP="$WORK/codex-plugin-help.log"
+    if timeout 60 codex plugin --help >"$HELP" 2>&1; then
+      say "CB_EVIDENCE=codex_plugin_subcommand=present"
+      SUB=""
+      for cand in add install; do
+        grep -qE "^[[:space:]]*${cand}\b" "$HELP" && SUB="$cand" && break
+      done
+      if [ -z "$SUB" ]; then
+        say "CB_EVIDENCE=install_attempt=no_add_or_install_subcommand"
+      else
+        INS="$WORK/codex-install.log"
+        if timeout 180 codex plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
+          # The runtime accepted what the validator refused. That is the
+          # CB-148 contradiction, measured rather than argued about.
+          say "CB_EVIDENCE=install_result=ACCEPTED"
+        else
+          say "CB_EVIDENCE=install_result=REFUSED"
+          say "CB_EVIDENCE=codex-install.log"
+        fi
+      fi
+    else
+      say "CB_EVIDENCE=codex_plugin_subcommand=absent"
+    fi
+  else
+    say "CB_EVIDENCE=install_attempt=no_cli"
+  fi
+
   if [ "$A" = "CRASHED" ]; then
     say "CB_STATUS=UNMEASURED"
     say "CB_REASON=the vendor validator did not reach a verdict: $(head -1 "$A_LOG" | cut -c1-80). Nothing here is established about the manifest."

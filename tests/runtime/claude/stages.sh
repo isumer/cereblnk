@@ -13,6 +13,7 @@ set -uo pipefail
 
 STAGE="${1:?stage required}"
 ROOT="${CB_ROOT:?}"
+WORK="${CB_WORKDIR:?}"
 PLUGIN="$ROOT/plugins/cereblnk"
 
 say() { printf '%s\n' "$*"; }
@@ -59,6 +60,38 @@ context)
   ;;
 
 plugin)
+  # Installation is the gate every session driver sits behind. A hook
+  # cannot fire from a plugin that never loaded, so measuring this before
+  # writing drivers is the difference between finding out now and finding
+  # out after the work.
+  #
+  # The subcommand is discovered, not assumed. A CLI that does not offer
+  # one tells us something; a guess that fails tells us nothing.
+  if command -v claude >/dev/null 2>&1; then
+    HELP="$WORK/claude-plugin-help.log"
+    if timeout 60 claude plugin --help >"$HELP" 2>&1; then
+      SUB=""
+      for cand in install add; do
+        grep -qE "^[[:space:]]*${cand}\\b" "$HELP" && SUB="$cand" && break
+      done
+      if [ -z "$SUB" ]; then
+        say "CB_EVIDENCE=install_attempt=no_install_subcommand"
+      else
+        INS="$WORK/claude-install.log"
+        if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
+          say "CB_EVIDENCE=install_result=ACCEPTED"
+        else
+          say "CB_EVIDENCE=install_result=REFUSED"
+          say "CB_EVIDENCE=claude-install.log"
+        fi
+      fi
+    else
+      say "CB_EVIDENCE=plugin_subcommand=absent"
+    fi
+  else
+    say "CB_EVIDENCE=install_attempt=no_cli"
+  fi
+
   # The binding this host loads is generated. If the committed file has
   # drifted from its generator, what installs here is not what the policy
   # says — and that is measurable without the host.
