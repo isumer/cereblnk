@@ -42,12 +42,22 @@ cb_auth_probe() {
   done
   [ -n "$_flag" ] || { printf 'NOFLAG'; return 0; }
 
+  # Recorded so a later reader knows which invocation was tried. A probe
+  # that says a host failed without saying how it was called has told
+  # nobody anything.
+  CB_AUTH_FLAG="$_flag"
+
   _out="$_work/${_bin}-auth.log"
   if timeout 120 "$_bin" "$_flag" 'Reply with the single word: ready' \
       >"$_out" 2>&1; then
     printf 'ACCEPTED'
     return 0
   fi
+
+  # First non-empty line, flattened and bounded. The credential is never
+  # on the command line and never in this output, but a provider's words
+  # are still untrusted text on its way to a public comment.
+  CB_AUTH_DETAIL="$(grep -v '^[[:space:]]*$' "$_out" 2>/dev/null | head -1 | tr -d '\r' | cut -c1-120)"
 
   # The provider's own words decide this, not the exit code. A refused
   # key, an exhausted quota and an unentitled account are all reasons to
@@ -72,13 +82,16 @@ cb_auth_report() {
       say "CB_REASON=no credential in the environment; set $2 as a repository secret" ;;
     NOFLAG)
       say "CB_STATUS=BLOCKED"
-      say "CB_REASON=the host offers no non-interactive invocation this probe recognises, so a credential cannot be exercised from a runner" ;;
+      say "CB_REASON=the host offers no non-interactive invocation this probe recognises (tried --print, -p, --prompt, --non-interactive), so a credential cannot be exercised from a runner" ;;
     REFUSED)
       say "CB_STATUS=BLOCKED"
-      say "CB_REASON=the provider refused the credential or the account cannot run this — rejected key, exhausted quota, billing or entitlement. Not a defect in this package" ;;
+      say "CB_REASON=the provider refused the credential or the account cannot run this — rejected key, exhausted quota, billing or entitlement. Not a defect in this package: ${CB_AUTH_DETAIL:-no detail}" ;;
     *)
+      # The old message said only that it was not about authentication,
+      # which is the one thing a reader already knew from the status. What
+      # they need is which invocation was tried and what came back.
       say "CB_STATUS=UNMEASURED"
-      say "CB_REASON=the host failed for a reason that is not about authentication; nothing is established about the credential" ;;
+      say "CB_REASON=invoked with '${CB_AUTH_FLAG:-?}' and it failed for a reason that is not about authentication: ${CB_AUTH_DETAIL:-no output}. Nothing is established about the credential" ;;
   esac
   return 0
 }

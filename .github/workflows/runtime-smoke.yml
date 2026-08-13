@@ -205,6 +205,22 @@ jobs:
           python3 tests/runtime/run-host "${{ matrix.host }}" \
             --out "$CB_RUNTIME_WORKDIR/summary.json"
 
+      # Last look before anything leaves, and it has to come first: the
+      # two steps after it publish. A comment on a public repository
+      # cannot be recalled, and the previous order posted one before this
+      # ran — a credential reaching summary.json would have been public
+      # before anything checked. Everything upstream is careful; this
+      # assumes something upstream was not.
+      - name: Refuse to publish a leaked credential
+        if: always()
+        env:
+          CODEX_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
+        run: |
+          python3 scripts/check-artifact-safe "${{ runner.temp }}/cb-runtime" \
+            --secrets CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY
+
       # Before the guard, because a rendered table of a failed run is the
       # thing somebody needs; and after the stages, because that is when
       # there is something to render. It reads only fields the schema
@@ -233,20 +249,6 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" \
             --body-file "${{ runner.temp }}/evidence.md"
-
-      # Last look before anything leaves. Everything upstream is careful;
-      # this assumes something upstream was not. It fails the job rather
-      # than the upload, because an artifact that had to be caught here is
-      # a defect somewhere else that nobody would otherwise see.
-      - name: Refuse to publish a leaked credential
-        if: always()
-        env:
-          CODEX_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
-          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
-          GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
-        run: |
-          python3 scripts/check-artifact-safe "${{ runner.temp }}/cb-runtime" \
-            --secrets CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY
 
       # The artifact is the point of the run. It is uploaded even when the
       # stages failed, because a failed run is the evidence somebody needs
