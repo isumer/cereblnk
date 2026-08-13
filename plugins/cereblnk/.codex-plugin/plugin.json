@@ -21,6 +21,13 @@
     "longDescription": "Routes work to specialist subagents, budgets context, and blocks a finish that skipped its checks. Every constraint names the script that detects its violation.",
     "developerName": "isumer",
     "category": "Productivity",
-    "websiteURL": "https://github.com/isumer/cereblnk"
+    "websiteURL": "https://github.com/isumer/cereblnk",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use Cereblnk to plan and verify this engineering task."
+    ]
   }
 }

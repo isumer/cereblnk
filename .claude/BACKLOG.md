@@ -38,80 +38,38 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
-### CB-148 — The Codex `hooks` manifest field is contested by its own specification
+### CB-143 — Three hosts want the same hooks filename, and it is Claude's
 
-`plugins/cereblnk/.codex-plugin/plugin.json` declares
-`"hooks": "./hooks/codex-hooks.json"`. The vendor's plugin-json spec
-supports and contradicts that in the same file: it documents the field,
-carries it in the example manifest, and states that string-valued
-`skills`, `hooks` and `mcpServers` supplement default discovery — while
-also saying validation rejects unsupported manifest fields such as
-`hooks`, which is why its scaffold omits them.
+This began as a Gemini question and is not one. Codex auto-discovers
+`hooks/hooks.json`, Gemini reads it from the extension root with no
+manifest field to point elsewhere, and Claude Code already owns it.
+Cursor escapes only because its manifest redirect is accepted.
 
-Both readings are first-party, so no amount of further reading settles
-it. This is the boundary of the rule that a specification is
-authoritative for a format: it holds only while the specification agrees
-with itself.
+CB-148 sharpened the cost. On Codex, keeping the `hooks` field fails the
+vendor's validator; dropping it loads Claude's binding, whose matchers
+are Claude tool names — hooks that load and never fire. Neither end is
+acceptable, and no manifest field resolves it on two of the three hosts.
 
-The field stays in the meantime. The default it would fall back to is
-`hooks/hooks.json`, which is Claude Code's binding — omitting the field
-to satisfy one reading loads the wrong hooks under the other, and a
-rejected manifest fails loudly where wrong hooks fail silently.
+Three ways out, weighed in `docs/hosts/gemini.md`:
 
-- **Deliverable.** Run the vendor's own `validate_plugin.py` against the
-  manifest, and install the plugin into a real Codex session. Record
-  which reading holds, with the command and its output.
-- **Acceptance.** The manifest either keeps the field with a recorded
-  validator pass, or drops it with a recorded rejection and a resolution
-  for the `hooks/hooks.json` collision that does not involve Claude Code
-  losing its own file.
-- **Depends on.** Nothing. It needs Codex installed, not more reading.
-
-### CB-143 — Where Gemini hooks are delivered from
-
-CB-145 bound Gemini against its published hook reference: six of seven
-capabilities have an event, the refusal contract is identical to Claude
-Code's, and `subagent_stop` is absent because the host exposes no
-sub-agent lifecycle hook. Capability is not the open question.
-
-Delivery is. Hooks are read from `hooks/hooks.json` inside the extension
-root, the manifest offers no field to point elsewhere, and that file is
-Claude Code's binding. Codex and Cursor hit the same default and both let
-a manifest redirect it.
-
-The gap is ours, not the host's — Gemini supports extension hooks
-natively and `hooks/hooks.json` is the documented place for them. Three
-ways out, weighed in `docs/hosts/gemini.md`:
-
-1. **Install-time configuration.** Hook layers run project settings,
-   user settings, system settings, extensions. Project settings outrank
-   extension hooks, so the generated binding could be delivered into
-   `.gemini/settings.json` rather than packaged. Cheapest to try.
+1. **Install-time configuration.** Cheapest to try, works where a host
+   layers hooks by scope. Does not help Codex, whose plugin hooks are
+   discovered from the package.
 2. **A host-specific distribution.** Build `dist/<host>/cereblnk/` from
    the core, where each host's conventional filename holds that host's
-   generated binding. Source of truth stays single. Costs a build step
-   and a second tree that has to stay honest — `check-generated` would
-   have to cover it or the tree forks quietly.
-3. **Ship skills and sub-agents only** on this host, and record that the
-   enforcement layer does not reach it.
+   generated binding. This is the only option that answers all three,
+   and the reason it stopped being a preference: two hosts now force it.
+   **`check-generated` must cover the built tree.** A `dist/` that drifts
+   from its generator is the fork this whole binding layer exists to
+   prevent, and it would be a quieter one than the problem it solves.
+3. **Ship skills and sub-agents only**, and record that enforcement
+   reaches one host.
 
-- **Deliverable.** Either that install path, documented and checkable, or
-  a recorded decision that Cereblnk ships skills and sub-agents to this
-  host and nothing more.
-- **Acceptance.** Whichever is chosen, `check-host-matrix` reflects it.
-  If the decision is to stop, the declared rows come out rather than
-  standing as an implied promise.
-- **Weigh this first.** The CLI stopped serving Google AI Pro, Ultra and
-  free tiers on 18 June 2026; access continues for Code Assist
-  Standard/Enterprise licences and paid API keys. Its successor carries
-  the same capability family under a different plugin format, with no
-  day-one parity per its vendor. The work below is worth something to the
-  tiers that retain access and nothing to the rest, and that is the
-  trade to take deliberately.
-- **Sources.**
-  https://geminicli.com/docs/hooks/ ·
-  https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
-- **Depends on.** CB-145.
+- **Deliverable.** A decision, and if it is (2), a build step inside the
+  drift gate rather than beside it.
+- **Acceptance.** `check-host-matrix` reflects the outcome, and no host
+  carries a binding that cannot be delivered.
+- **Depends on.** CB-148 (measured), CB-145.
 
 ### CB-131 — The probe has to be run on the hosts it measures
 
@@ -264,6 +222,8 @@ read.
 - [x] **CB-118** — Every README claim re-derived from the tree; five were wrong
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
+- [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-151** — The Codex manifest fails its vendor's own validator, measured by running it
 - [x] **CB-150** — Gemini review: durable instruction separated from product policy
 - [x] **CB-147** — Manifest review — displayName, convention discovery, a contested field recorded
 - [x] **CB-146** — A session opened knowing nothing about the run it was resuming
