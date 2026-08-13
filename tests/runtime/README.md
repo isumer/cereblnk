@@ -99,6 +99,54 @@ Never provoke a guard with an operation that would matter if it
 succeeded. A probe that depends on a refusal holding has assumed its own
 result.
 
+## Running the whole sequence
+
+    tests/runtime/run-host codex --out summary.json
+
+One runner, not four. The stages are the same questions on every host and
+only the commands differ, so four near-identical runners would drift
+apart in the way this repository spends most of its checkers preventing.
+Host-specific logic is a stage script:
+
+    tests/runtime/<host>/stages.sh
+
+Each stage prints its result and the runner reads it:
+
+    CB_STATUS=PASS|FAIL|BLOCKED|UNMEASURED|UNSUPPORTED
+    CB_REASON=<why>            required for BLOCKED and UNSUPPORTED
+    CB_CAPABILITY=<id>         must exist in capabilities.yaml
+    CB_EVIDENCE=<observation>  a path in the artifact, or a short note
+
+A stage cannot award itself a result the runner did not see, because
+nothing but the runner writes the artifact.
+
+When `install` is BLOCKED or FAIL the run halts, and everything
+downstream is recorded UNMEASURED rather than BLOCKED. Nobody measured
+them; calling them blocked would claim to know why.
+
+Only Codex has a driver. The other three report UNMEASURED with that as
+the reason, which is what is true — Codex is first because its packaging
+contract is already measured and its failure mode known, so the pattern
+is proven somewhere real before three hosts inherit it.
+
+## In CI
+
+`.github/workflows/runtime-smoke.yml`, in tiers:
+
+| tier | what | when |
+|---|---|---|
+| 1 | packaging and generation, no host binary | relevant pull requests |
+| 2 | host CLI install, version, discovery | relevant pull requests |
+| 3 | authenticated session — skill, hook, veto | `workflow_dispatch` |
+
+Tier 3 is not mandatory on pull requests, and that is a decision rather
+than an omission. CI that depends on a vendor session is flaky CI, and
+flaky mandatory CI teaches people to ignore red. Without credentials
+those stages report BLOCKED with a reason, which is evidence.
+
+The artifact uploads even when stages failed. A failed run is the
+evidence somebody needs most, and discarding it leaves only a red tick.
+
 ## Fixtures
 
 `fixtures/safe-project/` is the disposable target. Copy it to a temporary
