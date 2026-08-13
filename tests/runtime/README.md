@@ -84,6 +84,31 @@ person has to provoke them:
     scripts/host-probe attest codex --refusal-enforced yes|no
     scripts/host-probe attest codex --failure-mode open|closed
 
+## Authentication is a prerequisite, never a capability
+
+A stage used to ask "is the variable set?". A set variable proves a
+repository secret exists — not that the provider accepted it. Two very
+different situations reported the same BLOCKED:
+
+| probe result | what it means | who acts |
+|---|---|---|
+| `ABSENT` | no credential in the environment | whoever configures secrets |
+| `NOFLAG` | the host offers no non-interactive invocation | nobody; the host cannot be driven from a runner |
+| `REFUSED` | the provider rejected the key, or quota, billing, entitlement | whoever owns the account |
+| `UNKNOWN` | it failed for a reason that is not about auth | read the log |
+| `ACCEPTED` | the credential works | the stage continues to its real measurement |
+
+Every path except the last is BLOCKED or UNMEASURED. **Authentication
+being fine never makes a capability PASS** — it only removes the reason
+not to measure one.
+
+The invocation is discovered from the host's help output, like the
+install subcommand. Guessing a flag and having it fail would be recorded
+as a host that cannot authenticate, which is a finding about this probe
+rather than about the host.
+
+The credential never reaches a command line, a log, or the evidence.
+
 ## Installation is the gate
 
 Every session driver sits behind one question nobody had asked: does the

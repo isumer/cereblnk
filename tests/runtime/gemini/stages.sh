@@ -19,13 +19,16 @@ EXT="$ROOT/plugins/cereblnk"
 
 say() { printf '%s\n' "$*"; }
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/authprobe.sh"
+
+# Was: "is the variable set?". A set variable proves a repository
+# secret exists, not that the provider accepted it — and the two failed
+# in ways somebody would act on differently while reporting the same
+# thing. The probe runs once per stage, which is a trivial call, and
+# says which of the two it was.
 needs_auth() {
-  if [ -z "${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}" ]; then
-    say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Gemini credentials on this runner; authenticated stages need GEMINI_API_KEY as a repository secret and run wherever it is present"
-    return 0
-  fi
-  return 1
+  _r="$(cb_auth_probe gemini GEMINI_API_KEY "$WORK")"
+  cb_auth_report "$_r" GEMINI_API_KEY
 }
 
 case "$STAGE" in
