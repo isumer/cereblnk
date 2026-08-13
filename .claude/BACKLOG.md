@@ -285,6 +285,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-161** — Every host job held every provider's credential
 - [x] **CB-160** — The Codex manifest was rejected for two reasons, not one
 - [x] **CB-159** — A crashed validator was recorded as a rejected manifest
 - [x] **CB-158** — The measurement sat behind a token scope instead of a decision
