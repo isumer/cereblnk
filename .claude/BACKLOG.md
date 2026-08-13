@@ -38,34 +38,27 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
-### CB-154 — The runtime workflows, one host at a time
+### CB-155 — Session drivers for the stages credentials unlock
 
-CB-153 laid the shared contract: stage vocabulary, status vocabulary,
-schema, checker, fixtures, README. What it deliberately did not do is
-write four CI workflows that cannot be run from here.
+CB-154 landed the runner, the Codex stage script and the workflow.
+Everything a runner can establish without a model session is measured.
+Everything past it is not: skill, agent, hook, veto and finish report
+BLOCKED without credentials and UNMEASURED with them, because a session
+driver — start a session, provoke a thing, read what happened — is not
+written.
 
-A workflow that installs a vendor binary, authenticates, drives a host
-and uploads an artifact is code, and code nobody has run is a wish with
-YAML syntax. The pattern has to be proven on one host before the other
-three inherit it.
+The veto driver is the one to write carefully, and the stage script says
+so where whoever writes it will read it. A hook can print a refusal into
+a stream nobody reads while the tool call goes through underneath, so the
+assertion is that the target file was not written. Never that a message
+appeared.
 
-- **Order.** Codex first, because its packaging contract is the one
-  already measured (CB-151) and its failure mode is known. Then Claude
-  Code as the reference profile, then Cursor, then Gemini.
-- **Tiers.** Deterministic packaging stages run on relevant pull
-  requests. Authenticated runtime stages run on dispatch or a release
-  candidate, because mandatory CI that depends on a vendor session is
-  flaky CI, and flaky mandatory CI teaches people to ignore red.
-- **Acceptance, per host.** The workflow runs, records host version and
-  source commit, emits an artifact that passes
-  `scripts/check-runtime-evidence`, uploads no credentials, and leaves
-  `verify` and `check-generated` green. Stages without credentials are
-  `BLOCKED` with a reason, which is valid evidence and not a failure.
-- **Boundary.** A workflow may prove a distribution problem exists. It
-  must not introduce `dist/` to make a stage pass — that is CB-143, and
-  a distribution tree outside `check-generated` recreates the drift this
-  architecture exists to prevent.
-- **Depends on.** CB-153.
+- **Deliverable.** A driver per stage for Codex, then the same for Claude
+  Code, Cursor and Gemini, replacing the stub scripts.
+- **Acceptance.** With credentials configured, each stage returns PASS or
+  FAIL on its own evidence rather than UNMEASURED. The veto stage asserts
+  absence of the target file.
+- **Depends on.** CB-154, and credentials somebody decides to configure.
 
 ### CB-143 — Three hosts want the same hooks filename, and it is Claude's
 
@@ -255,6 +248,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-154** — The runtime workflow, proven on one host before three inherit it
 - [x] **CB-153** — Runtime evidence had no contract, so no artifact could be trusted
 - [x] **CB-152** — A smoke run returned one verdict for the whole host
 - [x] **CB-151** — The Codex manifest fails its vendor's own validator, measured by running it

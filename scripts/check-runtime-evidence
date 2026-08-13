@@ -51,8 +51,20 @@ REQUIRED = ("schema_version", "host", "host_version", "repository",
 
 # Anything that should never reach an artifact. Not a secret scanner —
 # a last look before upload, aimed at the shapes a host config leaks.
+#
+# The patterns are deliberately narrow. A first attempt matched the bare
+# word `secret` and fired on this repository's own `secret-guard` skill
+# appearing in validator output, which would have failed every Codex run
+# for naming a guard after what it guards against. A checker that cries
+# wolf on correct input gets switched off, and then it is not protecting
+# anything — so these look for a value being carried, not a topic being
+# discussed.
 SECRET_HINTS = re.compile(
-    r"(api[_-]?key|oauth|bearer\s|authorization:|secret|token|"
+    r"(api[_-]?key\s*[=:]|"
+    r"secret[_-]?(key|token|access)\s*[=:]|"
+    r"\bbearer\s+[A-Za-z0-9._~+/-]{12,}|"
+    r"authorization\s*:\s*\S|"
+    r"\b(gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})|"
     r"BEGIN [A-Z ]*PRIVATE KEY)", re.I)
 
 

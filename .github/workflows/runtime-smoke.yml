@@ -1,0 +1,127 @@
+# Cereblnk runtime smoke — host integration, measured rather than declared.
+#
+# One workflow, not four. The stages are the same questions on every host
+# and only the commands differ, so four near-identical files would drift
+# apart in the way this repository spends most of its checkers preventing.
+# Host-specific logic lives in tests/runtime/<host>/stages.sh; this file
+# orchestrates and uploads.
+#
+# It is deliberately separate from `verify`, which stays offline and
+# deterministic. Host runtime certification is an online integration
+# layer that runs beside the core gate, never inside it — a contributor
+# without network access must still be able to run the whole acceptance
+# suite.
+#
+# Tiers, and why the expensive one is not mandatory:
+#
+#   Tier 1  packaging and generation, no host binary   every relevant PR
+#   Tier 2  host CLI install, version, discovery       every relevant PR
+#   Tier 3  authenticated session, skill/hook/veto     dispatch only
+#
+# Mandatory CI that depends on a vendor session is flaky CI, and flaky
+# mandatory CI teaches people to ignore red. Tier 3 stages report BLOCKED
+# with a reason when credentials are absent, which is valid evidence and
+# not a failure.
+name: runtime-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Host to probe
+        required: true
+        default: codex
+        type: choice
+        options: [codex, claude, cursor, gemini]
+  pull_request:
+    paths:
+      - '.agents/plugins/**'
+      - '.cursor-plugin/**'
+      - 'plugins/cereblnk/.codex-plugin/**'
+      - 'plugins/cereblnk/.cursor-plugin/**'
+      - 'plugins/cereblnk/gemini-extension.json'
+      - 'plugins/cereblnk/policies/capabilities.yaml'
+      - 'plugins/cereblnk/policies/hosts/**'
+      - 'plugins/cereblnk/hooks/**'
+      - 'plugins/cereblnk/scripts/lib/**'
+      - 'scripts/host-probe'
+      - 'scripts/gen-bindings'
+      - 'scripts/check-generated'
+      - 'scripts/check-runtime-evidence'
+      - 'tests/runtime/**'
+      - '.github/workflows/runtime-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-smoke-${{ github.ref }}-${{ inputs.host || 'codex' }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: ${{ inputs.host || 'codex' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the tree
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Tier 1. If the deterministic layer is red, a runtime result would
+      # be measuring a tree nobody vouched for.
+      - name: Deterministic layer
+        run: ./scripts/verify
+
+      - name: Set up Node
+        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Tier 2. Best effort by design: a vendor package that will not
+      # install is a fact about today, and the install stage records it as
+      # BLOCKED rather than failing the job.
+      - name: Install the host CLI
+        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        continue-on-error: true
+        run: npm install -g @openai/codex
+
+      - name: Fetch the vendor plugin validator
+        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        continue-on-error: true
+        run: |
+          set -u
+          url=https://raw.githubusercontent.com/openai/codex/main/codex-rs/skills/src/assets/samples/plugin-creator/scripts/validate_plugin.py
+          if curl -sfL --max-time 30 "$url" -o "$RUNNER_TEMP/validate_plugin.py"; then
+            echo "CODEX_VALIDATOR=$RUNNER_TEMP/validate_plugin.py" >> "$GITHUB_ENV"
+          else
+            echo "validator not reachable; the plugin stage will report UNMEASURED"
+          fi
+
+      - name: Walk the stages
+        env:
+          CB_RUNTIME_WORKDIR: ${{ runner.temp }}/cb-runtime
+          # Tier 3 credentials. Absent on pull requests by design; the
+          # stages report BLOCKED with a reason, which is evidence.
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        run: |
+          mkdir -p "$CB_RUNTIME_WORKDIR"
+          python3 tests/runtime/run-host "${{ inputs.host || 'codex' }}" \
+            --out "$CB_RUNTIME_WORKDIR/summary.json"
+
+      # The artifact is the point of the run. It is uploaded even when the
+      # stages failed, because a failed run is the evidence somebody needs
+      # most and discarding it would leave only a red tick.
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-evidence-${{ inputs.host || 'codex' }}
+          path: ${{ runner.temp }}/cb-runtime/
+          retention-days: 30
+          if-no-files-found: warn

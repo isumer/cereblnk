@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""run-host — walk a host's stages and emit evidence (CB-154).
+
+One runner, not four. The stages are the same questions on every host;
+only the commands differ, and those live in tests/runtime/<host>/stages.sh
+where a host's own vocabulary belongs. Four near-identical runners would
+drift apart in the way this repository spends most of its checkers
+preventing.
+
+Each stage is a function in that script. The runner calls it, reads the
+status it prints, and records the result. A stage that exits non-zero
+without printing a status is FAIL; a stage the host does not offer is
+UNSUPPORTED and says why; a stage that could not run because something
+outside this repository was missing is BLOCKED and says what.
+
+Stages run in order and a failed prerequisite does not silently take the
+rest with it. When `install` is BLOCKED, everything downstream is
+UNMEASURED rather than BLOCKED — nobody measured them, and saying they
+were blocked would claim knowledge of why.
+
+Usage:
+  tests/runtime/run-host <host> [--out FILE]
+
+Exit: 0 the run completed and its evidence is valid · 1 evidence is
+      invalid · 2 the host is unknown or its stage script is missing
+
+The exit code is about the evidence, not about the stages. A run where
+every stage is BLOCKED is a successful run that measured nothing, and
+turning that into a red build would teach people to distrust the signal.
+"""
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent.parent
+STATUSES = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
+
+# Stage order per host, from scripts/host-probe. Kept as one table here so
+# a run cannot quietly skip a stage the probe believes in.
+HOST_STAGES = {
+    "claude": ("install", "context", "plugin", "skill", "agent", "subagent",
+               "hook", "veto", "finish"),
+    "codex": ("install", "marketplace", "plugin", "skill", "agent", "hook",
+              "veto", "finish"),
+    "cursor": ("install", "marketplace", "plugin", "skill", "agent",
+               "subagent", "hook", "veto", "finish"),
+    "gemini": ("install", "context", "skill", "subagent", "hook", "veto",
+               "finish"),
+}
+
+RESULT_RE = re.compile(r"^CB_STATUS=([A-Z]+)\s*$", re.M)
+REASON_RE = re.compile(r"^CB_REASON=(.*)$", re.M)
+CAP_RE = re.compile(r"^CB_CAPABILITY=(\S+)\s*$", re.M)
+EVIDENCE_RE = re.compile(r"^CB_EVIDENCE=(.*)$", re.M)
+
+
+def git(*args, default="unknown"):
+    try:
+        out = subprocess.run(["git"] + list(args), cwd=str(ROOT),
+                             capture_output=True, text=True, timeout=20)
+        return out.stdout.strip() or default
+    except (OSError, subprocess.SubprocessError):
+        return default
+
+
+def run_stage(script, stage, workdir):
+    env = dict(os.environ, CB_STAGE=stage, CB_ROOT=str(ROOT),
+               CB_WORKDIR=str(workdir))
+    try:
+        proc = subprocess.run(["bash", str(script), stage], env=env,
+                              capture_output=True, text=True, timeout=600,
+                              cwd=str(workdir))
+    except subprocess.TimeoutExpired:
+        return {"status": "FAIL", "reason": "stage timed out after 600s"}
+    except OSError as exc:
+        return {"status": "FAIL", "reason": "stage could not run: %s" % exc}
+
+    blob = proc.stdout + "\n" + proc.stderr
+    m = RESULT_RE.search(blob)
+    if not m:
+        return {"status": "FAIL",
+                "reason": "stage printed no CB_STATUS (exit %d)"
+                          % proc.returncode}
+    status = m.group(1)
+    if status not in STATUSES:
+        return {"status": "FAIL",
+                "reason": "stage printed status %r, outside the vocabulary"
+                          % status}
+
+    entry = {"status": status}
+    reason = REASON_RE.search(blob)
+    if reason:
+        entry["reason"] = reason.group(1).strip()
+    caps = CAP_RE.findall(blob)
+    if caps:
+        entry["capabilities"] = caps
+    evidence = [e.strip() for e in EVIDENCE_RE.findall(blob) if e.strip()]
+    if evidence:
+        entry["evidence"] = evidence
+    entry["observed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return entry
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0].startswith("--"):
+        print(__doc__.strip().splitlines()[0], file=sys.stderr)
+        return 2
+    host = argv[0]
+    if host not in HOST_STAGES:
+        print("run-host: unknown host %r; known: %s"
+              % (host, ", ".join(sorted(HOST_STAGES))), file=sys.stderr)
+        return 2
+
+    script = HERE / host / "stages.sh"
+    if not script.exists():
+        print("run-host: %s has no stage script at %s"
+              % (host, script.relative_to(ROOT)), file=sys.stderr)
+        return 2
+
+    out = pathlib.Path(argv[argv.index("--out") + 1]) if "--out" in argv \
+        else ROOT / ("runtime-evidence-%s.json" % host)
+    workdir = pathlib.Path(os.environ.get("CB_RUNTIME_WORKDIR",
+                                          "/tmp/cb-runtime-%s" % host))
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    doc = {
+        "schema_version": "1",
+        "host": host,
+        "host_version": "unknown",
+        "repository": os.environ.get("GITHUB_REPOSITORY", "isumer/cereblnk"),
+        "source_sha": git("rev-parse", "HEAD", default="0000000")[:40],
+        "observed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "runner": os.environ.get("RUNNER_OS", "local") + " "
+                  + os.environ.get("ImageOS", ""),
+        "stages": {},
+    }
+
+    halted = None
+    for stage in HOST_STAGES[host]:
+        if halted:
+            # Nobody measured this. Calling it BLOCKED would claim to know
+            # why, and the honest answer is that the run stopped earlier.
+            doc["stages"][stage] = {
+                "status": "UNMEASURED",
+                "reason": "the run stopped at %s" % halted,
+            }
+            continue
+        entry = run_stage(script, stage, workdir)
+        doc["stages"][stage] = entry
+        if stage == "install" and entry["status"] in ("BLOCKED", "FAIL"):
+            halted = stage
+        version = None
+        for line in entry.get("evidence", []):
+            m = re.match(r"host_version=(.+)", line)
+            if m:
+                version = m.group(1).strip()
+        if version:
+            doc["host_version"] = version
+
+    out.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    print("run-host: wrote %s" % out)
+    for stage, entry in doc["stages"].items():
+        print("  %-12s %-11s %s" % (stage, entry["status"],
+                                    entry.get("reason", "")[:60]))
+
+    check = subprocess.run([sys.executable,
+                            str(ROOT / "scripts/check-runtime-evidence"),
+                            str(out)], capture_output=True, text=True)
+    sys.stdout.write(check.stdout)
+    sys.stderr.write(check.stderr)
+    return 0 if check.returncode == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
