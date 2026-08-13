@@ -66,6 +66,37 @@ appeared.
   host does not require configuring all four.
 - **Depends on.** CB-154, and credentials somebody decides to configure.
 
+### CB-162 — Codex sees 17 of 94 skills
+
+The A/B experiment found this while looking for something else. The
+vendor's validator iterates `skills/*` and expects `SKILL.md` directly
+inside each entry. It does not descend.
+
+This tree groups skills by category: `skills/languages/groovy/SKILL.md`,
+`skills/frameworks/react/SKILL.md`, and so on. Seventeen skills sit flat
+at the top; **seventy-seven are one level deeper and are not skills as
+far as this host is concerned.** The validator says so directly, naming
+each category directory as a skill missing its `SKILL.md`.
+
+This is larger than the `hooks` field it was found next to. A manifest
+field that is rejected fails loudly at install. Seventy-seven skills
+silently not existing is the failure mode this project spends its
+checkers on.
+
+- **Deliverable.** A decision and its consequence. Either the tree
+  flattens for that host — which the generated-distribution option in
+  CB-143 could carry, since it already has to rewrite one file per host —
+  or the host binding records that this host reaches 17 skills, and the
+  matrix stops implying otherwise.
+- **Acceptance.** Whichever is chosen, the number of skills reachable on
+  each host is recorded rather than assumed, and no document implies 94
+  where 17 is true.
+- **Do not.** Flatten the source tree to satisfy one host. The categories
+  are how `select-agents` resolves task-scoped skills, and 77 files
+  moving to satisfy a packaging convention would trade a real mechanism
+  for a manifest.
+- **Depends on.** Nothing. It needs a decision, not a measurement.
+
 ### CB-143 — Three hosts want the same hooks filename, and it is Claude's
 
 This began as a Gemini question and is not one. Codex auto-discovers
@@ -254,6 +285,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-160** — The Codex manifest was rejected for two reasons, not one
 - [x] **CB-159** — A crashed validator was recorded as a rejected manifest
 - [x] **CB-158** — The measurement sat behind a token scope instead of a decision
 - [x] **CB-157** — A pull request probed one host and three drivers went untested

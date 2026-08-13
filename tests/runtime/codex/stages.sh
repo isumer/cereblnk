@@ -69,36 +69,67 @@ marketplace)
   ;;
 
 plugin)
-  # CB-151 measured this against the vendor's own validator and recorded
-  # the result: the manifest carries a `hooks` field the validator's
-  # allowlist does not include, while the same vendor's build guide
-  # documents it. This stage re-runs that measurement when the validator
-  # is available, and reports the standing finding when it is not. It
-  # does not resolve the contradiction — CB-143 does.
-  if [ -n "${CODEX_VALIDATOR:-}" ] && [ -f "${CODEX_VALIDATOR}" ]; then
-    OUT="$WORK/validator.log"
-    if python3 "$CODEX_VALIDATOR" "$ROOT/plugins/cereblnk" >"$OUT" 2>&1; then
-      say "CB_STATUS=PASS"
-      say "CB_EVIDENCE=validator.log"
-    elif grep -q "Plugin validation" "$OUT" 2>/dev/null; then
-      # The validator ran and reached a verdict. This is a fact about the
-      # manifest.
-      say "CB_STATUS=FAIL"
-      say "CB_REASON=$(head -3 "$OUT" | tr '\n' ' ')"
-      say "CB_EVIDENCE=validator.log"
-    else
-      # The validator did not reach a verdict — a missing import, a
-      # Python it cannot run under, a file that is not what it claimed.
-      # Both cases exit 1, and reading that as a rejected manifest would
-      # blame this repository for the runner's environment. The whole
-      # evidence layer rests on not doing that.
-      say "CB_STATUS=UNMEASURED"
-      say "CB_REASON=the vendor validator did not reach a verdict: $(head -1 "$OUT" | cut -c1-90). Nothing here is established about the manifest."
-      say "CB_EVIDENCE=validator.log"
-    fi
-  else
+  # A/B, because two questions were being answered with one result. The
+  # shipped manifest carries a `hooks` field; the vendor's validator does
+  # not accept it. Whether that field is the *only* thing standing
+  # between this package and a valid one is a separate question, and
+  # removing it to find out would be changing production configuration to
+  # learn something a copy could teach.
+  #
+  # So: A is the tree as it ships. B is a copy with `hooks` removed. B is
+  # built in the work directory and never merged; the difference between
+  # the two verdicts is the finding.
+  if [ -z "${CODEX_VALIDATOR:-}" ] || [ ! -f "${CODEX_VALIDATOR}" ]; then
     say "CB_STATUS=UNMEASURED"
-    say "CB_REASON=CODEX_VALIDATOR not set; CB-151 measured this manifest as rejected for its hooks field, and that finding stands until re-measured"
+    say "CB_REASON=CODEX_VALIDATOR not set; nothing about this manifest is established from this run"
+    exit 0
+  fi
+
+  verdict() {
+    # PASS, REJECTED, or CRASHED. A validator that never reached a
+    # verdict tells us about the runner, not about the manifest, and both
+    # exit 1.
+    if python3 "$CODEX_VALIDATOR" "$1" >"$2" 2>&1; then
+      printf 'PASS'
+    elif grep -q "Plugin validation" "$2" 2>/dev/null; then
+      printf 'REJECTED'
+    else
+      printf 'CRASHED'
+    fi
+  }
+
+  A_LOG="$WORK/validator-a.log"
+  A="$(verdict "$ROOT/plugins/cereblnk" "$A_LOG")"
+
+  B_DIR="$WORK/variant-b"
+  rm -rf "$B_DIR"
+  mkdir -p "$B_DIR/.codex-plugin"
+  cp -r "$ROOT/plugins/cereblnk/skills" "$B_DIR/" 2>/dev/null || true
+  python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.pop('hooks', None)
+json.dump(d, open(sys.argv[2], 'w'), indent=2)
+" "$ROOT/plugins/cereblnk/.codex-plugin/plugin.json" "$B_DIR/.codex-plugin/plugin.json"
+  B_LOG="$WORK/validator-b.log"
+  B="$(verdict "$B_DIR" "$B_LOG")"
+
+  say "CB_EVIDENCE=variant_a_shipped=${A}"
+  say "CB_EVIDENCE=variant_b_without_hooks=${B}"
+  say "CB_EVIDENCE=validator-a.log"
+  say "CB_EVIDENCE=validator-b.log"
+
+  if [ "$A" = "CRASHED" ]; then
+    say "CB_STATUS=UNMEASURED"
+    say "CB_REASON=the vendor validator did not reach a verdict: $(head -1 "$A_LOG" | cut -c1-80). Nothing here is established about the manifest."
+  elif [ "$A" = "PASS" ]; then
+    say "CB_STATUS=PASS"
+  elif [ "$B" = "PASS" ]; then
+    say "CB_STATUS=FAIL"
+    say "CB_REASON=the shipped manifest is rejected and a copy without the hooks field is accepted, so that field is the only thing between this package and a valid one. Whether the runtime reads it is a separate question and is not answered here (CB-155)."
+  else
+    say "CB_STATUS=FAIL"
+    say "CB_REASON=rejected with and without the hooks field, so that field is not the only problem: $(grep -c '^-' "$B_LOG" 2>/dev/null || echo '?') error(s) remain in the copy. $(sed -n '2p' "$B_LOG" | cut -c1-80)"
   fi
   ;;
 
