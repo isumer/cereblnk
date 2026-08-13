@@ -20,7 +20,7 @@ say() { printf '%s\n' "$*"; }
 needs_auth() {
   if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
     say "CB_STATUS=BLOCKED"
-    say "CB_REASON=no Claude Code credentials on this runner; authenticated stages run on workflow_dispatch with secrets configured"
+    say "CB_REASON=no Claude Code credentials on this runner; authenticated stages need ANTHROPIC_API_KEY as a repository secret and run wherever it is present"
     return 0
   fi
   return 1
