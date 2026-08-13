@@ -151,9 +151,19 @@ than leaving an absent install step to look like an oversight.
 
 | tier | what | when |
 |---|---|---|
-| 1 | packaging and generation, no host binary | relevant pull requests |
-| 2 | host CLI install, version, discovery | relevant pull requests |
+| 1 | packaging and generation, no host binary | relevant pull requests, once |
+| 2 | host CLI install, version, discovery | relevant pull requests, all four hosts |
 | 3 | authenticated session — skill, hook, veto | `workflow_dispatch` |
+
+A pull request probes **all four hosts**, not one. A change to the shared
+runner or to `capabilities.yaml` reaches every host, and a workflow that
+quietly probed one would let three drivers rot untested — which is what
+happened for a day between the drivers landing and the matrix arriving.
+`workflow_dispatch` probes the host you name.
+
+Tier 1 runs once as a gate rather than inside each probe: a runtime
+result measured against a tree nobody vouched for is worth nothing, and
+four identical verifications of the same commit is three wasted runners.
 
 Tier 3 is not mandatory on pull requests, and that is a decision rather
 than an omission. CI that depends on a vendor session is flaky CI, and

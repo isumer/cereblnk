@@ -55,14 +55,42 @@ permissions:
   contents: read
 
 concurrency:
-  group: runtime-smoke-${{ github.ref }}-${{ inputs.host || 'codex' }}
+  group: runtime-smoke-${{ github.ref }}-${{ inputs.host || 'all' }}
   cancel-in-progress: true
 
 jobs:
+  # Tier 1, once. A runtime result measured against a tree nobody vouched
+  # for is worth nothing, so this gates the probes — and it runs once
+  # rather than inside each of them, because four identical verifications
+  # of the same commit is three wasted runners.
+  gate:
+    name: deterministic layer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: ./scripts/verify
+
   probe:
-    name: ${{ inputs.host || 'codex' }}
+    needs: gate
+    name: ${{ matrix.host }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # Dispatch probes the host you named. A pull request probes all
+      # four, because a change to the shared runner or to capabilities.yaml
+      # reaches every host — and a matrix that quietly ran one would let
+      # three drivers rot untested, which is exactly what happened between
+      # CB-156 landing them and this change.
+      #
+      # fail-fast off: a failing host must not cancel the other three.
+      # Their evidence is the reason the run exists.
+      fail-fast: false
+      matrix:
+        host: ${{ fromJSON(inputs.host && format('["{0}"]', inputs.host) || '["claude","codex","cursor","gemini"]') }}
     steps:
       - name: Check out the tree
         uses: actions/checkout@v4
@@ -72,13 +100,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Tier 1. If the deterministic layer is red, a runtime result would
-      # be measuring a tree nobody vouched for.
-      - name: Deterministic layer
-        run: ./scripts/verify
-
       - name: Set up Node
-        if: ${{ (inputs.host || 'codex') != 'cursor' }}
+        if: ${{ matrix.host != 'cursor' }}
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -92,17 +115,17 @@ jobs:
       # in a workflow and a host with no published CLI install look the
       # same from the outside.
       - name: Install the host CLI
-        if: ${{ (inputs.host || 'codex') != 'cursor' }}
+        if: ${{ matrix.host != 'cursor' }}
         continue-on-error: true
         run: |
-          case "${{ inputs.host || 'codex' }}" in
+          case "${{ matrix.host }}" in
             codex)  npm install -g @openai/codex ;;
             claude) npm install -g @anthropic-ai/claude-code ;;
             gemini) npm install -g @google/gemini-cli ;;
           esac
 
       - name: Fetch the vendor plugin validator
-        if: ${{ (inputs.host || 'codex') == 'codex' }}
+        if: ${{ matrix.host == 'codex' }}
         continue-on-error: true
         run: |
           set -u
@@ -123,7 +146,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           mkdir -p "$CB_RUNTIME_WORKDIR"
-          python3 tests/runtime/run-host "${{ inputs.host || 'codex' }}" \
+          python3 tests/runtime/run-host "${{ matrix.host }}" \
             --out "$CB_RUNTIME_WORKDIR/summary.json"
 
       # The artifact is the point of the run. It is uploaded even when the
@@ -133,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-evidence-${{ inputs.host || 'codex' }}
+          name: runtime-evidence-${{ matrix.host }}
           path: ${{ runner.temp }}/cb-runtime/
           retention-days: 30
           if-no-files-found: warn

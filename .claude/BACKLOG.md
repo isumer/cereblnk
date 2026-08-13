@@ -249,6 +249,7 @@ read.
 - [x] **CB-119** — Architecture assets generated from the tree, not drawn then checked
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-148** — The Codex manifest fails its vendor's own validator, and the contract is now measured
+- [x] **CB-157** — A pull request probed one host and three drivers went untested
 - [x] **CB-156** — All four hosts measure what a runner can reach without a session
 - [x] **CB-154** — The runtime workflow, proven on one host before three inherit it
 - [x] **CB-153** — Runtime evidence had no contract, so no artifact could be trusted
