@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""publish-evidence — one comment per host, kept current (CB-168).
+
+Evidence was published by appending. Four hosts each appended their own
+comment on every run, and a re-run appended four more, so the record of a
+pull request grew a column of near-identical tables where only the last
+one was true. The reader had to know which was current; the author got a
+notification for each.
+
+This edits instead. A hidden marker names the host, the comment carrying
+that marker is updated in place, and a first run creates it. Re-running a
+dispatch costs no new comment and no new notification.
+
+It also covers the surface a dispatch run has. A dispatch has no pull
+request, and its step summary and artifact both live behind a storage
+host the review path cannot read — the first dispatch run demonstrated
+this rather than predicting it. An issue comment is the same API surface
+as a pull request comment and needs only `issues: write`, where a commit
+comment would need `contents: write` — permission to push code, granted
+so a workflow can publish a table.
+
+The body is passed through untouched: it is already rendered and bounded
+by scripts/render-evidence, which reads only schema-defined fields. This
+adds provenance and nothing else, and never reads a log.
+
+Usage:
+  scripts/publish-evidence --marker M --body-file F --repo O/R
+                           --issue N [--sha SHA] [--run-id ID]
+
+Exit: 0 published · 1 the API refused
+
+Requires GH_TOKEN in the environment and the `gh` CLI.
+"""
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+
+
+def gh(*args, check=True):
+    proc = subprocess.run(["gh"] + list(args), capture_output=True, text=True)
+    if check and proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip()[:300])
+    return proc.stdout
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--marker", required=True)
+    ap.add_argument("--body-file", required=True)
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--issue", required=True)
+    ap.add_argument("--sha", default="")
+    ap.add_argument("--run-id", default="")
+    args = ap.parse_args()
+
+    body = pathlib.Path(args.body_file).read_text(encoding="utf-8")
+
+    # Enough to locate the run that produced this and nothing that would
+    # need redacting. The deeper diagnostics stay in the artifact, where
+    # the leak guard has already inspected them.
+    trailer = []
+    if args.sha:
+        trailer.append("tested commit `%s`" % args.sha[:12])
+    if args.run_id:
+        trailer.append("[run %s](https://github.com/%s/actions/runs/%s)"
+                       % (args.run_id, args.repo, args.run_id))
+    marker = "<!-- cereblnk:%s -->" % args.marker
+    payload = "%s\n%s\n\n%s\n" % (marker, body,
+                                  " · ".join(trailer) if trailer else "")
+
+    try:
+        existing = json.loads(gh(
+            "api", "--paginate",
+            "repos/%s/issues/%s/comments" % (args.repo, args.issue)))
+    except (RuntimeError, ValueError) as exc:
+        print("publish-evidence: cannot list comments: %s" % exc,
+              file=sys.stderr)
+        return 1
+
+    target = None
+    for comment in existing:
+        if marker in (comment.get("body") or ""):
+            target = comment["id"]
+
+    try:
+        if target:
+            gh("api", "--method", "PATCH",
+               "repos/%s/issues/comments/%s" % (args.repo, target),
+               "-f", "body=%s" % payload)
+            print("publish-evidence: updated comment %s" % target)
+        else:
+            gh("api", "--method", "POST",
+               "repos/%s/issues/%s/comments" % (args.repo, args.issue),
+               "-f", "body=%s" % payload)
+            print("publish-evidence: created a comment on #%s" % args.issue)
+    except RuntimeError as exc:
+        print("publish-evidence: %s" % exc, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

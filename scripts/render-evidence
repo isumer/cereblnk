@@ -32,8 +32,8 @@ REASON_LIMIT = 150
 
 # The order a run walks them, so a reader sees where it stopped rather
 # than an alphabetical list that hides the sequence.
-ORDER = ("install", "context", "marketplace", "plugin", "skill", "agent",
-         "subagent", "hook", "veto", "finish")
+ORDER = ("install", "context", "marketplace", "plugin", "auth", "skill",
+         "agent", "subagent", "hook", "veto", "finish")
 
 
 def clean(text):
@@ -57,6 +57,18 @@ def render(doc):
                % (clean(doc.get("source_sha", "?"))[:12],
                   clean(doc.get("observed_at", "?"))))
     out.append("")
+
+    # The host is not the service that answered it. Without these two
+    # lines a gateway-backed run is indistinguishable from a direct one,
+    # and the difference is the whole question when a reader asks what
+    # the run certified.
+    provider = doc.get("inference_provider")
+    model = doc.get("configured_model")
+    if provider or model:
+        out.append("inference provider: `%s` · configured model: `%s`"
+                   % (clean(provider or "unknown"),
+                      clean(model or "host default")))
+        out.append("")
     out.append("| stage | status | reason |")
     out.append("|---|---|---|")
     stages = doc.get("stages", {})

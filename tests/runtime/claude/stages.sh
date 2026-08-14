@@ -20,14 +20,25 @@ say() { printf '%s\n' "$*"; }
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/authprobe.sh"
 
-# Was: "is the variable set?". A set variable proves a repository
-# secret exists, not that the provider accepted it — and the two failed
-# in ways somebody would act on differently while reporting the same
-# thing. The probe runs once per stage, which is a trivial call, and
-# says which of the two it was.
+# Which service answers this host, and which variable holds its
+# credential. Claude Code speaks its native protocol to whatever
+# ANTHROPIC_BASE_URL names, so the CLI alone does not identify the
+# provider — and a run backed by a gateway has not established anything
+# about direct provider billing.
+PROVIDER="$(cb_claude_provider)"
+CRED_VAR="$(cb_provider_credential_var "$PROVIDER")"
+
+# Was: "is ANTHROPIC_API_KEY set?". On the gateway path that variable
+# must be explicitly empty, so the old test read a correct configuration
+# as a missing credential. The provider decides which variable to read.
 needs_auth() {
-  _r="$(cb_auth_probe claude ANTHROPIC_API_KEY "$WORK")"
-  cb_auth_report "$_r" ANTHROPIC_API_KEY
+  if [ "$PROVIDER" = "none" ]; then
+    say "CB_STATUS=BLOCKED"
+    say "CB_REASON=no inference provider is configured for this host"
+    return 0
+  fi
+  _r="$(cb_auth_probe claude "$CRED_VAR" "$WORK")"
+  cb_auth_report "$_r" "$CRED_VAR"
 }
 
 case "$STAGE" in
@@ -109,6 +120,15 @@ print(sum(len(h['hooks']) for e in d['hooks'].values() for h in e))" 2>/dev/null
     say "CB_STATUS=FAIL"
     say "CB_REASON=the committed Claude binding differs from what gen-bindings produces, so the plugin would install something the policy does not describe"
   fi
+  ;;
+
+auth)
+  # Its own row rather than a prerequisite inferred from six downstream
+  # BLOCKEDs. "skill = BLOCKED, the provider refused" is readable and
+  # structurally ambiguous: the evidence could not answer whether
+  # authentication succeeded, so a later runtime failure kept reopening
+  # a question that had already been settled.
+  cb_auth_stage claude "$PROVIDER" "$CRED_VAR" "$WORK"
   ;;
 
 skill)

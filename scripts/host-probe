@@ -86,8 +86,8 @@ ALIASES = {
 # The vocabulary is fixed rather than free text so that "the host worked"
 # stops being one result. When a run fails, the profile says which layer
 # it failed at.
-STAGES = ("install", "context", "marketplace", "plugin", "skill", "agent",
-          "subagent", "hook", "veto", "finish")
+STAGES = ("install", "context", "marketplace", "plugin", "auth", "skill",
+          "agent", "subagent", "hook", "veto", "finish")
 
 # Uppercase, deliberately. A capability state in the matrix is lowercase
 # (`M`, `declared:M`, `unmeasured`); a stage result is uppercase. They are
@@ -111,15 +111,19 @@ RESULTS = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
 # Stages each host can reach at all. A stage outside this set is recorded
 # UNSUPPORTED rather than dropped: a stage missing from a report reads as
 # untested, and untested and unsupported are not the same finding.
+# Cursor has no auth stage and that absence is the finding, not an
+# oversight: it has no published CLI to authenticate, so there is no
+# provider to accept or refuse a credential. A stage recorded UNSUPPORTED
+# there would claim a question was asked and answered.
 HOST_STAGES = {
-    "claude": ("install", "context", "plugin", "skill", "agent", "subagent",
-               "hook", "veto", "finish"),
-    "codex": ("install", "marketplace", "plugin", "skill", "agent", "hook",
-              "veto", "finish"),
+    "claude": ("install", "context", "plugin", "auth", "skill", "agent",
+               "subagent", "hook", "veto", "finish"),
+    "codex": ("install", "marketplace", "plugin", "auth", "skill", "agent",
+              "hook", "veto", "finish"),
     "cursor": ("install", "marketplace", "plugin", "skill", "agent",
                "subagent", "hook", "veto", "finish"),
-    "gemini": ("install", "context", "skill", "subagent", "hook", "veto",
-               "finish"),
+    "gemini": ("install", "context", "auth", "skill", "subagent", "hook",
+               "veto", "finish"),
 }
 
 # What the port needs to know it has. Named host-neutrally on purpose:

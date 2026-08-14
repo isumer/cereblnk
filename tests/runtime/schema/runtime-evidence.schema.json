@@ -40,6 +40,16 @@
       "type": "string",
       "description": "Operating system and image of the machine that observed this."
     },
+    "inference_provider": {
+      "type": "string",
+      "description": "The service that answered the host, which is not the host itself. Claude Code speaks its protocol to whatever base URL it is given, so a run backed by a gateway establishes nothing about direct provider authentication. Absent when no authenticated stage ran.",
+      "minLength": 1
+    },
+    "configured_model": {
+      "type": "string",
+      "description": "The model this run asked the provider for, as configured rather than as routed. A router may serve a different model per request, so this records the request and never guesses the answer.",
+      "minLength": 1
+    },
     "workflow_sha": {
       "type": "string",
       "description": "Commit of the workflow that produced this, so a change in the measuring instrument is distinguishable from a change in what it measured."
@@ -49,8 +59,8 @@
       "description": "Keyed by stage name. A stage the host cannot reach is recorded UNSUPPORTED rather than omitted: a missing stage reads as untested, and untested is not unsupported.",
       "propertyNames": {
         "enum": [
-          "install", "context", "marketplace", "plugin", "skill",
-          "agent", "subagent", "hook", "veto", "finish"
+          "install", "context", "marketplace", "plugin", "auth",
+          "skill", "agent", "subagent", "hook", "veto", "finish"
         ]
       },
       "additionalProperties": {

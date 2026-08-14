@@ -63,6 +63,14 @@ context)
   fi
   ;;
 
+auth)
+  # Its own row, for the same reason it is one on the reference host: a
+  # prerequisite inferred from downstream BLOCKEDs cannot answer whether
+  # authentication succeeded. This host has one provider, so there is no
+  # selection to make — only a result to record.
+  cb_auth_stage gemini google GEMINI_API_KEY "$WORK"
+  ;;
+
 skill)
   COUNT="$(find "$EXT/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
   if [ "$COUNT" -eq 0 ]; then

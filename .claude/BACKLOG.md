@@ -38,6 +38,53 @@ binding is what makes "nothing changed" provable; doing it after the
 refactor proves nothing. CB-122, CB-123, CB-126 and CB-129 are
 independent and may run in parallel.
 
+### CB-168 — The host is not the service that answered it
+
+Claude Code speaks its protocol to whatever base URL it is given, so the
+same CLI is backed by a direct provider or a gateway depending on four
+environment variables. Evidence that records only `claude` cannot tell
+the two apart, and a run through a gateway establishes nothing about
+direct provider authentication.
+
+- **Provider selection.** Explicit configuration outranks inference, so a
+  job that exported two credentials by accident is not described as the
+  one it did not mean. The gateway path requires an empty
+  `ANTHROPIC_API_KEY`; the presence test that predated it read that
+  correct configuration as a missing credential.
+- **`auth` is a stage.** `skill = BLOCKED, the provider refused` was
+  readable and structurally ambiguous — the evidence could not answer
+  whether authentication succeeded, so every later failure reopened a
+  settled question. Five statuses unchanged; `REFUSED` is not one of
+  them, and a rejection is `BLOCKED` with the reason.
+- **Ours before theirs.** A provider mapping this repository built wrong
+  produces a rejection indistinguishable from a bad key, so the
+  configuration is judged before the request. That case is `FAIL`; an
+  account problem never is.
+- **One question, asked once.** The free tier meters requests per day,
+  not tokens. Six stages each probing separately turned one question
+  into six.
+- **Publication is not production.** Evidence was appended, so a re-run
+  left a column of near-identical tables where only the last was true.
+  It is edited in place now, and a dispatch run — which has no pull
+  request, and whose summary and artifact sit behind a storage host the
+  review path cannot read — publishes to a tracking issue. That needs
+  `issues: write` where a commit comment would need `contents: write`,
+  which is permission to push code granted so a workflow can post a
+  table.
+- **One stage vocabulary, five copies.** The list is written down in the
+  schema, this checker, both runners and the renderer. They are now
+  required to agree mechanically, and each host's stages must appear in
+  canonical order — an `auth` row printed after the capabilities it
+  gates would describe a sequence that did not happen.
+
+Phase 2 stays in CB-155: this measures that a session can start, not
+that a skill, a delegation, a hook, a veto or a finish guard works. Those
+remain `UNMEASURED`, which is the honest reading and the one the
+acceptance criteria require.
+
+**Does not close CB-131.** A provider accepting one prompt is not the
+claimed runtime behaviour being measured.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
