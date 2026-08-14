@@ -89,6 +89,13 @@ case "${CB_FAKE_MODE:-ok}" in
   # genuinely not observable from it.
   # Blocks on a read unless onboarding was answered first — the shape a
   # headless first launch has.
+  # Writes its result, then blocks reading stdin — the shape the live
+  # runs produced: a complete result object, then two minutes of being
+  # alive. Closing stdin lets it finish; leaving it open does not.
+  writes-then-waits)
+      echo '{"is_error":true,"duration_api_ms":0,"num_turns":2}'
+      cat >/dev/null
+      exit 0 ;;
   needs-onboarding)
       if grep -q 'hasCompletedOnboarding' "$HOME/.claude.json" 2>/dev/null; then
         echo "ready"; exit 0
@@ -518,6 +525,34 @@ def _control_is_not_seeded():
     lib = (ROOT / "tests/runtime/lib/authprobe.sh").read_text()
     control = lib[lib.index("cb_auth_control()"):lib.index("cb_auth_diagnose()")]
     assert "cb_seed_onboarding" not in control, "the control was seeded too"
+
+
+@case("a host that has finished is not held open by stdin")
+def _stdin_is_closed():
+    """The host writes its result and then does not exit — a complete
+    result object reaches the log and the process is alive two minutes
+    later. The work finished; the exit did not.
+
+    Five hypotheses were tested against the wrong half of that symptom:
+    a credential, three models, this package, its installation and the
+    first-launch prompts were all asked whether the host could start.
+    None of them explains a host that already produced its answer.
+
+    A process inheriting an open stdin from a runner holds a handle
+    nobody will write to or close."""
+    blob = run_stage("auth", gateway_env(), mode="writes-then-waits")
+    assert status_of(blob) == "PASS", status_of(blob)
+
+
+@case("the prompt does not travel on the stream that was closed")
+def _prompt_is_still_an_argument():
+    """Closing stdin has to change one thing. If the prompt were piped
+    instead, this would be two changes and a failure could not be
+    attributed to either."""
+    lib = (ROOT / "tests/runtime/lib/authprobe.sh").read_text()
+    assert "'Reply with the single word: ready' \\\n      >" in lib \
+        or "'Reply with the single word: ready'" in lib
+    assert "printf '%s' \"$CB_PROMPT\"" not in lib, "the prompt was piped"
 
 
 @case("the boundary is decided by numbers, not by local activity")

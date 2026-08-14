@@ -411,6 +411,29 @@ misconfiguration guard would fail it, correctly, and without the guard
 it would have reintroduced exactly the silent attribution CB-168 exists
 to prevent.
 
+### CB-181 — The work finished; the exit did not
+
+A complete result object reaches the log — `is_error`, `num_turns`, a
+full usage block — and the process is still alive two minutes later.
+The host is not failing to start. It has already produced its answer.
+
+Five hypotheses were tested against the wrong half of that symptom. A
+credential, three models, this package, its installation and the
+first-launch prompts were all asked whether the host could begin. None
+of them explains a host that finished and stayed.
+
+A process inheriting an open standard input from a runner holds a handle
+nobody will ever write to or close. Closing it costs nothing if that was
+not the cause, and the prompt is untouched — it remains a positional
+argument, so exactly one thing differs from the run this is explaining.
+
+Test A of the proposed boundary-isolation sequence was already answered
+by the CB-177 control: clean profile, no plugin, direct provider, same
+hang. And whether the host emits a request is already known from its own
+counters. A proxy would confirm what is measured, at the cost of
+standing one up. This is the cheaper question, and it sits on that same
+document's list of investigation areas — headless invocation semantics.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
