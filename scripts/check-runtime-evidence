@@ -41,8 +41,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "tests/runtime/schema/runtime-evidence.schema.json"
 CAPABILITIES = ROOT / "plugins/cereblnk/policies/capabilities.yaml"
 
-STAGES = ("install", "context", "marketplace", "plugin", "skill", "agent",
-          "subagent", "hook", "veto", "finish")
+STAGES = ("install", "context", "marketplace", "plugin", "auth", "skill",
+          "agent", "subagent", "hook", "veto", "finish")
 STATUSES = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
 NEEDS_REASON = ("BLOCKED", "UNSUPPORTED")
 HOSTS = ("claude", "codex", "cursor", "gemini")
@@ -95,6 +95,76 @@ def self_test():
     if tuple(schema["required"]) != REQUIRED:
         problems.append("required fields differ: schema %s, checker %s"
                         % (schema["required"], list(REQUIRED)))
+    problems.extend(_registry_agreement())
+    return problems
+
+
+# The stage list is written down in four places: this checker, the
+# schema, scripts/host-probe and tests/runtime/run-host, plus an ordering
+# in scripts/render-evidence. Keeping one copy would mean a bash stage
+# script importing Python, and keeping four unchecked copies is how a
+# stage gets added to the runner and silently dropped from the renderer.
+# So they stay separate and are required to agree, mechanically, here.
+_REGISTRIES = (
+    ("scripts/host-probe", "STAGES"),
+    ("scripts/render-evidence", "ORDER"),
+)
+
+
+def _load(relpath):
+    """Import a script by path. Each has a __main__ guard, so this runs
+    no command — it reads the constants and nothing else."""
+    import importlib.machinery
+    import importlib.util
+    path = ROOT / relpath
+    name = "cb_" + path.name.replace("-", "_")
+    # The loader is named rather than inferred: these files have no .py
+    # suffix, and extension-based inference returns a spec with no loader
+    # at all rather than an error anyone would read.
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _registry_agreement():
+    problems = []
+    for relpath, attr in _REGISTRIES:
+        try:
+            declared = tuple(getattr(_load(relpath), attr))
+        except (OSError, AttributeError, ImportError, SyntaxError) as exc:
+            problems.append("cannot read %s from %s: %s"
+                            % (attr, relpath, exc))
+            continue
+        if declared != STAGES:
+            problems.append("stage vocabulary differs: %s.%s %s, checker %s"
+                            % (relpath, attr, list(declared), list(STAGES)))
+
+    # Both runners carry a per-host table. They must be the same table,
+    # and every host's stages must appear in the canonical order — an
+    # `auth` row printed after the capabilities it gates would describe a
+    # sequence that did not happen.
+    try:
+        probe = _load("scripts/host-probe").HOST_STAGES
+        runner = _load("tests/runtime/run-host").HOST_STAGES
+    except (OSError, AttributeError, ImportError, SyntaxError) as exc:
+        problems.append("cannot read HOST_STAGES: %s" % exc)
+        return problems
+
+    if probe != runner:
+        problems.append("per-host stages differ between host-probe and "
+                        "run-host: %s vs %s"
+                        % (sorted(probe.items()), sorted(runner.items())))
+    for host, stages in sorted(probe.items()):
+        unknown = [s for s in stages if s not in STAGES]
+        if unknown:
+            problems.append("%s claims stages outside the vocabulary: %s"
+                            % (host, unknown))
+            continue
+        if list(stages) != [s for s in STAGES if s in stages]:
+            problems.append("%s lists stages out of canonical order: %s"
+                            % (host, list(stages)))
     return problems
 
 

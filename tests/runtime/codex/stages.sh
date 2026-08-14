@@ -173,6 +173,14 @@ json.dump(d, open(sys.argv[2], 'w'), indent=2)
   fi
   ;;
 
+auth)
+  # Its own row, for the same reason it is one on the reference host: a
+  # prerequisite inferred from downstream BLOCKEDs cannot answer whether
+  # authentication succeeded. This host has one provider, so there is no
+  # selection to make — only a result to record.
+  cb_auth_stage codex openai CODEX_API_KEY "$WORK"
+  ;;
+
 skill|agent)
   needs_auth && exit 0
   say "CB_STATUS=UNMEASURED"

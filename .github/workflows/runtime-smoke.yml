@@ -85,6 +85,14 @@ permissions:
   # evidence nobody reads — which is what happened for the first several
   # runs, to reviewer and author alike.
   pull-requests: write
+  # A dispatch run has no pull request, and its summary and artifact are
+  # both behind a storage host the review path cannot read. The obvious
+  # fix is a commit comment, and the obvious fix needs `contents: write`
+  # — which is permission to push code, granted so a workflow can publish
+  # a table. An issue comment reaches the same API surface and carries
+  # the tested SHA in its body, so the association survives without the
+  # workflow ever holding write access to the tree.
+  issues: write
 
 concurrency:
   group: runtime-smoke-${{ github.ref }}-${{ inputs.host || 'all' }}
@@ -198,8 +206,36 @@ jobs:
           # setting both from one secret costs nothing while guessing
           # wrong costs a run.
           OPENAI_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
-          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
           GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
+
+          # Claude Code reaches its provider through a gateway here. The
+          # host under test is still Claude Code; the gateway is only the
+          # path that makes a real non-interactive session executable
+          # without direct provider billing. Evidence records both, and a
+          # run through the gateway establishes nothing about direct
+          # provider authentication.
+          #
+          # ANTHROPIC_API_KEY is explicitly empty rather than omitted.
+          # The CLI sends it as x-api-key and treats it as a direct
+          # credential, so a non-empty value would authenticate against
+          # the direct provider while this run reported the gateway —
+          # a false attribution nothing downstream could detect. The
+          # empty string is the vendor's documented requirement, and the
+          # auth stage fails the run if it is ever violated.
+          OPENROUTER_API_KEY: ${{ matrix.host == 'claude' && secrets.OPENROUTER_API_KEY || '' }}
+          ANTHROPIC_AUTH_TOKEN: ${{ matrix.host == 'claude' && secrets.OPENROUTER_API_KEY || '' }}
+          ANTHROPIC_BASE_URL: ${{ matrix.host == 'claude' && 'https://openrouter.ai/api' || '' }}
+          ANTHROPIC_API_KEY: ""
+
+          # One value, four roles. Four separately written model names is
+          # four places for the next experiment to be half-applied, and
+          # the point of a fixed model is that a failure is attributable
+          # to it rather than to the configuration around it.
+          CEREBLNK_CLAUDE_RUNTIME_MODEL: ${{ vars.CEREBLNK_CLAUDE_RUNTIME_MODEL || 'nex-agi/nex-n2-pro:free' }}
+          ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ vars.CEREBLNK_CLAUDE_RUNTIME_MODEL || 'nex-agi/nex-n2-pro:free' }}
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ vars.CEREBLNK_CLAUDE_RUNTIME_MODEL || 'nex-agi/nex-n2-pro:free' }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ vars.CEREBLNK_CLAUDE_RUNTIME_MODEL || 'nex-agi/nex-n2-pro:free' }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ vars.CEREBLNK_CLAUDE_RUNTIME_MODEL || 'nex-agi/nex-n2-pro:free' }}
         run: |
           mkdir -p "$CB_RUNTIME_WORKDIR"
           python3 tests/runtime/run-host "${{ matrix.host }}" \
@@ -215,11 +251,16 @@ jobs:
         if: always()
         env:
           CODEX_API_KEY: ${{ matrix.host == 'codex' && secrets.CODEX_API_KEY || '' }}
-          ANTHROPIC_API_KEY: ${{ matrix.host == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
           GEMINI_API_KEY: ${{ matrix.host == 'gemini' && secrets.GEMINI_API_KEY || '' }}
+          # Both names for one credential. The gateway key is handed to
+          # the CLI under a second variable, and a guard that knew only
+          # the name it was stored under would search for one of the two
+          # strings it has to find.
+          OPENROUTER_API_KEY: ${{ matrix.host == 'claude' && secrets.OPENROUTER_API_KEY || '' }}
+          ANTHROPIC_AUTH_TOKEN: ${{ matrix.host == 'claude' && secrets.OPENROUTER_API_KEY || '' }}
         run: |
           python3 scripts/check-artifact-safe "${{ runner.temp }}/cb-runtime" \
-            --secrets CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY
+            --secrets CODEX_API_KEY,OPENAI_API_KEY,GEMINI_API_KEY,OPENROUTER_API_KEY,ANTHROPIC_AUTH_TOKEN
 
       # Before the guard, because a rendered table of a failed run is the
       # thing somebody needs; and after the stages, because that is when
@@ -239,6 +280,10 @@ jobs:
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Publication is separate from production on purpose: the artifact
+      # is the evidence, and a comment that cannot be posted must not
+      # take the run down with it. Both steps are continue-on-error for
+      # that reason.
       - name: Comment the result on the pull request
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -246,9 +291,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [ -f "${{ runner.temp }}/evidence.md" ] || exit 0
-          gh pr comment "${{ github.event.pull_request.number }}" \
+          python3 scripts/publish-evidence \
+            --marker "runtime-evidence-${{ matrix.host }}" \
+            --body-file "${{ runner.temp }}/evidence.md" \
             --repo "${{ github.repository }}" \
-            --body-file "${{ runner.temp }}/evidence.md"
+            --issue "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}"
+
+      # A dispatch run has no pull request, and the first one proved the
+      # gap rather than predicted it: the run succeeded and its result
+      # was unreadable through the API the review actually uses. The
+      # tracking issue is that surface. It carries the tested SHA and the
+      # run id, so a reader can locate the deeper diagnostics that are
+      # deliberately not pasted here.
+      - name: Comment the result on the tracking issue
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f "${{ runner.temp }}/evidence.md" ] || exit 0
+          [ -n "${{ vars.CEREBLNK_RUNTIME_EVIDENCE_ISSUE }}" ] || {
+            echo "no tracking issue configured; set the repository variable"
+            exit 0
+          }
+          python3 scripts/publish-evidence \
+            --marker "runtime-evidence-${{ matrix.host }}" \
+            --body-file "${{ runner.temp }}/evidence.md" \
+            --repo "${{ github.repository }}" \
+            --issue "${{ vars.CEREBLNK_RUNTIME_EVIDENCE_ISSUE }}" \
+            --sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}"
 
       # The artifact is the point of the run. It is uploaded even when the
       # stages failed, because a failed run is the evidence somebody needs

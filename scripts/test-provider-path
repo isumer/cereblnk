@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""test-provider-path — provider selection and the auth stage (CB-168).
+
+The host is not the service that answers it. Claude Code speaks its
+protocol to whatever base URL it is given, so the same CLI is backed by
+a direct provider or a gateway depending on four environment variables,
+and evidence that records only "claude" cannot tell the two apart.
+
+These are the cases that were wrong or unrepresentable before:
+
+  a credential the gateway path requires to be empty, read as absent
+  a provider rejection, read as a capability failure
+  a mapping this repository built wrong, read as a provider problem
+  authentication, inferred from six downstream BLOCKEDs
+
+Every case runs against a stand-in binary. No provider is called: a test
+suite that spent a metered daily request allowance to assert a string
+would stop being run, and one that needs a credential cannot run on a
+fork at all.
+
+The stand-in is not a convenience. Reading the outcomes off a mocked
+Python function would test the mock; this drives the real stage script
+through the real probe, and only the host at the end of it is fake.
+
+Exit: 0 all cases hold · 1 one did not
+"""
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+STAGES = ROOT / "tests" / "runtime" / "claude" / "stages.sh"
+
+# Behaviours the stand-in can be asked for, keyed by CB_FAKE_MODE.
+FAKE = r"""#!/usr/bin/env bash
+case "${1:-}" in
+  --help) echo "  -p, --print   run non-interactively and print the result"
+          exit 0 ;;
+esac
+case "${CB_FAKE_MODE:-ok}" in
+  ok)       echo "ready"; exit 0 ;;
+  refused)  echo "401 invalid_api_key: no auth credentials found" >&2; exit 1 ;;
+  quota)    echo "429 rate limit exceeded for free models" >&2; exit 1 ;;
+  broken)   echo "segmentation fault" >&2; exit 1 ;;
+esac
+"""
+
+GATEWAY = "https://openrouter.ai/api"
+KEY = "sk-or-v1-0000000000000000000000000000000000000000"
+
+
+def run_stage(stage, env_overrides, mode="ok"):
+    """Drive one stage of the real script against the stand-in host."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        fake = bindir / "claude"
+        fake.write_text(FAKE)
+        fake.chmod(0o755)
+        work = tmp / "work"
+        work.mkdir()
+
+        env = {
+            "PATH": "%s:%s" % (bindir, os.environ.get("PATH", "")),
+            "HOME": str(tmp),
+            "CB_ROOT": str(ROOT),
+            "CB_WORKDIR": str(work),
+            "CB_FAKE_MODE": mode,
+        }
+        env.update(env_overrides)
+        proc = subprocess.run(["bash", str(STAGES), stage], env=env,
+                              capture_output=True, text=True, timeout=180,
+                              cwd=str(work))
+        return proc.stdout + "\n" + proc.stderr
+
+
+def status_of(blob):
+    for line in blob.splitlines():
+        if line.startswith("CB_STATUS="):
+            return line.split("=", 1)[1].strip()
+    return "<none>"
+
+
+def gateway_env(**extra):
+    env = {
+        "OPENROUTER_API_KEY": KEY,
+        "ANTHROPIC_AUTH_TOKEN": KEY,
+        "ANTHROPIC_BASE_URL": GATEWAY,
+        # Empty, not absent. This is the case the old presence test read
+        # as a missing credential.
+        "ANTHROPIC_API_KEY": "",
+        "CEREBLNK_CLAUDE_RUNTIME_MODEL": "nex-agi/nex-n2-pro:free",
+    }
+    env.update(extra)
+    return env
+
+
+CASES = []
+
+
+def case(name):
+    def register(fn):
+        CASES.append((name, fn))
+        return fn
+    return register
+
+
+@case("the gateway credential is not read as absent")
+def _gateway_present():
+    """AC-2. The gateway contract requires an empty ANTHROPIC_API_KEY, and
+    the presence test that predated it reported that as no credential —
+    a repository problem filed where an account problem belongs."""
+    blob = run_stage("auth", gateway_env())
+    assert status_of(blob) == "PASS", status_of(blob)
+    assert "no credential in the environment" not in blob
+
+
+@case("the provider and the model reach the evidence")
+def _provider_recorded():
+    """AC-3. A reader deciding what a run certified needs the service
+    that answered before they read a stage row."""
+    blob = run_stage("auth", gateway_env())
+    assert "inference_provider=openrouter" in blob, blob
+    assert "configured_model=nex-agi/nex-n2-pro:free" in blob, blob
+
+
+@case("the credential never reaches the evidence")
+def _no_credential_leak():
+    """The stage emits provenance, not secrets."""
+    for mode in ("ok", "refused", "broken"):
+        blob = run_stage("auth", gateway_env(), mode=mode)
+        assert KEY not in blob, mode
+
+
+@case("the direct path is selected when the gateway is absent")
+def _direct_selected():
+    """AC: the direct branch stays implemented and testable without a
+    repository secret. It is not runtime-certified by this passing."""
+    blob = run_stage("auth", {"ANTHROPIC_API_KEY": "sk-ant-" + "0" * 40})
+    assert status_of(blob) == "PASS", status_of(blob)
+    assert "inference_provider=anthropic" in blob, blob
+
+
+@case("explicit provider configuration outranks a stray variable")
+def _explicit_wins():
+    """Reading the provider off whichever variable happens to be set is
+    how a job that exported two by accident gets described as the one it
+    did not mean."""
+    env = gateway_env(CEREBLNK_CLAUDE_PROVIDER="anthropic",
+                      ANTHROPIC_API_KEY="sk-ant-" + "0" * 40,
+                      ANTHROPIC_BASE_URL="")
+    blob = run_stage("auth", env)
+    assert "inference_provider=anthropic" in blob, blob
+
+
+@case("no credential at all is BLOCKED, not FAIL")
+def _absent_blocked():
+    """AC-5. A missing secret is not a defect in this package."""
+    blob = run_stage("auth", {"ANTHROPIC_API_KEY": "", "OPENROUTER_API_KEY": ""})
+    assert status_of(blob) == "BLOCKED", status_of(blob)
+
+
+@case("a refused credential is BLOCKED with a sanitized reason")
+def _refused_blocked():
+    """AC-5. A rejected key, an exhausted quota and an unentitled account
+    are all reasons to stop and none is a capability failure."""
+    for mode in ("refused", "quota"):
+        blob = run_stage("auth", gateway_env(), mode=mode)
+        assert status_of(blob) == "BLOCKED", (mode, status_of(blob))
+        assert "Not a defect in this package" in blob, mode
+
+
+@case("a mapping this repository built wrong is FAIL")
+def _misconfig_fails():
+    """AC-6. Asking a misconfigured endpoint produces a rejection that
+    reads like a bad key, so the configuration is judged before the
+    request rather than after it."""
+    broken = [
+        gateway_env(ANTHROPIC_BASE_URL=""),
+        gateway_env(ANTHROPIC_BASE_URL="https://api.anthropic.com"),
+        gateway_env(ANTHROPIC_AUTH_TOKEN=""),
+        # The silent-attribution case: a real direct key on the gateway
+        # path would authenticate against the direct provider while the
+        # run reported the gateway.
+        gateway_env(ANTHROPIC_API_KEY="sk-ant-" + "0" * 40),
+    ]
+    for env in broken:
+        blob = run_stage("auth", env)
+        assert status_of(blob) == "FAIL", (env.get("ANTHROPIC_BASE_URL"),
+                                           status_of(blob))
+        assert "built by this repository is wrong" in blob
+
+
+@case("a non-auth failure is UNMEASURED, not BLOCKED")
+def _unknown_unmeasured():
+    """Nothing was established about the credential, and BLOCKED would
+    claim an external prerequisite had been identified."""
+    blob = run_stage("auth", gateway_env(), mode="broken")
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+
+
+@case("authentication is asked once, not once per stage")
+def _probe_is_cached():
+    """On a metered free tier the limit is requests per day, not tokens.
+    Six stages each asking separately turned one question into six."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        counter = tmp / "calls"
+        fake = bindir / "claude"
+        fake.write_text(FAKE.replace(
+            "case \"${CB_FAKE_MODE:-ok}\" in",
+            "echo x >> %s\ncase \"${CB_FAKE_MODE:-ok}\" in" % counter))
+        fake.chmod(0o755)
+        work = tmp / "work"
+        work.mkdir()
+        env = {"PATH": "%s:%s" % (bindir, os.environ.get("PATH", "")),
+               "HOME": str(tmp), "CB_ROOT": str(ROOT),
+               "CB_WORKDIR": str(work), "CB_FAKE_MODE": "ok"}
+        env.update(gateway_env())
+        for stage in ("auth", "skill", "agent", "subagent"):
+            subprocess.run(["bash", str(STAGES), stage], env=env,
+                           capture_output=True, text=True, timeout=180,
+                           cwd=str(work))
+        calls = counter.read_text().count("x") if counter.exists() else 0
+    assert calls == 1, "the host was invoked %d times for one answer" % calls
+
+
+@case("CB-155 stages stay honestly unmeasured")
+def _phase_two_not_faked():
+    """AC-10. A passing auth stage does not promote a capability nobody
+    has watched work."""
+    for stage in ("skill", "agent", "subagent", "hook", "veto", "finish"):
+        blob = run_stage(stage, gateway_env())
+        assert status_of(blob) == "UNMEASURED", (stage, status_of(blob))
+
+
+def main():
+    failures = []
+    for name, fn in CASES:
+        try:
+            fn()
+        except AssertionError as exc:
+            failures.append("%s: %s" % (name, exc))
+        except Exception as exc:  # noqa: BLE001 - report, do not mask
+            failures.append("%s: raised %s: %s"
+                            % (name, type(exc).__name__, exc))
+    if failures:
+        print("test-provider-path: %d case(s) failed" % len(failures),
+              file=sys.stderr)
+        for line in failures:
+            print("  " + line, file=sys.stderr)
+        return 1
+    print("test-provider-path: %d case(s) hold" % len(CASES))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

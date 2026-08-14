@@ -49,15 +49,19 @@ STATUSES = ("PASS", "FAIL", "BLOCKED", "UNMEASURED", "UNSUPPORTED")
 
 # Stage order per host, from scripts/host-probe. Kept as one table here so
 # a run cannot quietly skip a stage the probe believes in.
+# Cursor has no auth stage and that absence is the finding, not an
+# oversight: it has no published CLI to authenticate, so there is no
+# provider to accept or refuse a credential. A stage recorded UNSUPPORTED
+# there would claim a question was asked and answered.
 HOST_STAGES = {
-    "claude": ("install", "context", "plugin", "skill", "agent", "subagent",
-               "hook", "veto", "finish"),
-    "codex": ("install", "marketplace", "plugin", "skill", "agent", "hook",
-              "veto", "finish"),
+    "claude": ("install", "context", "plugin", "auth", "skill", "agent",
+               "subagent", "hook", "veto", "finish"),
+    "codex": ("install", "marketplace", "plugin", "auth", "skill", "agent",
+              "hook", "veto", "finish"),
     "cursor": ("install", "marketplace", "plugin", "skill", "agent",
                "subagent", "hook", "veto", "finish"),
-    "gemini": ("install", "context", "skill", "subagent", "hook", "veto",
-               "finish"),
+    "gemini": ("install", "context", "auth", "skill", "subagent", "hook",
+               "veto", "finish"),
 }
 
 RESULT_RE = re.compile(r"^CB_STATUS=([A-Z]+)\s*$", re.M)
@@ -148,16 +152,26 @@ def main():
         "stages": {},
     }
 
+    # Facts about the run rather than about one stage, so they are lifted
+    # to the top of the document. A reader deciding whether a capability
+    # is certified needs to know which service answered before they read
+    # a single stage row, and a field buried in one stage's evidence list
+    # is a field the matrix cannot cite.
+    TOP_LEVEL = {
+        "host_version": "host_version",
+        "inference_provider": "inference_provider",
+        "configured_model": "configured_model",
+    }
+
     for stage in HOST_STAGES[host]:
         entry = run_stage(script, stage, workdir)
         doc["stages"][stage] = entry
-        version = None
         for line in entry.get("evidence", []):
-            m = re.match(r"host_version=(.+)", line)
-            if m:
-                version = m.group(1).strip()
-        if version:
-            doc["host_version"] = version
+            m = re.match(r"([a-z_]+)=(.+)", line)
+            if m and m.group(1) in TOP_LEVEL:
+                value = m.group(2).strip()
+                if value:
+                    doc[TOP_LEVEL[m.group(1)]] = value
 
     out.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     print("run-host: wrote %s" % out)
