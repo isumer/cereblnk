@@ -377,6 +377,51 @@ cb_auth_report() {
   return 0
 }
 
+# cb_auth_control <binary> <flag> <workdir>
+#
+# The same invocation against a profile with nothing installed in it.
+#
+# The host errors without calling the provider, then hangs while writing
+# its own result — so stdout has no more to give, and two explanations
+# remain: this package, or the CLI and its provider configuration.
+# Nothing separates them except removing one of them.
+#
+# It is free to ask. No request reaches the provider on either side, so
+# the control costs nothing against a daily request allowance — the one
+# budget that would normally make a second run unaffordable.
+#
+# A clean HOME is the lever because it is the host-agnostic one. If this
+# CLI keeps its state somewhere else the control simply will not differ,
+# and a control that cannot differ is visible as such rather than
+# reported as a result.
+cb_auth_control() {
+  _cbin="$1"; _cflag="$2"; _cwork="$3"
+  _chome="$_cwork/control-home"
+  mkdir -p "$_chome" 2>/dev/null || true
+  _clog="$_cwork/${_cbin}-auth-control.log"
+
+  # The same wall as the probe it controls for. A hard-coded 120 here
+  # made the control outlive a shortened limit, so a suite that bounds
+  # the probe could still be held for two minutes by its control.
+  _climit="${CB_AUTH_TIMEOUT:-120}"
+  HOME="$_chome" timeout "$_climit" "$_cbin" "$_cflag" \
+    'Reply with the single word: ready' >"$_clog" 2>&1
+  _ccode=$?
+
+  if [ "$_ccode" -eq 0 ]; then
+    printf 'PASSED without the installed profile'
+    return 0
+  fi
+  if [ "$_ccode" -eq 124 ]; then
+    printf 'also hung (exit %s) without the installed profile: %s' \
+      "$_ccode"
+      "$(cb_detail "$_clog")"
+    return 0
+  fi
+  printf 'exited %s without the installed profile: %s' \
+    "$_ccode" "$(cb_detail "$_clog")"
+}
+
 # cb_auth_stage <binary> <provider> <credential-var> <workdir>
 #
 # The auth stage itself (CB-168). Downstream stages ask whether
@@ -426,6 +471,17 @@ cb_auth_stage() {
       say "CB_STATUS=BLOCKED"
       say "CB_REASON=${_sprov} refused the credential or the account cannot run this — rejected key, exhausted quota, rate limit, billing or entitlement. Not a defect in this package: ${CB_AUTH_DETAIL:-no detail}" ;;
     *)
+      # The one case where a control run earns its place: the host
+      # neither authenticated nor refused, and the reason it gave is not
+      # about the credential. Removing this package from the profile is
+      # what decides whether this package is the reason.
+      # Only with a flag the main probe actually discovered. Inventing
+      # one here would make the control a different experiment from the
+      # thing it is controlling for.
+      if [ -n "${CB_AUTH_FLAG:-}" ]; then
+        _ctl="$(cb_auth_control "$_sbin" "$CB_AUTH_FLAG" "$_swork")"
+        [ -n "$_ctl" ] && say "CB_EVIDENCE=auth_control: ${_ctl}"
+      fi
       say "CB_STATUS=UNMEASURED"
       say "CB_REASON=invoked with '${CB_AUTH_FLAG:-?}' and it failed for a reason that is not about authentication: ${CB_AUTH_DETAIL:-no output}. Nothing is established about the credential" ;;
   esac

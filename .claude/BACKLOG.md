@@ -283,6 +283,32 @@ runs in a command substitution and swallowed them — the same subshell
 error as CB-169, made again while fixing its consequences. They travel
 in the state file now, like the detail.
 
+### CB-177 — Remove one of the two explanations
+
+The host errors without calling the provider and then hangs while
+writing its own result, so `stdout` has nothing further to give: the
+`result` field is never reached. Two explanations remain — this package,
+or the CLI and its provider configuration — and no amount of reading the
+same log separates them.
+
+A control run does. The same invocation against a profile with nothing
+installed in it, and the difference is the answer. It runs only where it
+earns its place: the host neither authenticated nor refused, and the
+reason it gave was not about the credential.
+
+It is free to ask. No request reaches the provider on either side, so
+the control costs nothing against the daily request allowance that would
+otherwise make a second run unaffordable.
+
+A clean `HOME` is the lever because it is the host-agnostic one. If this
+CLI keeps state elsewhere the control will simply not differ, which is
+visible as such rather than reported as a result.
+
+The first version hard-coded its own 120-second wall, so a suite that
+shortened the probe's limit could still be held for two minutes by the
+control. Found by mutating the control away and watching the suite hang
+instead of fail — a mutation that cannot finish is not a passing test.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.

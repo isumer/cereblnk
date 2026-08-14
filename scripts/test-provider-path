@@ -71,6 +71,10 @@ case "${CB_FAKE_MODE:-ok}" in
   # What the live run actually produced: a structured result whose usage
   # block was flushed first, truncated mid-write by the kill, with the
   # message that explains it further in than a raw read ever reached.
+  # A host that hangs only when the installed profile is present: the
+  # control home is empty, so HOME differing is what it keys on.
+  hang-unless-clean)
+      if [ -f "$HOME/.installed" ]; then sleep 30; else echo "ready"; exit 0; fi ;;
   hang-json) printf '{"is_error":true,"duration_api_ms":0,"num_turns":2,'
              printf '"usage":{"input_tokens":0,"output_tokens":0},'
              printf '"result":"the model does not support this endpoint",'
@@ -325,6 +329,36 @@ def _counters_are_recorded():
     blob = run_stage("auth", gateway_env(), mode="hang-json")
     assert "duration_api_ms=0" in blob, blob
     assert "num_turns=2" in blob, blob
+
+
+@case("a control run separates this package from the host")
+def _control_run_discriminates():
+    """The host errors without calling the provider and hangs writing
+    its own result, so stdout has nothing more to give and two
+    explanations remain: this package, or the CLI and its configuration.
+    Nothing separates them except removing one of them — and no request
+    reaches the provider on either side, so asking costs nothing against
+    a daily request allowance."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        fake = bindir / "claude"
+        fake.write_text(FAKE)
+        fake.chmod(0o755)
+        (tmp / ".installed").touch()
+        work = tmp / "work"
+        work.mkdir()
+        env = {"PATH": "%s:%s" % (bindir, os.environ.get("PATH", "")),
+               "HOME": str(tmp), "CB_ROOT": str(ROOT),
+               "CB_WORKDIR": str(work), "CB_FAKE_MODE": "hang-unless-clean",
+               "CB_AUTH_TIMEOUT": "3"}
+        env.update(gateway_env())
+        blob = subprocess.run(["bash", str(STAGES), "auth"], env=env,
+                              capture_output=True, text=True, timeout=180,
+                              cwd=str(work)).stdout
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+    assert "auth_control: PASSED without the installed profile" in blob, blob
 
 
 @case("the host's words cannot reshape the table they land in")
