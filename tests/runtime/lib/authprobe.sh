@@ -110,6 +110,24 @@ cb_provider_misconfigured() {
   return 1
 }
 
+# Standard input is closed on every invocation.
+#
+# The host writes its result and then does not exit. That ordering is
+# what the evidence shows: a complete result object — is_error,
+# num_turns, a full usage block — reaches the log, and the process is
+# still alive two minutes later. The work finished; the exit did not.
+#
+# That reading arrived late because five hypotheses were tested against
+# the wrong half of the symptom. A credential, three models, this
+# package, its installation and the first-launch prompts were all asked
+# whether the host could start. None of them could explain a host that
+# already produced its answer.
+#
+# A process inheriting an open stdin from a runner holds a handle nobody
+# will ever write to or close. Closing it costs nothing when it was not
+# the cause, and the prompt does not travel this way — it stays a
+# positional argument, so this changes one thing only.
+
 # cb_detail <logfile>
 #
 # Echoes the most specific thing a host said, collapsed and bounded.
@@ -309,7 +327,7 @@ cb_auth_probe() {
   # enough to skip is a suite that stops being run.
   _limit="${CB_AUTH_TIMEOUT:-120}"
   timeout "$_limit" "$_bin" "$_flag" $_fmt 'Reply with the single word: ready' \
-      >"$_out" 2>&1
+      >"$_out" 2>&1 </dev/null
   _code=$?
   # Carried, not recomputed. Three fields have now been lost to this subshell;
   # the state file is the only thing that crosses it.
@@ -484,7 +502,7 @@ cb_auth_control() {
   # the probe could still be held for two minutes by its control.
   _climit="${CB_AUTH_TIMEOUT:-120}"
   HOME="$_chome" timeout "$_climit" "$_cbin" "$_cflag" \
-    'Reply with the single word: ready' >"$_clog" 2>&1
+    'Reply with the single word: ready' >"$_clog" 2>&1 </dev/null
   _ccode=$?
 
   rm -rf "$_chome" 2>/dev/null || true
@@ -563,7 +581,7 @@ cb_auth_diagnose() {
   # Same everything but the verbosity. A second changed variable would
   # make this a different experiment from the one it is explaining.
   timeout "$_dlimit" "$_dbin" "$_dflag" "$_dverb" \
-    'Reply with the single word: ready' >"$_dout" 2>"$_derr"
+    'Reply with the single word: ready' >"$_dout" 2>"$_derr" </dev/null
   _dcode=$?
 
   # Whether the boundary was crossed, from evidence rather than from the
