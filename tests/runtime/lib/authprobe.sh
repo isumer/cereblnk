@@ -174,6 +174,67 @@ print(re.sub(r"\s+", " ", best).strip()[:400])
 EOF
 }
 
+# cb_seed_onboarding <workdir>
+#
+# Answers, ahead of time, the questions a first launch asks a human.
+#
+# The host has several prompts on first launch — a theme picker, a
+# welcome screen, a per-directory trust dialog — and each of them blocks
+# on a read. With nobody at the terminal that read never returns, so the
+# process waits until something kills it: no output, no error, no
+# request, and a hundred and twenty seconds of nothing. That is the
+# shape this repository has been measuring for nine runs.
+#
+# The trust dialog specifically is documented as skipped under --print,
+# which is why it was ruled out early and why the remaining prompts were
+# not. State lives in $HOME/.claude.json and is what the first launch
+# would have written after being answered.
+#
+# This is environment setup, not a result. It does not make anything
+# pass; it removes a human from the path so the host can get far enough
+# to succeed or fail on its own terms. Nothing here is a credential, and
+# the file is left where the host expects it rather than staged for
+# upload.
+#
+# The control run is deliberately not seeded. If a seeded probe reaches
+# the provider and an unseeded control still hangs, the cause is settled
+# rather than argued.
+cb_seed_onboarding() {
+  _sdir="${HOME:-}"
+  [ -n "$_sdir" ] || return 0
+  _sfile="$_sdir/.claude.json"
+  CB_SEEDED=""
+
+  python3 - "$_sfile" "$(pwd)" <<'EOF' 2>/dev/null || return 0
+import json, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+project = sys.argv[2]
+
+# Merged, never replaced. A host that has already recorded something
+# here knows more about its own state than this does.
+try:
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        doc = {}
+except (OSError, ValueError):
+    doc = {}
+
+doc.setdefault("hasCompletedOnboarding", True)
+projects = doc.setdefault("projects", {})
+if isinstance(projects, dict):
+    entry = projects.setdefault(project, {})
+    if isinstance(entry, dict):
+        entry.setdefault("hasTrustDialogAccepted", True)
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+EOF
+
+  [ -f "$_sfile" ] && CB_SEEDED="onboarding state seeded at \$HOME/.claude.json"
+  return 0
+}
+
 # cb_auth_probe <binary> <env-var-name> <workdir>
 #
 # Echoes one of:
@@ -200,6 +261,10 @@ cb_auth_probe() {
   [ -n "$_val" ] || { _cb_remember "$_state" ABSENT; printf 'ABSENT'; return 0; }
   command -v "$_bin" >/dev/null 2>&1 || {
     _cb_remember "$_state" NOFLAG; printf 'NOFLAG'; return 0; }
+
+  # Before the first invocation, because the first invocation is the one
+  # that would meet the prompt.
+  cb_seed_onboarding "$_work"
 
   _help="$_work/${_bin}-help.log"
   timeout 60 "$_bin" --help >"$_help" 2>&1 || true
@@ -330,6 +395,7 @@ _cb_remember() {
     printf "CB_AUTH_DETAIL='%s'\n" "$(printf '%s' "${CB_AUTH_DETAIL:-}" | sed "s/'/'\\\\''/g")"
     printf "CB_AUTH_FACTS='%s'\n" "$(printf '%s' "${CB_AUTH_FACTS:-}" | sed "s/'/'\\\\''/g")"
     printf 'CB_AUTH_EXIT=%s\n' "${CB_AUTH_EXIT:-}"
+    printf "CB_SEEDED='%s'\n" "$(printf '%s' "${CB_SEEDED:-}" | sed "s/'/'\\\\''/g")"
   } >"$_f" 2>/dev/null || true
 }
 
@@ -553,6 +619,7 @@ cb_auth_stage() {
   cb_auth_recall "$_swork" "$_sbin"
   [ -n "${CB_AUTH_FACTS:-}" ] && \
     say "CB_EVIDENCE=host_result_counters: ${CB_AUTH_FACTS}"
+  [ -n "${CB_SEEDED:-}" ] && say "CB_EVIDENCE=host_environment: ${CB_SEEDED}"
   case "$_r" in
     ACCEPTED)
       say "CB_STATUS=PASS"
