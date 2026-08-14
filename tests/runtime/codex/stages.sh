@@ -36,6 +36,7 @@ say() { printf '%s\n' "$*"; }
 # says which of the two it was.
 needs_auth() {
   _r="$(cb_auth_probe codex CODEX_API_KEY "$WORK")"
+  cb_auth_recall "$WORK" codex
   cb_auth_report "$_r" CODEX_API_KEY
 }
 

@@ -194,6 +194,27 @@ def _misconfig_fails():
         assert "built by this repository is wrong" in blob
 
 
+@case("the reason names the invocation and the host's own words")
+def _detail_survives():
+    """The probe is called in a command substitution, which is a
+    subshell, so everything it recorded about *why* died with it while
+    the verdict — the thing being echoed — survived. Every reason read
+    `invoked with '?'` and `no output`, on every run, including the
+    evidence meant to explain a failure. Only the sentence was wrong,
+    which is why nothing caught it."""
+    blob = run_stage("auth", gateway_env(), mode="broken")
+    assert "invoked with '?'" not in blob, blob
+    assert "-p" in blob, blob
+    assert "no output" not in blob, blob
+    assert "segmentation fault" in blob, blob
+
+    # The same sentence is built on the refusal path, from the provider's
+    # own words rather than ours.
+    blob = run_stage("auth", gateway_env(), mode="refused")
+    assert "invalid_api_key" in blob, blob
+    assert "no detail" not in blob, blob
+
+
 @case("a non-auth failure is UNMEASURED, not BLOCKED")
 def _unknown_unmeasured():
     """Nothing was established about the credential, and BLOCKED would

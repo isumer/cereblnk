@@ -38,6 +38,7 @@ needs_auth() {
     return 0
   fi
   _r="$(cb_auth_probe claude "$CRED_VAR" "$WORK")"
+  cb_auth_recall "$WORK" claude
   cb_auth_report "$_r" "$CRED_VAR"
 }
 
