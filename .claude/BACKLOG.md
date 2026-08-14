@@ -239,6 +239,22 @@ the package or the registry. The earlier wording was honest when the
 invocation was a guess, and would have been cover once it stopped being
 one.
 
+### CB-175 — What the host printed before the wall
+
+The timeout branch recorded `no response within 120s` and stopped, on a
+comment's own stated assumption: a run killed at the wall has no message
+to quote. That was never measured, and it is exactly the observation
+that separates the two remaining explanations for a silent host.
+
+A CLI waiting on something interactive prints the prompt it is waiting
+on. A request hanging at the provider prints nothing. Both arrive as
+exit 124 and both were reported with the same sentence, which asserted
+silence rather than observing it.
+
+The log is read now before the claim is made, so `it printed nothing`
+is a finding and `it had printed: ...` is a quote. Same single request,
+no extra call against a metered free tier.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
