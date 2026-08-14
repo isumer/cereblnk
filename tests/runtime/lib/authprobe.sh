@@ -242,10 +242,24 @@ cb_auth_probe() {
   _elapsed=$(( $(date +%s 2>/dev/null || echo 0) - _start ))
 
   # A timeout and a refusal are different findings and exit 124 is the
-  # only thing that separates them. Recorded before the log is read,
-  # because a run that was killed at the wall has no message to quote.
+  # only thing that separates them.
+  #
+  # This used to stop there, on the assumption that a run killed at the
+  # wall has no message to quote. That was never measured, and it is the
+  # difference between the two remaining explanations for a silent host:
+  # a CLI waiting on something interactive will have printed the prompt
+  # it is waiting on, and a request hanging at the provider will have
+  # printed nothing. Discarding the partial output threw away the one
+  # observation that separates them — and left a reader with a sentence
+  # saying the host said nothing, which was an assumption presented as a
+  # finding.
   if [ "$_code" -eq 124 ]; then
-    CB_AUTH_DETAIL="no response within ${_limit}s (killed at the timeout, exit 124)"
+    _partial="$(cb_detail "$_out")"
+    if [ -n "$_partial" ]; then
+      CB_AUTH_DETAIL="no response within ${_limit}s (killed at the timeout, exit 124); it had printed: ${_partial}"
+    else
+      CB_AUTH_DETAIL="no response within ${_limit}s (killed at the timeout, exit 124) and it printed nothing before being killed"
+    fi
     _cb_remember "$_state" UNKNOWN
     printf 'UNKNOWN'
     return 0

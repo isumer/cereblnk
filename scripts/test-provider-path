@@ -65,6 +65,9 @@ case "${CB_FAKE_MODE:-ok}" in
   structured) echo '{"is_error":true,"wrapper":"Execution error","error":{"message":"unsupported through this endpoint"}}'; exit 1 ;;
   silent)   exit 7 ;;
   hang)     sleep 30 ;;
+  # The case that separates the two remaining explanations for a silent
+  # host: one that is waiting on something interactive says so first.
+  hang-loud) echo "Do you trust the files in this folder? [y/N]"; sleep 30 ;;
   # A provider is untrusted text on its way to a public comment.
   nasty)    printf "Execution error\nAPI error 404: model | injected | row\n" >&2; exit 1 ;;
 esac
@@ -267,11 +270,26 @@ def _structured_preferred():
 
 @case("a timeout is not reported as a refusal")
 def _timeout_named():
-    """A run killed at the wall has no message to quote, and inventing
-    one from an empty log would describe a failure nobody observed."""
     blob = run_stage("auth", gateway_env(), mode="hang")
     assert status_of(blob) == "UNMEASURED", status_of(blob)
     assert "timeout" in blob.lower(), blob
+    # Silence is now claimed rather than assumed. The old wording said a
+    # host killed at the wall has nothing to quote; that was never
+    # measured, and the log is read before the claim is made.
+    assert "printed nothing before being killed" in blob, blob
+
+
+@case("a host that says what it is waiting on is quoted saying it")
+def _timeout_keeps_partial_output():
+    """The two remaining explanations for a silent host are a CLI
+    waiting on something interactive and a request hanging at the
+    provider. The first prints the prompt it is waiting on; the second
+    prints nothing. Discarding the partial output threw away the one
+    observation that separates them, and left a reader with an
+    assumption presented as a finding."""
+    blob = run_stage("auth", gateway_env(), mode="hang-loud")
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+    assert "Do you trust the files" in blob, blob
 
 
 @case("silence is reported as silence, with the exit code")
