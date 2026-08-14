@@ -37,6 +37,7 @@ STAGES = ROOT / "tests" / "runtime" / "claude" / "stages.sh"
 FAKE = r"""#!/usr/bin/env bash
 case "${1:-}" in
   --help) echo "  -p, --print   run non-interactively and print the result"
+          echo "      --debug   emit diagnostic output"
           echo "      --output-format <text|json>  set the output format"
           exit 0 ;;
   plugin)
@@ -52,6 +53,9 @@ case "${1:-}" in
       *) echo "no such plugin in any configured marketplace" >&2; exit 1 ;;
     esac ;;
 esac
+for _a in "$@"; do
+  [ "$_a" = "--debug" ] && CB_FAKE_DEBUG=1
+done
 case "${CB_FAKE_MODE:-ok}" in
   ok)       echo "ready"; exit 0 ;;
   refused)  echo "401 invalid_api_key: no auth credentials found" >&2; exit 1 ;;
@@ -64,7 +68,19 @@ case "${CB_FAKE_MODE:-ok}" in
             exit 1 ;;
   structured) echo '{"is_error":true,"wrapper":"Execution error","error":{"message":"unsupported through this endpoint"}}'; exit 1 ;;
   silent)   exit 7 ;;
-  hang)     sleep 30 ;;
+  # Debug output that says plenty and counts nothing: the boundary is
+  # genuinely not observable from it.
+  hang-mute) if [ "${CB_FAKE_DEBUG:-}" = "1" ]; then
+              echo "startup: resolving configuration" >&2
+              exit 1
+            fi
+            sleep 30 ;;
+  hang)     if [ "${CB_FAKE_DEBUG:-}" = "1" ]; then
+              echo "startup: cached session conflicts with gateway credential" >&2
+              echo '{"is_error":true,"duration_api_ms":0}'
+              exit 1
+            fi
+            sleep 30 ;;
   # The case that separates the two remaining explanations for a silent
   # host: one that is waiting on something interactive says so first.
   hang-loud) echo "Do you trust the files in this folder? [y/N]"; sleep 30 ;;
@@ -408,6 +424,60 @@ def _control_home_is_outside_the_artifact():
     assert control, "the control run never happened; homes seen: %s" % homes
     inside = [h for h in control if h.startswith(str(work))]
     assert not inside, "the control profile was built inside the artifact"
+
+
+@case("the debug retry runs once, and only where reading has run out")
+def _diagnostic_retry_is_conditional():
+    """Four hypotheses have been measured and eliminated — credential,
+    model, this package, its installation — and what remains is a CLI
+    that does local work, never calls the provider, and does not exit.
+    Its ordinary output ends mid-sentence because it hangs while writing
+    it, so there is nothing further to read at this verbosity.
+
+    A refusal, a quota response and a model-not-found already carry
+    provider-level attribution. Retrying those louder spends a request
+    to learn what was already said."""
+    blob = run_stage("auth", gateway_env(), mode="hang")
+    assert "auth_diagnostic: diagnostic_retry=true" in blob, blob
+    assert "mode=--debug" in blob, blob
+    assert "cached session conflicts" in blob, blob
+
+    for quiet in ("ok", "refused", "quota", "wrapped"):
+        blob = run_stage("auth", gateway_env(), mode=quiet)
+        assert "auth_diagnostic" not in blob, (quiet, blob)
+
+
+@case("the boundary is decided by numbers, not by local activity")
+def _provider_reached_is_measured():
+    """Two local turns is not a request. `provider_reached` divides the
+    next investigation, so inferring it from the host having been busy
+    would send the next person to the wrong layer."""
+    blob = run_stage("auth", gateway_env(), mode="hang")
+    assert "provider_reached=false" in blob, blob
+
+
+@case("an unobservable boundary is unknown, not assumed crossed")
+def _provider_reached_admits_ignorance():
+    """`provider_reached` divides the next investigation. Defaulting it
+    either way sends the next person to a layer the evidence never
+    pointed at, so output that counts nothing has to say so."""
+    blob = run_stage("auth", gateway_env(), mode="hang-mute")
+    assert "provider_reached=unknown" in blob, blob
+
+
+@case("diagnostic visibility does not promote the auth stage")
+def _diagnosis_is_not_a_result():
+    """Seeing why something failed is not measuring that it worked."""
+    blob = run_stage("auth", gateway_env(), mode="hang")
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+
+
+@case("the two debug streams are kept apart")
+def _streams_are_separate():
+    """Which stream a line arrived on is evidence. Merging them destroys
+    that before anyone reads it."""
+    lib = (ROOT / "tests/runtime/lib/authprobe.sh").read_text()
+    assert '>"$_dout" 2>"$_derr"' in lib, "debug output is merged"
 
 
 @case("the host's words cannot reshape the table they land in")

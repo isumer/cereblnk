@@ -246,6 +246,9 @@ cb_auth_probe() {
   timeout "$_limit" "$_bin" "$_flag" $_fmt 'Reply with the single word: ready' \
       >"$_out" 2>&1
   _code=$?
+  # Carried, not recomputed. Three fields have now been lost to this subshell;
+  # the state file is the only thing that crosses it.
+  CB_AUTH_EXIT="$_code"
   if [ "$_code" -eq 0 ]; then
     _cb_remember "$_state" ACCEPTED
     printf 'ACCEPTED'
@@ -326,6 +329,7 @@ _cb_remember() {
     printf "CB_AUTH_FLAG='%s'\n" "$(printf '%s' "${CB_AUTH_FLAG:-}" | sed "s/'/'\\\\''/g")"
     printf "CB_AUTH_DETAIL='%s'\n" "$(printf '%s' "${CB_AUTH_DETAIL:-}" | sed "s/'/'\\\\''/g")"
     printf "CB_AUTH_FACTS='%s'\n" "$(printf '%s' "${CB_AUTH_FACTS:-}" | sed "s/'/'\\\\''/g")"
+    printf 'CB_AUTH_EXIT=%s\n' "${CB_AUTH_EXIT:-}"
   } >"$_f" 2>/dev/null || true
 }
 
@@ -425,12 +429,70 @@ cb_auth_control() {
   fi
   if [ "$_ccode" -eq 124 ]; then
     printf 'also hung (exit %s) without the installed profile: %s' \
-      "$_ccode"
-      "$(cb_detail "$_clog")"
+      "$_ccode" "$(cb_detail "$_clog")"
     return 0
   fi
   printf 'exited %s without the installed profile: %s' \
     "$_ccode" "$(cb_detail "$_clog")"
+}
+
+# cb_auth_diagnose <binary> <flag> <workdir>
+#
+# One retry with the host's own debug output, for the one failure this
+# repository can no longer see into.
+#
+# Four hypotheses have been measured and eliminated: the credential, the
+# model, this package, and its installation. What remains is a CLI that
+# does two local turns, never calls the provider, and does not exit. Its
+# ordinary output ends mid-sentence because it hangs while writing, so
+# there is nothing further to read at this verbosity.
+#
+# Deliberately not the normal mode. Debug output is larger, slower and
+# more likely to carry things that must not be published, and paying
+# that on every run to serve one diagnosis would be the wrong trade.
+# Once per probe, never recursive, and only after the signature that
+# already failed.
+#
+# stdout and stderr are kept apart. Which stream a line arrived on is
+# itself evidence, and merging them destroys that before anyone reads
+# it.
+cb_auth_diagnose() {
+  _dbin="$1"; _dflag="$2"; _dwork="$3"
+
+  _dverb=""
+  for _cand in '--debug' '--verbose'; do
+    grep -qE -- "(^|[[:space:],])${_cand}([[:space:],=]|$)" \
+      "$_dwork/${_dbin}-help.log" 2>/dev/null && _dverb="$_cand" && break
+  done
+  if [ -z "$_dverb" ]; then
+    printf 'diagnostic_retry=false reason=the host documents no debug flag'
+    return 0
+  fi
+
+  _dout="$_dwork/${_dbin}-debug.stdout.log"
+  _derr="$_dwork/${_dbin}-debug.stderr.log"
+  _dlimit="${CB_AUTH_TIMEOUT:-120}"
+
+  # Same everything but the verbosity. A second changed variable would
+  # make this a different experiment from the one it is explaining.
+  timeout "$_dlimit" "$_dbin" "$_dflag" "$_dverb" \
+    'Reply with the single word: ready' >"$_dout" 2>"$_derr"
+  _dcode=$?
+
+  # Whether the boundary was crossed, from evidence rather than from the
+  # fact that the host did local work. Two turns is not a request.
+  _reached="unknown"
+  if grep -qE '"duration_api_ms"[[:space:]]*:[[:space:]]*[1-9]|"(input|output)_tokens"[[:space:]]*:[[:space:]]*[1-9]' \
+      "$_dout" 2>/dev/null; then
+    _reached="true"
+  elif grep -qE '"duration_api_ms"[[:space:]]*:[[:space:]]*0' "$_dout" 2>/dev/null; then
+    _reached="false"
+  fi
+
+  printf 'diagnostic_retry=true mode=%s exit=%s timeout=%s provider_reached=%s' \
+    "$_dverb" "$_dcode" \
+    "$([ "$_dcode" -eq 124 ] && printf true || printf false)" \
+    "$_reached"
 }
 
 # cb_auth_stage <binary> <provider> <credential-var> <workdir>
@@ -492,6 +554,33 @@ cb_auth_stage() {
       if [ -n "${CB_AUTH_FLAG:-}" ]; then
         _ctl="$(cb_auth_control "$_sbin" "$CB_AUTH_FLAG" "$_swork")"
         [ -n "$_ctl" ] && say "CB_EVIDENCE=auth_control: ${_ctl}"
+
+        # Only for the signature that is already unreadable, which is
+        # narrower than "not authenticated". A refusal, a quota response
+        # and a model-not-found are all UNKNOWN to this probe and all
+        # carry their own provider-level attribution already; retrying
+        # those with more verbosity would spend a request to learn what
+        # was said the first time.
+        #
+        # The signature is: killed at the wall, or a result whose own
+        # counters say no request was made. Both are the host failing
+        # before the boundary, which is the thing nothing can currently
+        # see into.
+        _presig=""
+        [ "${CB_AUTH_EXIT:-}" = "124" ] && _presig="timeout"
+        case "${CB_AUTH_FACTS:-}" in
+          *duration_api_ms=0*) _presig="no request emitted" ;;
+        esac
+
+        if [ -n "$_presig" ]; then
+          _dg="$(cb_auth_diagnose "$_sbin" "$CB_AUTH_FLAG" "$_swork")"
+          [ -n "$_dg" ] && \
+            say "CB_EVIDENCE=auth_diagnostic: ${_dg} trigger=${_presig}"
+          _dsafe="$(cb_detail "$_swork/${_sbin}-debug.stderr.log" 2>/dev/null)"
+          [ -z "$_dsafe" ] && \
+            _dsafe="$(cb_detail "$_swork/${_sbin}-debug.stdout.log" 2>/dev/null)"
+          [ -n "$_dsafe" ] && say "CB_EVIDENCE=auth_diagnostic_detail: ${_dsafe}"
+        fi
       fi
       say "CB_STATUS=UNMEASURED"
       say "CB_REASON=invoked with '${CB_AUTH_FLAG:-?}' and it failed for a reason that is not about authentication: ${CB_AUTH_DETAIL:-no output}. Nothing is established about the credential" ;;
