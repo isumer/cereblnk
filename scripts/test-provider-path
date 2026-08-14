@@ -355,6 +355,28 @@ def _renderer_shows_the_cause():
     assert "install_usage" in out, "evidence lines are still dropped"
 
 
+@case("a refusal is not cut before the sentence that explains it")
+def _detail_bound_is_generous_enough():
+    """200 characters cut the first real refusal mid-filesystem-path,
+    ahead of the cause. The renderer bounds this again at its own limit,
+    so the tighter number was buying nothing and costing the finding."""
+    import subprocess as sp
+    path = "/home/runner/work/cereblnk/cereblnk/plugins/cereblnk"
+    cause = "not found in any configured marketplace"
+    # One line, as the host emits it: a spinner rewrites in place, so the
+    # progress text and the failure arrive concatenated and the cause is
+    # last. That shape is what made a 200-character bound cut mid-path.
+    log = ('Installing plugin "%s"...\u2718 Failed to install plugin '
+           '"%s": Plugin "%s": %s\n' % (path, path, path, cause))
+    with tempfile.TemporaryDirectory() as tmp:
+        f = pathlib.Path(tmp) / "install.log"
+        f.write_text(log)
+        out = sp.run(["bash", "-c", '. "%s"; cb_detail "%s"'
+                      % (ROOT / "tests/runtime/lib/authprobe.sh", f)],
+                     capture_output=True, text=True).stdout.strip()
+    assert cause in out, out
+
+
 @case("a non-auth failure is UNMEASURED, not BLOCKED")
 def _unknown_unmeasured():
     """Nothing was established about the credential, and BLOCKED would

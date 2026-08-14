@@ -125,14 +125,30 @@ print(sum(len(h['hooks']) for e in d['hooks'].values() for h in e))" 2>/dev/null
     exit 0
   fi
 
-  # What the subcommand says it wants. The refusal cannot distinguish a
-  # package this repository ships wrong from an invocation this probe
-  # builds wrong, and the host already documented which argument it
-  # expects — a marketplace name and a filesystem path are not the same
-  # request. Recording the usage line settles that in the run that raises
-  # it instead of the run after.
-  USAGE="$(grep -iE "^[[:space:]]*(usage:[[:space:]]*)?claude plugin ${SUB}\\b" "$HELP" 2>/dev/null | head -1 | sed 's/^[[:space:]]*//' | cut -c1-160)"
-  [ -n "$USAGE" ] && say "CB_EVIDENCE=install_usage=${USAGE}"
+  # What the subcommand says it wants, quoted rather than pattern-matched.
+  #
+  # The previous attempt grepped for a usage line shaped the way this
+  # probe imagined it, found nothing, and published an empty field —
+  # which is the same mistake as guessing an invocation and reporting the
+  # failure as the host's. The help output is already on disk; the honest
+  # move is to carry a bounded excerpt of it and let a reader see the
+  # contract, because a refusal cannot say whether the package or the
+  # invocation is wrong and the host already wrote down which argument it
+  # expects.
+  USAGE="$(python3 - "$HELP" <<'EOF' 2>/dev/null
+import re, sys
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+lines = [l.strip() for l in raw.splitlines() if l.strip()]
+# The lines that mention the subcommand, or failing that the opening of
+# the help, so something true is recorded either way.
+told = [l for l in lines if re.search(r"\b(install|add|marketplace|usage)\b",
+                                      l, re.I)]
+text = " / ".join((told or lines)[:6])
+text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+print(re.sub(r"\s+", " ", text).strip()[:400])
+EOF
+)"
+  [ -n "$USAGE" ] && say "CB_EVIDENCE=install_contract=${USAGE}"
 
   INS="$WORK/claude-install.log"
   if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then

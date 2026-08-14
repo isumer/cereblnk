@@ -189,6 +189,28 @@ renderer was built to fix in the first place. Full reasons and evidence
 now appear below the table, still bounded, still unable to become a row
 or a column.
 
+### CB-173 — Quote the contract instead of pattern-matching it
+
+Two bounds and one guess, all found by the same run.
+
+The extractor cut at 200 characters, and the host writes its refusal on
+one line: a spinner rewrites in place, so the progress text and the
+failure arrive concatenated with the cause last. The cut landed
+mid-filesystem-path, ahead of the sentence that explained anything. The
+renderer bounds this again at its own limit, so the tighter number was
+buying nothing and costing the finding.
+
+`install_usage` grepped for a usage line shaped the way this probe
+imagined it, matched nothing, and published an empty field — the same
+mistake as guessing an invocation and reporting the failure as the
+host's. The help output was already on disk. It is quoted now, bounded,
+rather than searched for a shape somebody assumed.
+
+The first version of the test for this did not discriminate: the fixture
+put the failure on its own line, where 200 characters was enough. A
+fixture that does not reproduce the shape of the real output tests the
+fixture.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.

@@ -154,7 +154,11 @@ if not best:
 # carried straight through.
 best = re.sub(r"[\x00-\x1f\x7f]", " ", best)
 best = re.sub(r"[|`]", " ", best)
-print(re.sub(r"\s+", " ", best).strip()[:200])
+# 200 cut the first real refusal mid-filesystem-path, before the
+# sentence that named the cause. The renderer bounds this again at
+# its own limit, so the tighter number here was buying nothing and
+# costing the finding.
+print(re.sub(r"\s+", " ", best).strip()[:400])
 EOF
 }
 
