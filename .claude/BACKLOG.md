@@ -318,6 +318,40 @@ shortened the probe's limit could still be held for two minutes by the
 control. Found by mutating the control away and watching the suite hang
 instead of fail — a mutation that cannot finish is not a passing test.
 
+### CB-178 — One retry, louder, for the failure nothing can see into
+
+Four hypotheses have been measured and eliminated: the credential
+(`duration_api_ms=0`, no request emitted), the model (Nex, North and
+Anthropic Haiku first-party all produced the same behaviour), this
+package (the CB-177 control reproduced it with an empty profile), and
+its installation (`PASS` through the host's own mechanism since CB-174).
+
+What remains is a CLI that does two local turns, never calls the
+provider, and does not exit. Its ordinary output ends mid-sentence
+because it hangs while writing, so there is nothing further to read at
+this verbosity.
+
+So: one retry with the host's debug flag, and only after the signature
+that is already unreadable — killed at the wall, or a result whose own
+counters say no request was made. A refusal, a quota response and a
+model-not-found are all UNKNOWN to this probe and all carry their own
+provider-level attribution; retrying those louder would spend a request
+to learn what was said the first time. Never recursive, never the normal
+mode.
+
+`provider_reached` is decided by counters, not by the host having been
+busy — two local turns is not a request — and output that counts nothing
+reports `unknown`. That field divides the next investigation, so
+defaulting it either way would send the next person to a layer the
+evidence never pointed at.
+
+The two streams stay apart. Which one a line arrived on is evidence.
+
+`CB_AUTH_EXIT` turned out never to have been written to the state file:
+the CB-176 edit that was supposed to add it did not apply, and nothing
+read the field until this trigger needed it. The subshell has now eaten
+this same class of value three times.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
