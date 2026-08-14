@@ -322,6 +322,39 @@ def _extractor_is_shared():
     assert "head -1 | tr -d" not in stages, "a private copy survives"
 
 
+@case("the renderer shows the cause the table has to cut")
+def _renderer_shows_the_cause():
+    """The table cell is 150 characters because a table is for scanning.
+    But the first real installation refusal reached readers as
+    `Failed to…`, with the sentence that named the cause past the cut —
+    and the renderer dropped evidence lines entirely, so a stage could
+    record exactly what the host documented it wanted and nobody would
+    see it. Both facts existed; neither was readable."""
+    import json
+    import subprocess as sp
+    cause = "not found in any configured marketplace"
+    doc = {
+        "schema_version": "1", "host": "claude", "host_version": "2.x",
+        "source_sha": "a" * 40, "observed_at": "2026-01-01T00:00:00Z",
+        "stages": {"plugin": {
+            "status": "FAIL",
+            "reason": "invoked as 'claude plugin install <path>' and the "
+                      "host refused: " + "Installing plugin. " * 8 + cause,
+            "evidence": ["install_usage=claude plugin install <name>"],
+        }},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        f = pathlib.Path(tmp) / "e.json"
+        f.write_text(json.dumps(doc))
+        out = sp.run(["python3", str(ROOT / "scripts" / "render-evidence"),
+                      str(f)], capture_output=True, text=True).stdout
+
+    table = out.split("<details>")[0]
+    assert cause not in table, "the table cell is no longer bounded"
+    assert cause in out, "the cause is nowhere in the output"
+    assert "install_usage" in out, "evidence lines are still dropped"
+
+
 @case("a non-auth failure is UNMEASURED, not BLOCKED")
 def _unknown_unmeasured():
     """Nothing was established about the credential, and BLOCKED would

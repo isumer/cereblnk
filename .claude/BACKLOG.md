@@ -171,6 +171,24 @@ down which it expects, in output the run already captured. Recording the
 usage line settles that in the run that raises the question rather than
 the run after it.
 
+### CB-172 — The renderer was the layer doing the truncating
+
+The table cell is bounded at 150 characters because a table is for
+scanning, and that is right. But the first real installation refusal
+reached readers as `Failed to…`, with the sentence naming the cause
+past the cut — and two rounds of work went into the extractor that was
+already producing the whole sentence.
+
+Evidence lines were never rendered at all. A stage could record exactly
+what the host documented it wanted, in output the run already captured,
+and no reader would see it. `install_usage` was added to settle a
+question and published into a field nothing displays.
+
+Both facts existed and neither was readable, which is the failure this
+renderer was built to fix in the first place. Full reasons and evidence
+now appear below the table, still bounded, still unable to become a row
+or a column.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
