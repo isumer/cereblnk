@@ -421,11 +421,36 @@ def _plugin_refusal_is_fail():
     blob = run_stage("plugin", gateway_env(), mode="ok")
     assert status_of(blob) == "FAIL", status_of(blob)
     assert "install_result=REFUSED" in blob, blob
-    # Named, not classified: a refusal is either a package this
-    # repository ships wrong or an invocation it builds wrong, and
-    # nothing here can tell them apart.
-    assert "not established" in blob, blob
+    # The ambiguity this used to carry has been removed rather than
+    # restated. The invocation now matches the shape the host documents,
+    # so a refusal is about the package or the registry — and the reason
+    # has to say so, because the earlier wording let a probe defect be
+    # read as a package defect for as long as it went unexamined.
+    assert "which is the shape the host documents" in blob, blob
+    assert "not the invocation" in blob, blob
     assert "no such plugin" in blob, blob
+
+
+@case("the install reference comes from the registry, not this script")
+def _identity_is_read_not_written():
+    """The host installs by name. A name hard-coded here would let the
+    probe pass while the marketplace declared something else — the stage
+    would be measuring agreement with itself."""
+    import json
+    blob = run_stage("plugin", gateway_env(), mode="ok")
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json")
+                        .read_text())
+    ref = "%s@%s" % (market["plugins"][0]["name"], market["name"])
+    assert ref in blob, (ref, blob)
+
+    stages = (ROOT / "tests/runtime/claude/stages.sh").read_text()
+    assert market["name"] not in stages, "the marketplace name is written in"
+    # The path variable still exists and should: hooks.json is read off
+    # disk. What must not happen is handing that path to the subcommand
+    # that documents a name.
+    assert 'claude plugin "$SUB" "$REF"' in stages, "install is not by name"
+    assert 'claude plugin "$SUB" "$PLUGIN"' not in stages
+    assert 'claude plugin "$SUB" "$ROOT' not in stages
 
 
 @case("an accepted install is what makes the plugin stage pass")

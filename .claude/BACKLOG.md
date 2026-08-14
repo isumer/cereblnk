@@ -211,6 +211,34 @@ put the failure on its own line, where 200 characters was enough. A
 fixture that does not reproduce the shape of the real output tests the
 fixture.
 
+### CB-174 — Install by the name the host documents
+
+`claude plugin install <path>` handed a filesystem path where the host's
+own usage says `<plugin>` — a name, resolved through a marketplace, with
+`plugin@marketplace` for a specific one. So the host searched its
+registries for a plugin called `/home/runner/work/...`, truthfully did
+not find one, and said so.
+
+That was recorded as `plugin = FAIL`: this package rejected. Nothing
+about the package had been tested. CB-170 made the stage measure what
+its name claims and this was the same error one layer down — a probe
+defect published as a defect in the tree, which is the attribution the
+whole auth vocabulary exists to prevent.
+
+Registration now comes first, because a name can only resolve through a
+marketplace the host knows about, and the marketplace subcommand is
+discovered rather than assumed. Identity is read from
+`.claude-plugin/marketplace.json` rather than written here: a name
+hard-coded in the probe would let the stage pass while the registry
+declared something else, which is the stage measuring agreement with
+itself.
+
+The reason no longer says the cause is unestablished. It is established
+now — the invocation matches the documented shape, so a refusal is about
+the package or the registry. The earlier wording was honest when the
+invocation was a guess, and would have been cover once it stopped being
+one.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
