@@ -151,18 +151,96 @@ cb_auth_probe() {
   # nobody anything.
   CB_AUTH_FLAG="$_flag"
 
+  # Structured output where the host offers it. Claude Code collapses
+  # every provider failure to "Execution error" on the human-readable
+  # path, which is what two runs across two different models both
+  # reported — the same six words for a model incompatibility, a
+  # rejected key and a protocol mismatch alike. The machine-readable
+  # form carries the cause. This is asked for rather than assumed, and
+  # it costs no extra request: the same single call, told to answer in
+  # a form that says more.
+  #
+  # A verbose or debug flag would say more still, and would also print
+  # request headers into a log whose first lines are quoted into a
+  # public comment. That trade is not taken.
+  _fmt=""
+  grep -qE -- '(^|[[:space:],])--output-format([[:space:],=]|$)' "$_help" \
+    && grep -qi 'json' "$_help" && _fmt="--output-format json"
+
   _out="$_work/${_bin}-auth.log"
-  if timeout 120 "$_bin" "$_flag" 'Reply with the single word: ready' \
-      >"$_out" 2>&1; then
+  _start="$(date +%s 2>/dev/null || echo 0)"
+  # Captured from the command, not from the `if`. An `if` whose condition
+  # fails and has no else exits 0, so reading $? after the block reports
+  # success for the failure being handled — the same masking this
+  # repository already refuses to accept from a pipe.
+  # shellcheck disable=SC2086
+  # A real host is given two minutes. The deterministic suite exercises
+  # the timeout path against a stand-in that hangs on purpose, and would
+  # otherwise wait out that whole budget on every run — a suite slow
+  # enough to skip is a suite that stops being run.
+  _limit="${CB_AUTH_TIMEOUT:-120}"
+  timeout "$_limit" "$_bin" "$_flag" $_fmt 'Reply with the single word: ready' \
+      >"$_out" 2>&1
+  _code=$?
+  if [ "$_code" -eq 0 ]; then
     _cb_remember "$_state" ACCEPTED
     printf 'ACCEPTED'
+    return 0
+  fi
+  _elapsed=$(( $(date +%s 2>/dev/null || echo 0) - _start ))
+
+  # A timeout and a refusal are different findings and exit 124 is the
+  # only thing that separates them. Recorded before the log is read,
+  # because a run that was killed at the wall has no message to quote.
+  if [ "$_code" -eq 124 ]; then
+    CB_AUTH_DETAIL="no response within ${_limit}s (killed at the timeout, exit 124)"
+    _cb_remember "$_state" UNKNOWN
+    printf 'UNKNOWN'
     return 0
   fi
 
   # First non-empty line, flattened and bounded. The credential is never
   # on the command line and never in this output, but a provider's words
   # are still untrusted text on its way to a public comment.
-  CB_AUTH_DETAIL="$(grep -v '^[[:space:]]*$' "$_out" 2>/dev/null | head -1 | tr -d '\r' | cut -c1-120)"
+  # The most specific thing the host said, not merely the first thing.
+  # A wrapper line like "Execution error" arrives before the cause and
+  # was all that ever reached a reader.
+  CB_AUTH_DETAIL="$(python3 - "$_out" <<'EOF' 2>/dev/null
+import json, re, sys
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+
+# Structured first: the field the host filled in beats any line of prose.
+try:
+    doc = json.loads(raw)
+except ValueError:
+    doc = None
+best = ""
+if isinstance(doc, dict):
+    for key in ("error", "result", "message", "detail"):
+        val = doc.get(key)
+        if isinstance(val, dict):
+            val = val.get("message") or val.get("type") or ""
+        if isinstance(val, str) and val.strip():
+            best = val.strip()
+            break
+
+if not best:
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    # A line that names a cause outranks a line that announces a failure.
+    told = [l for l in lines
+            if re.search(r"\b(model|not.?found|unsupport|invalid|refus|"
+                         r"denied|expired|exceed|4\d\d|5\d\d)\b", l, re.I)]
+    best = (told or lines or [""])[0]
+
+# Collapsed and bounded. This is a provider's own words on their way to
+# a public comment, and a control character or a table row would be
+# carried straight through.
+best = re.sub(r"[\x00-\x1f\x7f]", " ", best)
+best = re.sub(r"[|`]", " ", best)
+print(re.sub(r"\s+", " ", best).strip()[:200])
+EOF
+)"
+  [ -n "$CB_AUTH_DETAIL" ] || CB_AUTH_DETAIL="exit ${_code} after ${_elapsed}s with no output"
 
   # The provider's own words decide this, not the exit code. A refused
   # key, an exhausted quota and an unentitled account are all reasons to

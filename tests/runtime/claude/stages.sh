@@ -75,51 +75,71 @@ context)
   ;;
 
 plugin)
-  # Installation is the gate every session driver sits behind. A hook
-  # cannot fire from a plugin that never loaded, so measuring this before
-  # writing drivers is the difference between finding out now and finding
-  # out after the work.
+  # This stage is named for what the host does with the package, so its
+  # status has to come from that. It did not: the install was attempted,
+  # its outcome was written down as an evidence line, and then the status
+  # was set from check-generated — a local, host-free comparison that
+  # scripts/verify already runs. A reader of a runtime table saw PASS and
+  # read "the plugin works on this host", while the log beside it
+  # recorded a refusal. The same concept already meant the stricter thing
+  # on another host, so the vocabulary disagreed with itself too.
   #
-  # The subcommand is discovered, not assumed. A CLI that does not offer
-  # one tells us something; a guess that fails tells us nothing.
-  if command -v claude >/dev/null 2>&1; then
-    HELP="$WORK/claude-plugin-help.log"
-    if timeout 60 claude plugin --help >"$HELP" 2>&1; then
-      SUB=""
-      for cand in install add; do
-        grep -qE "^[[:space:]]*${cand}\\b" "$HELP" && SUB="$cand" && break
-      done
-      if [ -z "$SUB" ]; then
-        say "CB_EVIDENCE=install_attempt=no_install_subcommand"
-      else
-        INS="$WORK/claude-install.log"
-        if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
-          say "CB_EVIDENCE=install_result=ACCEPTED"
-        else
-          say "CB_EVIDENCE=install_result=REFUSED"
-          say "CB_EVIDENCE=claude-install.log"
-        fi
-      fi
-    else
-      say "CB_EVIDENCE=plugin_subcommand=absent"
-    fi
-  else
-    say "CB_EVIDENCE=install_attempt=no_cli"
+  # Drift is still checked, and still first: a binding that no longer
+  # matches its generator would install something the policy does not
+  # describe, and that is a defect here rather than a question about the
+  # host.
+  if ! python3 "$ROOT/scripts/check-generated" >/dev/null 2>&1; then
+    say "CB_STATUS=FAIL"
+    say "CB_REASON=the committed Claude binding differs from what gen-bindings produces, so the plugin would install something the policy does not describe"
+    exit 0
   fi
 
-  # The binding this host loads is generated. If the committed file has
-  # drifted from its generator, what installs here is not what the policy
-  # says — and that is measurable without the host.
-  if python3 "$ROOT/scripts/check-generated" >/dev/null 2>&1; then
-    COUNT="$(python3 -c "
+  COUNT="$(python3 -c "
 import json
 d=json.load(open('$PLUGIN/hooks/hooks.json'))
 print(sum(len(h['hooks']) for e in d['hooks'].values() for h in e))" 2>/dev/null)"
+  say "CB_EVIDENCE=hooks.json matches its generator and binds ${COUNT:-?} hook(s)"
+
+  if ! command -v claude >/dev/null 2>&1; then
+    say "CB_STATUS=BLOCKED"
+    say "CB_REASON=no CLI on PATH, so nothing could be installed. The binding is intact; whether this host accepts it is unmeasured"
+    exit 0
+  fi
+
+  # The subcommand is discovered, not assumed. A CLI that does not offer
+  # one tells us something; a guess that fails tells us nothing.
+  HELP="$WORK/claude-plugin-help.log"
+  if ! timeout 60 claude plugin --help >"$HELP" 2>&1; then
+    say "CB_STATUS=UNSUPPORTED"
+    say "CB_REASON=this CLI offers no plugin subcommand, so there is no host-native installation to measure"
+    exit 0
+  fi
+
+  SUB=""
+  for cand in install add; do
+    grep -qE "^[[:space:]]*${cand}\\b" "$HELP" && SUB="$cand" && break
+  done
+  if [ -z "$SUB" ]; then
+    say "CB_STATUS=UNSUPPORTED"
+    say "CB_REASON=the plugin subcommand exists but offers neither install nor add, so there is no host-native installation to measure"
+    exit 0
+  fi
+
+  INS="$WORK/claude-install.log"
+  if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
     say "CB_STATUS=PASS"
-    say "CB_EVIDENCE=hooks.json matches its generator and binds ${COUNT} hook(s)"
+    say "CB_EVIDENCE=install_result=ACCEPTED"
+    say "CB_EVIDENCE=the host accepted the package through its own plugin mechanism"
   else
+    # The host's own words, not ours. A refusal has two very different
+    # causes — a package this repository ships wrong, or an invocation
+    # this probe builds wrong — and nothing here can tell them apart.
+    # Naming the refusal without classifying it is what lets the next run
+    # settle it, and is the same reason the auth probe quotes its host.
+    DETAIL="$(grep -v '^[[:space:]]*$' "$INS" 2>/dev/null | head -1 | tr -d '\r' | cut -c1-160)"
     say "CB_STATUS=FAIL"
-    say "CB_REASON=the committed Claude binding differs from what gen-bindings produces, so the plugin would install something the policy does not describe"
+    say "CB_EVIDENCE=install_result=REFUSED"
+    say "CB_REASON=invoked as 'claude plugin ${SUB} <path>' and the host refused: ${DETAIL:-no output}. Whether the package or the invocation is wrong is not established here"
   fi
   ;;
 

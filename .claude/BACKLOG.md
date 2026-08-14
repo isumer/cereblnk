@@ -109,6 +109,47 @@ host, on both the refusal and the non-auth path. Removing the recall
 turns that case red; the eleven cases that predated it stay green,
 which is the shape of the gap that let this through.
 
+### CB-170 — A stage should measure what its name claims
+
+Two runs, two different models, one sentence: `Execution error`. The
+controlled substitution settled that the failure is not the model, and
+settled nothing else, because six words were all the probe could see.
+
+- **The plugin stage did not measure the plugin.** The install was
+  attempted, its outcome written down as an evidence line, and the
+  status then set from `check-generated` — a local, host-free comparison
+  `scripts/verify` already runs. A reader of a runtime table saw PASS
+  and read "the plugin works on this host" while the log beside it
+  recorded a refusal. The same concept already meant the stricter thing
+  on another host, so the vocabulary disagreed with itself.
+- **A refusal is named, not classified.** `claude plugin install <path>`
+  was refused with a message about marketplaces, which is either a
+  package this repository ships wrong or an invocation it builds wrong.
+  Nothing available here separates them, so the status is FAIL and the
+  reason quotes the host and says the question is open.
+- **The cause outranks the wrapper above it.** The probe read the first
+  non-empty line, and hosts announce a failure before naming it.
+  Structured output is asked for where offered — the same single
+  request, told to answer in a form that says more. A verbose flag would
+  say more still and would print request headers into a log whose first
+  lines are quoted into a public comment; that trade is not taken.
+- **A timeout is not a refusal.** Exit 124 is the only thing separating
+  them, and it is read before the log, because a run killed at the wall
+  has no message to quote.
+- **`$?` after an `if` is not the command's exit code.** An `if` whose
+  condition fails and has no else exits 0, so the handler for a failure
+  was reading success. Same masking this repository already refuses from
+  a pipe, in a shape nobody had named.
+
+Three of the first assertions written for this did not discriminate:
+disabling structured parsing, removing the injection guard and turning a
+plugin refusal back into PASS all left the suite green. Two matched the
+same words through a different path and the third had no test at all.
+Fixed, then all six mutations checked red.
+
+**Does not close CB-131.** Minimal inference is still unproven; this
+makes the next failure legible rather than making it pass.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
