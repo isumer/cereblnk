@@ -87,6 +87,13 @@ case "${CB_FAKE_MODE:-ok}" in
   silent)   exit 7 ;;
   # Debug output that says plenty and counts nothing: the boundary is
   # genuinely not observable from it.
+  # Blocks on a read unless onboarding was answered first — the shape a
+  # headless first launch has.
+  needs-onboarding)
+      if grep -q 'hasCompletedOnboarding' "$HOME/.claude.json" 2>/dev/null; then
+        echo "ready"; exit 0
+      fi
+      sleep 30 ;;
   hang-mute) if [ "${CB_FAKE_DEBUG:-}" = "1" ]; then
               echo "startup: resolving configuration" >&2
               exit 1
@@ -478,6 +485,39 @@ def _debug_filter_is_bound():
     assert "mode=--debug=api,hooks" in blob, blob
     assert "Input must be provided" not in blob, blob
     assert "cached session conflicts" in blob, blob
+
+
+@case("a host waiting on a first-launch prompt is not left waiting")
+def _onboarding_is_seeded():
+    """The host asks a human several questions on first launch and each
+    of them blocks on a read. With nobody at the terminal that read
+    never returns: no output, no error, no request, and a wall-length
+    silence — the shape measured for nine runs.
+
+    Seeding answers them. It makes nothing pass; it removes a human from
+    the path so the host can succeed or fail on its own terms."""
+    blob = run_stage("auth", gateway_env(), mode="needs-onboarding")
+    assert status_of(blob) == "PASS", status_of(blob)
+    assert "host_environment: onboarding state seeded" in blob, blob
+
+
+@case("seeding is recorded, not silent")
+def _seeding_is_declared():
+    """An environment change nobody can see is an environment change
+    nobody can account for. A later reader comparing two runs has to be
+    able to tell which one had the path cleared."""
+    blob = run_stage("auth", gateway_env(), mode="ok")
+    assert "host_environment:" in blob, blob
+
+
+@case("the control run is left unseeded")
+def _control_is_not_seeded():
+    """If a seeded probe reaches the provider and an unseeded control
+    still hangs, the cause is settled rather than argued. Seeding both
+    would destroy the comparison."""
+    lib = (ROOT / "tests/runtime/lib/authprobe.sh").read_text()
+    control = lib[lib.index("cb_auth_control()"):lib.index("cb_auth_diagnose()")]
+    assert "cb_seed_onboarding" not in control, "the control was seeded too"
 
 
 @case("the boundary is decided by numbers, not by local activity")

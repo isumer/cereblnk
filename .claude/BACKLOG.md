@@ -380,6 +380,37 @@ positional argument after a fully-formed `--output-format json`, so it
 was never missing input. The reading was inference from one message,
 and it was almost shipped as a change to all three invocations.
 
+### CB-180 — Nobody was there to answer the question
+
+The host asks a human several questions on first launch — a theme
+picker, a welcome screen, a per-directory trust dialog — and each of
+them blocks on a read. With nobody at the terminal that read never
+returns, so the process waits until something kills it: no output, no
+error, no request emitted, and a wall-length silence. That is the shape
+this repository has measured for nine runs and attributed, in turn, to
+a credential, three models, this package and its installation.
+
+The trust dialog is documented as skipped under `--print`, which is why
+it was ruled out early — and why the prompts either side of it were
+never considered. State lives in `$HOME/.claude.json`; seeding it writes
+what a first launch would have written after being answered.
+
+This is environment setup, not a result. It makes nothing pass. It takes
+a human out of the path so the host can get far enough to succeed or
+fail on its own terms, and the fact that it happened is published so a
+reader comparing two runs can tell which one had the path cleared.
+
+The control run stays unseeded on purpose. A seeded probe that reaches
+the provider beside an unseeded control that still hangs settles the
+cause instead of arguing it.
+
+A suggestion arrived alongside this one: set `apiKeyHelper` to echo a
+dummy Anthropic key. That value is sent as `x-api-key`, which is the
+direct-provider credential the gateway path requires to be empty — the
+misconfiguration guard would fail it, correctly, and without the guard
+it would have reintroduced exactly the silent attribution CB-168 exists
+to prevent.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
