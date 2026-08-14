@@ -71,6 +71,10 @@ case "${CB_FAKE_MODE:-ok}" in
   # What the live run actually produced: a structured result whose usage
   # block was flushed first, truncated mid-write by the kill, with the
   # message that explains it further in than a raw read ever reached.
+  # A host that hangs only when the installed profile is present: the
+  # control home is empty, so HOME differing is what it keys on.
+  hang-unless-clean)
+      if [ -f "$HOME/.installed" ]; then sleep 30; else echo "ready"; exit 0; fi ;;
   hang-json) printf '{"is_error":true,"duration_api_ms":0,"num_turns":2,'
              printf '"usage":{"input_tokens":0,"output_tokens":0},'
              printf '"result":"the model does not support this endpoint",'
@@ -325,6 +329,85 @@ def _counters_are_recorded():
     blob = run_stage("auth", gateway_env(), mode="hang-json")
     assert "duration_api_ms=0" in blob, blob
     assert "num_turns=2" in blob, blob
+
+
+@case("a control run separates this package from the host")
+def _control_run_discriminates():
+    """The host errors without calling the provider and hangs writing
+    its own result, so stdout has nothing more to give and two
+    explanations remain: this package, or the CLI and its configuration.
+    Nothing separates them except removing one of them — and no request
+    reaches the provider on either side, so asking costs nothing against
+    a daily request allowance."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        fake = bindir / "claude"
+        fake.write_text(FAKE)
+        fake.chmod(0o755)
+        (tmp / ".installed").touch()
+        work = tmp / "work"
+        work.mkdir()
+        env = {"PATH": "%s:%s" % (bindir, os.environ.get("PATH", "")),
+               "HOME": str(tmp), "CB_ROOT": str(ROOT),
+               "CB_WORKDIR": str(work), "CB_FAKE_MODE": "hang-unless-clean",
+               "CB_AUTH_TIMEOUT": "3"}
+        env.update(gateway_env())
+        blob = subprocess.run(["bash", str(STAGES), "auth"], env=env,
+                              capture_output=True, text=True, timeout=180,
+                              cwd=str(work)).stdout
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+    assert "auth_control: PASSED without the installed profile" in blob, blob
+
+
+@case("the control profile is not built inside the artifact")
+def _control_home_is_outside_the_artifact():
+    """A fresh profile is a place the CLI writes configuration, and the
+    credential it was handed can land there. Under the staged workdir
+    that means building a credential-bearing directory inside the thing
+    that gets uploaded — the leak guard caught it and failed the run,
+    which is the guard working. The defect was creating the file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        fake = bindir / "claude"
+        # A host that persists what it was given, as a real one does.
+        # It also records where its profile was, because cleanup would
+        # otherwise hide the answer: a control home built inside the
+        # artifact and then deleted still leaves the window in which the
+        # guard runs, and a deletion that fails leaves the credential.
+        seen = tmp / "home-seen"
+        # Right after the shebang: the stand-in answers --help before it
+        # reaches any mode branch, and the control run has to be recorded
+        # on every invocation rather than only the ones that get that far.
+        prelude = (
+            'printf "%s" "${ANTHROPIC_AUTH_TOKEN:-}" > "$HOME/.claude.json"\n'
+            'printf "%s\\n" "$HOME" >> "' + str(seen) + '"\n')
+        head, rest = FAKE.split("\n", 1)
+        fake.write_text(head + "\n" + prelude + rest)
+        fake.chmod(0o755)
+        work = tmp / "work"
+        work.mkdir()
+        env = {"PATH": "%s:%s" % (bindir, os.environ.get("PATH", "")),
+               "HOME": str(tmp), "CB_ROOT": str(ROOT),
+               "CB_WORKDIR": str(work), "CB_FAKE_MODE": "hang",
+               "CB_AUTH_TIMEOUT": "3"}
+        env.update(gateway_env())
+        subprocess.run(["bash", str(STAGES), "auth"], env=env,
+                       capture_output=True, text=True, timeout=180,
+                       cwd=str(work))
+        staged = [f for f in work.rglob("*") if f.is_file()]
+        leaked = [f for f in staged
+                  if KEY in f.read_text(errors="replace")]
+        homes = [h for h in seen.read_text().split() if h] \
+            if seen.exists() else []
+    assert not leaked, "credential staged for upload in %s" % leaked
+    control = [h for h in homes if h != str(tmp)]
+    assert control, "the control run never happened; homes seen: %s" % homes
+    inside = [h for h in control if h.startswith(str(work))]
+    assert not inside, "the control profile was built inside the artifact"
 
 
 @case("the host's words cannot reshape the table they land in")
