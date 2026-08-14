@@ -396,8 +396,17 @@ cb_auth_report() {
 # reported as a result.
 cb_auth_control() {
   _cbin="$1"; _cflag="$2"; _cwork="$3"
-  _chome="$_cwork/control-home"
-  mkdir -p "$_chome" 2>/dev/null || true
+  # Outside the artifact directory, deliberately. A fresh profile is a
+  # place the CLI writes its configuration, and the credential it was
+  # handed can land there — so putting it under the staged workdir meant
+  # building a credential-bearing directory inside the thing that gets
+  # uploaded. The leak guard caught it and failed the run, which is the
+  # guard working; the defect was creating the file for it to find.
+  _chome="$(mktemp -d 2>/dev/null)" || _chome=""
+  if [ -z "$_chome" ]; then
+    printf 'could not be run: no writable location outside the artifact'
+    return 0
+  fi
   _clog="$_cwork/${_cbin}-auth-control.log"
 
   # The same wall as the probe it controls for. A hard-coded 120 here
@@ -407,6 +416,8 @@ cb_auth_control() {
   HOME="$_chome" timeout "$_climit" "$_cbin" "$_cflag" \
     'Reply with the single word: ready' >"$_clog" 2>&1
   _ccode=$?
+
+  rm -rf "$_chome" 2>/dev/null || true
 
   if [ "$_ccode" -eq 0 ]; then
     printf 'PASSED without the installed profile'

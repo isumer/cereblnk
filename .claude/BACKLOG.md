@@ -304,7 +304,16 @@ A clean `HOME` is the lever because it is the host-agnostic one. If this
 CLI keeps state elsewhere the control will simply not differ, which is
 visible as such rather than reported as a result.
 
-The first version hard-coded its own 120-second wall, so a suite that
+The first version built the control profile under the staged workdir.
+A fresh profile is a place the CLI writes configuration, and the
+credential it was handed lands there — so the run assembled a
+credential-bearing directory inside the artifact that gets uploaded.
+The leak guard caught it and failed all three hosts that have an auth
+stage, which is the guard working exactly as designed. The defect was
+creating the file for it to find. The profile lives outside the artifact
+now and is removed after the question it answers has been answered.
+
+The first version also hard-coded its own 120-second wall, so a suite that
 shortened the probe's limit could still be held for two minutes by the
 control. Found by mutating the control away and watching the suite hang
 instead of fail — a mutation that cannot finish is not a passing test.
