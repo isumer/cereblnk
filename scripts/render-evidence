@@ -29,6 +29,11 @@ import sys
 MARK = {"PASS": "PASS", "FAIL": "**FAIL**", "BLOCKED": "BLOCKED",
         "UNMEASURED": "unmeasured", "UNSUPPORTED": "unsupported"}
 REASON_LIMIT = 150
+# What the table hides, the section below it shows. Still bounded: this
+# is a provider's own words on their way to a public comment, and the
+# reason a limit exists at all does not stop applying because the text
+# moved down the page.
+DETAIL_LIMIT = 600
 
 # The order a run walks them, so a reader sees where it stopped rather
 # than an alphabetical list that hides the sequence.
@@ -44,8 +49,18 @@ def clean(text):
     — neither is a security problem, but a garbled table is a table
     nobody reads, and this exists to be read.
     """
-    flat = " ".join(str(text).split()).replace("|", "\\|")
+    flat = flatten(text)
     return flat[:REASON_LIMIT] + ("…" if len(flat) > REASON_LIMIT else "")
+
+
+def flatten(text):
+    """The same treatment without the cut.
+
+    Splitting the two apart is the point: the table needs a short cell
+    and the section below it needs the whole sentence, but both need the
+    text to be unable to become a row or a column.
+    """
+    return " ".join(str(text).split()).replace("|", "\\|")
 
 
 def render(doc):
@@ -80,6 +95,40 @@ def render(doc):
         out.append("| `%s` | %s | %s |"
                    % (name, MARK.get(status, status),
                       clean(entry.get("reason", ""))))
+    # The table is for scanning, so its reason column stays short. But a
+    # cause that only exists past the cut is a cause nobody has — the
+    # first real installation refusal reached readers as "Failed to…",
+    # with the sentence that named it beyond the limit. And evidence
+    # lines were never rendered at all, so a stage could record exactly
+    # what the host documented it wanted and no reader would see it.
+    #
+    # Full text below the table, for the stages where it changes what
+    # somebody would do next.
+    detail = []
+    for name in list(ORDER) + [s for s in stages if s not in ORDER]:
+        entry = stages.get(name)
+        if not entry:
+            continue
+        reason = flatten(entry.get("reason", ""))
+        evidence = [flatten(e) for e in entry.get("evidence", [])]
+        evidence = [e for e in evidence if e]
+        if len(reason) <= REASON_LIMIT and not evidence:
+            continue
+        detail.append("**`%s`** — %s" % (name, entry.get("status", "?")))
+        if reason:
+            detail.append("")
+            detail.append("> " + reason[:DETAIL_LIMIT])
+        for line in evidence:
+            detail.append("")
+            detail.append("- `%s`" % line[:DETAIL_LIMIT])
+        detail.append("")
+    if detail:
+        out.append("")
+        out.append("<details><summary>full reasons and evidence</summary>")
+        out.append("")
+        out.extend(detail)
+        out.append("</details>")
+
     caps = sorted({c for e in stages.values()
                    for c in e.get("capabilities", [])})
     if caps:
