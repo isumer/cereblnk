@@ -459,10 +459,31 @@ cb_auth_control() {
 cb_auth_diagnose() {
   _dbin="$1"; _dflag="$2"; _dwork="$3"
 
+  # Attached with '=', never separated by a space.
+  #
+  # The first retry ran `--print --debug <prompt>` and the host answered
+  # "Input must be provided either through stdin or as a prompt argument
+  # when using --print". This flag takes an optional filter, so a bare
+  # --debug immediately before the prompt consumes it as that filter and
+  # leaves the command with no prompt at all. The retry was not a
+  # louder version of the failing run; it was a different command that
+  # failed for its own reason.
+  #
+  # An '=' binds the value to the option and cannot reach past it, so
+  # the prompt survives as a positional argument whatever the flag's
+  # arity turns out to be. The filter is narrow for the same reason the
+  # retry exists at all: the boundary in question is session start-up
+  # and request creation, and unrestricted output is more noise and more
+  # surface for something that should not be published.
   _dverb=""
   for _cand in '--debug' '--verbose'; do
     grep -qE -- "(^|[[:space:],])${_cand}([[:space:],=]|$)" \
-      "$_dwork/${_dbin}-help.log" 2>/dev/null && _dverb="$_cand" && break
+      "$_dwork/${_dbin}-help.log" 2>/dev/null || continue
+    case "$_cand" in
+      --debug) _dverb='--debug=api,hooks' ;;
+      *)       _dverb="$_cand" ;;
+    esac
+    break
   done
   if [ -z "$_dverb" ]; then
     printf 'diagnostic_retry=false reason=the host documents no debug flag'
@@ -489,6 +510,8 @@ cb_auth_diagnose() {
     _reached="false"
   fi
 
+  # The exact argument is published. A retry that cannot be reproduced
+  # from its own evidence is a retry somebody has to guess at.
   printf 'diagnostic_retry=true mode=%s exit=%s timeout=%s provider_reached=%s' \
     "$_dverb" "$_dcode" \
     "$([ "$_dcode" -eq 124 ] && printf true || printf false)" \
