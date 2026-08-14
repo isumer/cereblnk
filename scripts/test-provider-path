@@ -53,9 +53,26 @@ case "${1:-}" in
       *) echo "no such plugin in any configured marketplace" >&2; exit 1 ;;
     esac ;;
 esac
+# Models the parser that caused the bug: --debug takes an optional
+# filter, so a bare --debug consumes whatever follows it. Treating the
+# flag's presence as sufficient is what let a retry with no prompt pass
+# deterministic verification.
+CB_FAKE_PROMPT=""
+_eat=""
 for _a in "$@"; do
-  [ "$_a" = "--debug" ] && CB_FAKE_DEBUG=1
+  if [ -n "$_eat" ]; then _eat=""; continue; fi
+  case "$_a" in
+    --debug=*)        CB_FAKE_DEBUG=1 ;;
+    --debug)          CB_FAKE_DEBUG=1; _eat=1 ;;
+    --output-format)  _eat=1 ;;
+    -*)               ;;
+    *)                CB_FAKE_PROMPT="$_a" ;;
+  esac
 done
+if [ -n "${CB_FAKE_DEBUG:-}" ] && [ -z "$CB_FAKE_PROMPT" ]; then
+  echo "Error: Input must be provided either through stdin or as a prompt argument when using --print" >&2
+  exit 1
+fi
 case "${CB_FAKE_MODE:-ok}" in
   ok)       echo "ready"; exit 0 ;;
   refused)  echo "401 invalid_api_key: no auth credentials found" >&2; exit 1 ;;
@@ -445,6 +462,22 @@ def _diagnostic_retry_is_conditional():
     for quiet in ("ok", "refused", "quota", "wrapped"):
         blob = run_stage("auth", gateway_env(), mode=quiet)
         assert "auth_diagnostic" not in blob, (quiet, blob)
+
+
+@case("the debug filter cannot swallow the prompt")
+def _debug_filter_is_bound():
+    """This flag takes an optional filter, so a bare `--debug` right
+    before the prompt consumes it and leaves the command with no prompt.
+    The first retry did exactly that and the host said so — the retry
+    was not a louder version of the failing run, it was a different
+    command failing for its own reason.
+
+    The stand-in models that parse now. Treating the flag's presence as
+    sufficient is what let the bug through deterministic verification."""
+    blob = run_stage("auth", gateway_env(), mode="hang")
+    assert "mode=--debug=api,hooks" in blob, blob
+    assert "Input must be provided" not in blob, blob
+    assert "cached session conflicts" in blob, blob
 
 
 @case("the boundary is decided by numbers, not by local activity")

@@ -352,6 +352,34 @@ the CB-176 edit that was supposed to add it did not apply, and nothing
 read the field until this trigger needed it. The subshell has now eaten
 this same class of value three times.
 
+### CB-179 — The retry was a different command, not a louder one
+
+`--print --debug <prompt>` and the host answered: input must be provided
+through stdin or as a prompt argument. The flag takes an optional
+filter, so a bare `--debug` immediately before the prompt consumed it
+and left the command with no prompt at all. CB-178's trigger, capture,
+stream separation, leak guard and publication all worked; the one thing
+it got wrong was the argv, and that was enough to make the retry a
+different experiment from the failure it was meant to explain.
+
+An `=` binds the value to the option and cannot reach past it, so the
+prompt survives whatever the flag's arity turns out to be. The filter is
+narrow because the boundary in question is session start-up and request
+creation, and unrestricted output is more noise and more surface for
+something that should not be published.
+
+The stand-in now models that parse. It treated the flag's presence as
+sufficient, which is exactly why thirty-five deterministic cases passed
+over a retry that had no prompt in it — a fixture that does not
+reproduce the host's ambiguity cannot find a bug that lives in it.
+
+A wrong turn worth recording: the same error message was first read as
+the explanation for the main probe's hang, on the theory that a host
+with no input blocks on stdin. The main probe passes the prompt as a
+positional argument after a fully-formed `--output-format json`, so it
+was never missing input. The reading was inference from one message,
+and it was almost shipped as a change to all three invocations.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
