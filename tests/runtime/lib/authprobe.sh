@@ -141,6 +141,18 @@ if isinstance(doc, dict):
             best = val.strip()
             break
 
+# A host killed mid-write leaves JSON that will not parse, and the
+# fields it had already flushed are the usage block — zeros, in the
+# order the host happened to serialise them. Falling back to raw text
+# then spends the whole budget on counters and cuts before the message.
+# So the interesting fields are salvaged by name from whatever arrived.
+if not best:
+    for key in ("result", "error", "message", "detail"):
+        hit = re.search(r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"' % key, raw)
+        if hit and hit.group(1).strip():
+            best = hit.group(1).strip()
+            break
+
 if not best:
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
     # A line that names a cause outranks a line that announces a failure.
@@ -254,6 +266,24 @@ cb_auth_probe() {
   # saying the host said nothing, which was an assumption presented as a
   # finding.
   if [ "$_code" -eq 124 ]; then
+    # Counters, not prose, and they settle a question the prose cannot:
+    # an API duration of zero with zero tokens means no request was ever
+    # made, so a silent host is not a slow provider. Recording them
+    # separately keeps that finding out of the sentence the reader has
+    # to parse, and none of them is secret.
+    _facts="$(python3 - "$_out" <<'EOF' 2>/dev/null
+import re, sys
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+out = []
+for key in ("duration_api_ms", "num_turns", "total_cost_usd",
+            "input_tokens", "output_tokens"):
+    hit = re.search(r'"%s"\s*:\s*([0-9.]+)' % key, raw)
+    if hit:
+        out.append("%s=%s" % (key, hit.group(1)))
+print(" ".join(out)[:200])
+EOF
+)"
+    CB_AUTH_FACTS="$_facts"
     _partial="$(cb_detail "$_out")"
     if [ -n "$_partial" ]; then
       CB_AUTH_DETAIL="no response within ${_limit}s (killed at the timeout, exit 124); it had printed: ${_partial}"
@@ -295,6 +325,7 @@ _cb_remember() {
     printf 'CB_AUTH_RESULT=%s\n' "$_r"
     printf "CB_AUTH_FLAG='%s'\n" "$(printf '%s' "${CB_AUTH_FLAG:-}" | sed "s/'/'\\\\''/g")"
     printf "CB_AUTH_DETAIL='%s'\n" "$(printf '%s' "${CB_AUTH_DETAIL:-}" | sed "s/'/'\\\\''/g")"
+    printf "CB_AUTH_FACTS='%s'\n" "$(printf '%s' "${CB_AUTH_FACTS:-}" | sed "s/'/'\\\\''/g")"
   } >"$_f" 2>/dev/null || true
 }
 
@@ -379,6 +410,8 @@ cb_auth_stage() {
 
   _r="$(cb_auth_probe "$_sbin" "$_svar" "$_swork")"
   cb_auth_recall "$_swork" "$_sbin"
+  [ -n "${CB_AUTH_FACTS:-}" ] && \
+    say "CB_EVIDENCE=host_result_counters: ${CB_AUTH_FACTS}"
   case "$_r" in
     ACCEPTED)
       say "CB_STATUS=PASS"

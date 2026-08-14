@@ -68,6 +68,14 @@ case "${CB_FAKE_MODE:-ok}" in
   # The case that separates the two remaining explanations for a silent
   # host: one that is waiting on something interactive says so first.
   hang-loud) echo "Do you trust the files in this folder? [y/N]"; sleep 30 ;;
+  # What the live run actually produced: a structured result whose usage
+  # block was flushed first, truncated mid-write by the kill, with the
+  # message that explains it further in than a raw read ever reached.
+  hang-json) printf '{"is_error":true,"duration_api_ms":0,"num_turns":2,'
+             printf '"usage":{"input_tokens":0,"output_tokens":0},'
+             printf '"result":"the model does not support this endpoint",'
+             printf '"cache_creation'
+             sleep 30 ;;
   # A provider is untrusted text on its way to a public comment.
   nasty)    printf "Execution error\nAPI error 404: model | injected | row\n" >&2; exit 1 ;;
 esac
@@ -296,6 +304,27 @@ def _timeout_keeps_partial_output():
 def _silent_named():
     blob = run_stage("auth", gateway_env(), mode="silent")
     assert "exit 7" in blob, blob
+
+
+@case("a message is salvaged from JSON the host never finished")
+def _partial_json_is_salvaged():
+    """A host killed mid-write leaves JSON that will not parse, and the
+    fields already flushed are the usage block — zeros, in whatever order
+    it serialised them. A raw fallback then spends the whole budget on
+    counters and cuts before the message. The live run reported exactly
+    that: six hundred characters of zeroes and no sentence."""
+    blob = run_stage("auth", gateway_env(), mode="hang-json")
+    assert "does not support this endpoint" in blob, blob
+
+
+@case("counters say whether the provider was called at all")
+def _counters_are_recorded():
+    """An API duration of zero with zero tokens means no request was
+    ever made, so a silent host is not a slow provider — and that is
+    decided by numbers rather than by reading prose."""
+    blob = run_stage("auth", gateway_env(), mode="hang-json")
+    assert "duration_api_ms=0" in blob, blob
+    assert "num_turns=2" in blob, blob
 
 
 @case("the host's words cannot reshape the table they land in")
