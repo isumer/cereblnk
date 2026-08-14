@@ -150,21 +150,52 @@ EOF
 )"
   [ -n "$USAGE" ] && say "CB_EVIDENCE=install_contract=${USAGE}"
 
+  # Identity comes from the marketplace, not from this script. The host
+  # installs by name — `<plugin>` in its own usage, with `plugin@market`
+  # for a specific one — and hard-coding either name here would make the
+  # probe pass while the registry said something else.
+  MPJSON="$ROOT/.claude-plugin/marketplace.json"
+  MPNAME="$(python3 -c "import json;print(json.load(open('$MPJSON'))['name'])" 2>/dev/null)"
+  PNAME="$(python3 -c "import json;print(json.load(open('$MPJSON'))['plugins'][0]['name'])" 2>/dev/null)"
+  if [ -z "$MPNAME" ] || [ -z "$PNAME" ]; then
+    say "CB_STATUS=FAIL"
+    say "CB_REASON=the marketplace does not name itself and its first plugin, so there is no identity to install by"
+    exit 0
+  fi
+
+  # The previous invocation handed a filesystem path where the host
+  # documents a name, so it searched the marketplaces for a plugin called
+  # /home/runner/... and truthfully reported not finding one. That was
+  # recorded as FAIL — this package rejected — when nothing about the
+  # package had been tested. Registration first, because a name can only
+  # resolve through a marketplace the host knows about.
+  MKT="$WORK/claude-marketplace.log"
+  if grep -qE '^[[:space:]]*marketplace\b' "$HELP"; then
+    if timeout 120 claude plugin marketplace add "$ROOT" >"$MKT" 2>&1; then
+      say "CB_EVIDENCE=marketplace_add=ACCEPTED"
+    else
+      # Not fatal on its own: the host may already know this source, and
+      # the install below is the measurement that matters.
+      say "CB_EVIDENCE=marketplace_add=REFUSED: $(cb_detail "$MKT")"
+    fi
+  else
+    say "CB_EVIDENCE=marketplace_add=UNSUPPORTED (no marketplace subcommand in this CLI)"
+  fi
+
   INS="$WORK/claude-install.log"
-  if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
+  REF="${PNAME}@${MPNAME}"
+  if timeout 180 claude plugin "$SUB" "$REF" >"$INS" 2>&1; then
     say "CB_STATUS=PASS"
     say "CB_EVIDENCE=install_result=ACCEPTED"
-    say "CB_EVIDENCE=the host accepted the package through its own plugin mechanism"
+    say "CB_EVIDENCE=the host accepted ${REF} through its own plugin mechanism"
   else
-    # The host's own words, not ours. A refusal has two very different
-    # causes — a package this repository ships wrong, or an invocation
-    # this probe builds wrong — and nothing here can tell them apart.
-    # Naming the refusal without classifying it is what lets the next run
-    # settle it, and is the same reason the auth probe quotes its host.
-    DETAIL="$(cb_detail "$INS")"
+    # The host's own words, not ours. A refusal of a correctly shaped
+    # reference is about this package or this registry; the earlier
+    # path-shaped refusal was about neither, and calling it FAIL blamed
+    # the tree for the probe.
     say "CB_STATUS=FAIL"
     say "CB_EVIDENCE=install_result=REFUSED"
-    say "CB_REASON=invoked as 'claude plugin ${SUB} <path>' and the host refused: ${DETAIL:-no output}. Whether the package or the invocation is wrong is not established here"
+    say "CB_REASON=invoked as 'claude plugin ${SUB} ${REF}', which is the shape the host documents, and it refused: $(cb_detail "$INS"). The reference resolved through the registry or it did not; either way this is about the package or the marketplace, not the invocation"
   fi
   ;;
 
