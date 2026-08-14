@@ -28,6 +28,7 @@ say() { printf '%s\n' "$*"; }
 # says which of the two it was.
 needs_auth() {
   _r="$(cb_auth_probe gemini GEMINI_API_KEY "$WORK")"
+  cb_auth_recall "$WORK" gemini
   cb_auth_report "$_r" GEMINI_API_KEY
 }
 

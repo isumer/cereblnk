@@ -188,6 +188,29 @@ _cb_remember() {
   } >"$_f" 2>/dev/null || true
 }
 
+# cb_auth_recall <workdir> <binary>
+#
+# Loads the flag and the detail the probe recorded into the caller's
+# shell.
+#
+# The probe is called as `$(cb_auth_probe ...)` because it echoes its
+# verdict, and a command substitution is a subshell: every variable it
+# set died with it. The verdict survived — it was the thing being echoed
+# — so the callers looked correct and reported `invoked with '?'` and
+# `no output` on every run, for months, including in the evidence that
+# was supposed to explain a failure. Only the sentence was wrong, which
+# is why nothing caught it.
+#
+# The state file is what crosses the boundary. Reading it back in the
+# caller is what makes the reason true.
+cb_auth_recall() {
+  _rstate="$(_cb_cache "$1" "$2")"
+  if [ -f "$_rstate" ]; then
+    # shellcheck disable=SC1090
+    . "$_rstate"
+  fi
+}
+
 # cb_auth_report <r> <env-var-name>
 #
 # Turns a probe result into the stage vocabulary for a stage that needed
@@ -245,6 +268,7 @@ cb_auth_stage() {
   fi
 
   _r="$(cb_auth_probe "$_sbin" "$_svar" "$_swork")"
+  cb_auth_recall "$_swork" "$_sbin"
   case "$_r" in
     ACCEPTED)
       say "CB_STATUS=PASS"

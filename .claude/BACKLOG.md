@@ -85,6 +85,30 @@ acceptance criteria require.
 **Does not close CB-131.** A provider accepting one prompt is not the
 claimed runtime behaviour being measured.
 
+### CB-169 — The verdict survived the subshell; the reason did not
+
+The probe echoes its verdict, so every caller reads it as
+`$(cb_auth_probe ...)` — a command substitution, which is a subshell.
+The flag it discovered and the host's own words it captured were set
+there and died there. The verdict crossed the boundary because it was
+the thing being echoed, so the callers looked correct while every
+reason they built read `invoked with '?'` and `no output`.
+
+That sentence has been in published evidence since CB-164, including in
+the results that were supposed to explain why three hosts failed. The
+status was right each time; only the explanation was empty, which is
+why nothing caught it and why a reader kept being told the probe did
+not know how it had called anything.
+
+The state file already crossed the boundary — it is how the answer is
+cached so a metered free tier is asked once rather than six times.
+Reading it back in the caller is the whole fix.
+
+The suite now asserts that a reason names the invocation and quotes the
+host, on both the refusal and the non-auth path. Removing the recall
+turns that case red; the eleven cases that predated it stay green,
+which is the shape of the gap that let this through.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
