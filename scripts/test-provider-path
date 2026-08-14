@@ -37,13 +37,36 @@ STAGES = ROOT / "tests" / "runtime" / "claude" / "stages.sh"
 FAKE = r"""#!/usr/bin/env bash
 case "${1:-}" in
   --help) echo "  -p, --print   run non-interactively and print the result"
+          echo "      --output-format <text|json>  set the output format"
           exit 0 ;;
+  plugin)
+    case "${CB_FAKE_MODE:-ok}" in
+      no-plugin-cmd) echo "unknown command: plugin" >&2; exit 1 ;;
+    esac
+    case "${2:-}" in
+      --help) echo "  install <name>   install a plugin from a marketplace"
+              exit 0 ;;
+    esac
+    case "${CB_FAKE_MODE:-ok}" in
+      plugin-ok) echo "installed"; exit 0 ;;
+      *) echo "no such plugin in any configured marketplace" >&2; exit 1 ;;
+    esac ;;
 esac
 case "${CB_FAKE_MODE:-ok}" in
   ok)       echo "ready"; exit 0 ;;
   refused)  echo "401 invalid_api_key: no auth credentials found" >&2; exit 1 ;;
   quota)    echo "429 rate limit exceeded for free models" >&2; exit 1 ;;
   broken)   echo "segmentation fault" >&2; exit 1 ;;
+  # The shape both real runs produced: a wrapper line, and the cause
+  # underneath it where head -1 never looked.
+  wrapped)  echo "Execution error"
+            echo "API error 404: model not found: nex-agi/nex-n2-pro:free" >&2
+            exit 1 ;;
+  structured) echo '{"is_error":true,"wrapper":"Execution error","error":{"message":"unsupported through this endpoint"}}'; exit 1 ;;
+  silent)   exit 7 ;;
+  hang)     sleep 30 ;;
+  # A provider is untrusted text on its way to a public comment.
+  nasty)    printf "Execution error\nAPI error 404: model | injected | row\n" >&2; exit 1 ;;
 esac
 """
 
@@ -69,6 +92,10 @@ def run_stage(stage, env_overrides, mode="ok"):
             "CB_ROOT": str(ROOT),
             "CB_WORKDIR": str(work),
             "CB_FAKE_MODE": mode,
+            # The timeout path is exercised deliberately; waiting out the
+            # real budget to assert one sentence would make the suite
+            # slow enough to skip.
+            "CB_AUTH_TIMEOUT": "3",
         }
         env.update(env_overrides)
         proc = subprocess.run(["bash", str(STAGES), stage], env=env,
@@ -215,6 +242,55 @@ def _detail_survives():
     assert "no detail" not in blob, blob
 
 
+@case("the cause outranks the wrapper line above it")
+def _cause_not_wrapper():
+    """Two runs, two different models, one sentence: `Execution error`.
+    The host announces a failure on its first line and names the cause
+    underneath, and the probe only ever read the first line — so a model
+    incompatibility, a rejected key and a protocol mismatch all reached
+    the reader as the same six words."""
+    blob = run_stage("auth", gateway_env(), mode="wrapped")
+    assert "model not found" in blob, blob
+
+
+@case("a structured answer beats any line of prose")
+def _structured_preferred():
+    """Asked for where the host offers it, at no extra request."""
+    blob = run_stage("auth", gateway_env(), mode="structured")
+    reason = [l for l in blob.splitlines() if l.startswith("CB_REASON=")][0]
+    assert "unsupported through this endpoint" in reason, reason
+    # The field, not the line it lived on. Scanning the raw text would
+    # find the same words and prove nothing about reading the document.
+    assert "is_error" not in reason, reason
+    assert "{" not in reason, reason
+
+
+@case("a timeout is not reported as a refusal")
+def _timeout_named():
+    """A run killed at the wall has no message to quote, and inventing
+    one from an empty log would describe a failure nobody observed."""
+    blob = run_stage("auth", gateway_env(), mode="hang")
+    assert status_of(blob) == "UNMEASURED", status_of(blob)
+    assert "timeout" in blob.lower(), blob
+
+
+@case("silence is reported as silence, with the exit code")
+def _silent_named():
+    blob = run_stage("auth", gateway_env(), mode="silent")
+    assert "exit 7" in blob, blob
+
+
+@case("the host's words cannot reshape the table they land in")
+def _detail_is_neutralised():
+    """The reason is rendered into a public comment as a table cell. A
+    pipe in a provider's error message would end the cell and start a
+    column nobody wrote."""
+    blob = run_stage("auth", gateway_env(), mode="nasty")
+    reason = [l for l in blob.splitlines() if l.startswith("CB_REASON=")]
+    assert reason, blob
+    assert "|" not in reason[0], reason[0]
+
+
 @case("a non-auth failure is UNMEASURED, not BLOCKED")
 def _unknown_unmeasured():
     """Nothing was established about the credential, and BLOCKED would
@@ -249,6 +325,35 @@ def _probe_is_cached():
                            cwd=str(work))
         calls = counter.read_text().count("x") if counter.exists() else 0
     assert calls == 1, "the host was invoked %d times for one answer" % calls
+
+
+@case("a refused install is not a passing plugin stage")
+def _plugin_refusal_is_fail():
+    """The stage is named for what the host does with the package, and
+    its status came from a local generator comparison instead. A reader
+    saw PASS beside a log recording a refusal."""
+    blob = run_stage("plugin", gateway_env(), mode="ok")
+    assert status_of(blob) == "FAIL", status_of(blob)
+    assert "install_result=REFUSED" in blob, blob
+    # Named, not classified: a refusal is either a package this
+    # repository ships wrong or an invocation it builds wrong, and
+    # nothing here can tell them apart.
+    assert "not established" in blob, blob
+    assert "no such plugin" in blob, blob
+
+
+@case("an accepted install is what makes the plugin stage pass")
+def _plugin_accept_is_pass():
+    blob = run_stage("plugin", gateway_env(), mode="plugin-ok")
+    assert status_of(blob) == "PASS", status_of(blob)
+    assert "install_result=ACCEPTED" in blob, blob
+
+
+@case("no plugin subcommand is UNSUPPORTED, not a failure")
+def _plugin_unsupported():
+    """A host that offers no such mechanism has not failed at one."""
+    blob = run_stage("plugin", gateway_env(), mode="no-plugin-cmd")
+    assert status_of(blob) == "UNSUPPORTED", status_of(blob)
 
 
 @case("CB-155 stages stay honestly unmeasured")
