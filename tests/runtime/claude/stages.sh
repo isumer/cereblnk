@@ -125,6 +125,15 @@ print(sum(len(h['hooks']) for e in d['hooks'].values() for h in e))" 2>/dev/null
     exit 0
   fi
 
+  # What the subcommand says it wants. The refusal cannot distinguish a
+  # package this repository ships wrong from an invocation this probe
+  # builds wrong, and the host already documented which argument it
+  # expects — a marketplace name and a filesystem path are not the same
+  # request. Recording the usage line settles that in the run that raises
+  # it instead of the run after.
+  USAGE="$(grep -iE "^[[:space:]]*(usage:[[:space:]]*)?claude plugin ${SUB}\\b" "$HELP" 2>/dev/null | head -1 | sed 's/^[[:space:]]*//' | cut -c1-160)"
+  [ -n "$USAGE" ] && say "CB_EVIDENCE=install_usage=${USAGE}"
+
   INS="$WORK/claude-install.log"
   if timeout 180 claude plugin "$SUB" "$ROOT/plugins/cereblnk" >"$INS" 2>&1; then
     say "CB_STATUS=PASS"
@@ -136,7 +145,7 @@ print(sum(len(h['hooks']) for e in d['hooks'].values() for h in e))" 2>/dev/null
     # this probe builds wrong — and nothing here can tell them apart.
     # Naming the refusal without classifying it is what lets the next run
     # settle it, and is the same reason the auth probe quotes its host.
-    DETAIL="$(grep -v '^[[:space:]]*$' "$INS" 2>/dev/null | head -1 | tr -d '\r' | cut -c1-160)"
+    DETAIL="$(cb_detail "$INS")"
     say "CB_STATUS=FAIL"
     say "CB_EVIDENCE=install_result=REFUSED"
     say "CB_REASON=invoked as 'claude plugin ${SUB} <path>' and the host refused: ${DETAIL:-no output}. Whether the package or the invocation is wrong is not established here"

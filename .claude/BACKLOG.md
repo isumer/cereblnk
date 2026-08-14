@@ -150,6 +150,27 @@ Fixed, then all six mutations checked red.
 **Does not close CB-131.** Minimal inference is still unproven; this
 makes the next failure legible rather than making it pass.
 
+### CB-171 — One reading of a host's output, not one per caller
+
+The auth probe learned to prefer a structured field and to skip a
+wrapper line that announces a failure without naming it. The plugin
+stage kept its own earlier copy of the same judgement: first non-empty
+line, then a cut. So the first real installation refusal reached the
+reader as `Installing plugin ...Failed to` — the announcement, with the
+cause sliced off, in the one field a reader had to work from.
+
+Two implementations of one judgement drift, and the one that drifts is
+the one nobody is looking at. There is now a single `cb_detail` and two
+callers.
+
+The stage also records what the subcommand documents it wants. A refusal
+cannot distinguish a package this repository ships wrong from an
+invocation this probe builds wrong, and a marketplace name and a
+filesystem path are not the same request — the host had already written
+down which it expects, in output the run already captured. Recording the
+usage line settles that in the run that raises the question rather than
+the run after it.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.

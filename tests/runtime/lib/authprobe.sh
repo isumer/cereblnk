@@ -110,6 +110,54 @@ cb_provider_misconfigured() {
   return 1
 }
 
+# cb_detail <logfile>
+#
+# Echoes the most specific thing a host said, collapsed and bounded.
+#
+# Two probes needed this reading and only one had it. The auth probe
+# learned to prefer a structured field and to skip a wrapper line like
+# "Execution error"; the plugin stage still took the first line and cut
+# it, so a refusal reached the reader as `Installing plugin ...Failed
+# to` — the announcement, with the cause sliced off, in the one field
+# a reader had to work from. Two implementations of one judgement
+# drift, and the one that drifts is the one nobody is looking at.
+cb_detail() {
+  python3 - "$1" <<'EOF' 2>/dev/null
+import json, re, sys
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+
+# Structured first: the field the host filled in beats any line of prose.
+try:
+    doc = json.loads(raw)
+except ValueError:
+    doc = None
+best = ""
+if isinstance(doc, dict):
+    for key in ("error", "result", "message", "detail"):
+        val = doc.get(key)
+        if isinstance(val, dict):
+            val = val.get("message") or val.get("type") or ""
+        if isinstance(val, str) and val.strip():
+            best = val.strip()
+            break
+
+if not best:
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    # A line that names a cause outranks a line that announces a failure.
+    told = [l for l in lines
+            if re.search(r"\b(model|not.?found|unsupport|invalid|refus|"
+                         r"denied|expired|exceed|4\d\d|5\d\d)\b", l, re.I)]
+    best = (told or lines or [""])[0]
+
+# Collapsed and bounded. This is a provider's own words on their way to
+# a public comment, and a control character or a table row would be
+# carried straight through.
+best = re.sub(r"[\x00-\x1f\x7f]", " ", best)
+best = re.sub(r"[|`]", " ", best)
+print(re.sub(r"\s+", " ", best).strip()[:200])
+EOF
+}
+
 # cb_auth_probe <binary> <env-var-name> <workdir>
 #
 # Echoes one of:
@@ -205,41 +253,7 @@ cb_auth_probe() {
   # The most specific thing the host said, not merely the first thing.
   # A wrapper line like "Execution error" arrives before the cause and
   # was all that ever reached a reader.
-  CB_AUTH_DETAIL="$(python3 - "$_out" <<'EOF' 2>/dev/null
-import json, re, sys
-raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-
-# Structured first: the field the host filled in beats any line of prose.
-try:
-    doc = json.loads(raw)
-except ValueError:
-    doc = None
-best = ""
-if isinstance(doc, dict):
-    for key in ("error", "result", "message", "detail"):
-        val = doc.get(key)
-        if isinstance(val, dict):
-            val = val.get("message") or val.get("type") or ""
-        if isinstance(val, str) and val.strip():
-            best = val.strip()
-            break
-
-if not best:
-    lines = [l.strip() for l in raw.splitlines() if l.strip()]
-    # A line that names a cause outranks a line that announces a failure.
-    told = [l for l in lines
-            if re.search(r"\b(model|not.?found|unsupport|invalid|refus|"
-                         r"denied|expired|exceed|4\d\d|5\d\d)\b", l, re.I)]
-    best = (told or lines or [""])[0]
-
-# Collapsed and bounded. This is a provider's own words on their way to
-# a public comment, and a control character or a table row would be
-# carried straight through.
-best = re.sub(r"[\x00-\x1f\x7f]", " ", best)
-best = re.sub(r"[|`]", " ", best)
-print(re.sub(r"\s+", " ", best).strip()[:200])
-EOF
-)"
+  CB_AUTH_DETAIL="$(cb_detail "$_out")"
   [ -n "$CB_AUTH_DETAIL" ] || CB_AUTH_DETAIL="exit ${_code} after ${_elapsed}s with no output"
 
   # The provider's own words decide this, not the exit code. A refused

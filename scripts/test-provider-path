@@ -291,6 +291,37 @@ def _detail_is_neutralised():
     assert "|" not in reason[0], reason[0]
 
 
+@case("a refusal names its cause, not its announcement")
+def _detail_picks_the_cause():
+    """A host announces before it explains. `Installing plugin ...` came
+    first, the reason came after, and a first-line-then-truncate read
+    delivered the announcement with the cause sliced off — in the one
+    field a reader had to work from."""
+    import subprocess as sp
+    log = "Installing plugin \"/x/y\"...\n" \
+          "Failed to install: not found in any configured marketplace\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        f = pathlib.Path(tmp) / "install.log"
+        f.write_text(log)
+        out = sp.run(["bash", "-c",
+                      '. "%s"; cb_detail "%s"'
+                      % (ROOT / "tests/runtime/lib/authprobe.sh", f)],
+                     capture_output=True, text=True).stdout.strip()
+    assert "marketplace" in out, out
+    assert not out.startswith("Installing plugin"), out
+
+
+@case("one extractor, not one per caller")
+def _extractor_is_shared():
+    """The auth probe learned to prefer a structured field and skip a
+    wrapper line; the plugin stage kept its own worse copy of the same
+    read. Two implementations of one judgement drift, and the one that
+    drifts is the one nobody is looking at."""
+    stages = (ROOT / "tests/runtime/claude/stages.sh").read_text()
+    assert "cb_detail" in stages, "the plugin stage does not use it"
+    assert "head -1 | tr -d" not in stages, "a private copy survives"
+
+
 @case("a non-auth failure is UNMEASURED, not BLOCKED")
 def _unknown_unmeasured():
     """Nothing was established about the credential, and BLOCKED would
