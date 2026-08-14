@@ -255,6 +255,34 @@ The log is read now before the claim is made, so `it printed nothing`
 is a finding and `it had printed: ...` is a quote. Same single request,
 no extra call against a metered free tier.
 
+### CB-176 — The provider was never called
+
+CB-175 quoted what the host printed before the wall, and it printed a
+structured result: `is_error: true`, `duration_api_ms: 0`, `num_turns:
+2`, zero tokens in and out, zero cost.
+
+Zero API duration with zero tokens means no request was ever made. Seven
+runs were spent on the provider and the model — swapping Nex for North,
+reading vendor compatibility notes, reasoning about endpoints — and the
+provider was never reached. Claude Code failed before calling it, wrote
+its result, and then did not exit, which is what produced exit 124. The
+timeout was never the finding; it was the CLI failing to close after
+already saying what went wrong.
+
+Two things kept that hidden. The kill truncates the JSON, so it will not
+parse, and the fallback reads raw text — where the usage block had been
+flushed first, spending the whole budget on zeroes and cutting before
+the message. Named fields are now salvaged from whatever arrived.
+
+And the counters are recorded separately, because they answer by
+arithmetic what prose was being asked to answer: whether anything was
+sent at all.
+
+The counters were first emitted with `say` from inside the probe, which
+runs in a command substitution and swallowed them — the same subshell
+error as CB-169, made again while fixing its consequences. They travel
+in the state file now, like the detail.
+
 ### CB-155 — Session drivers for the stages credentials unlock
 
 CB-154 landed the runner, the Codex stage script and the workflow.
