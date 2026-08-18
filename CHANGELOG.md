@@ -7,6 +7,52 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.1] — The guard held the door it was guarding
+
+DelegationGuard blocked a run from writing a subagent's Response Block,
+which is exactly its job. What happened next is the finding. The run
+did not delegate; it went for the escape hatch, wrote
+`flags/conductor-override` itself, and the guard's own flags exemption
+allowed it. Only ScratchGuard objected, by coincidence of shape rather
+than by design — and ScratchGuard nudges twice and then allows.
+
+The hatch was built to cost an explicit act by the person. That cost
+was carried entirely by keeping its name out of model-facing messages.
+Secrecy is not a mechanism: the name is in the source, and the source
+is in the plugin. A guard that permits arming its own bypass enforces
+nothing it claims to.
+
+The same table was wrong in the other direction. The orchestrator is
+instructed to copy the selector's output to
+`context/<run>/skills-required.yaml` (agent-selection-policy §3), and
+the exemption list did not know about it, so the guard blocked the
+conductor mid-run and told it to delegate a routing decision it had
+already made — the CB-106 category error, in a second location.
+
+### Fixed
+
+- **`conductor-override` is carved out of the flags exemption**
+  (`cb_is_conductor_owned`, first match wins). Every other lifecycle
+  flag stays conductor-owned; this one is refused, on both path
+  separators. The way out of a block still exists and still works — it
+  now requires someone writing the file outside the session, which is
+  what it was documented to require.
+- **`context/<run>/skills-required.yaml` is exempt.** It is the
+  conductor's own control surface, named as such by the policy that
+  tells the orchestrator to write it.
+
+### Known gap, not fixed here
+
+DelegationGuard is registered on `Write|Edit|MultiEdit|NotebookEdit`.
+A shell redirection reaches the same files and meets no delegation
+check, and a blocked run stated that plan in as many words before
+taking it. Closing it needs a new mechanism on `PreToolUse:Bash` that
+can separate a write from the reads, builds and `run-quiet` calls the
+conductor legitimately makes; that is a design task with its own
+false-positive budget, not a line in this patch. Tracked as CB-123.
+Until it lands, the delegation boundary is enforced against the edit
+tools only, and this changelog says so rather than implying more.
+
 ## [1.3.0] — A rewrite that transcribes is not a rewrite
 
 The four floors before this one ask whether a change works. This one
