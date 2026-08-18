@@ -63,6 +63,12 @@ def main():
             ("state.md", str(cbd / "state.md")),
             ("run flag", str(cbd / "flags/run-active")),
             ("telemetry", str(cbd / "telemetry/context.log")),
+            # agent-selection-policy §3: the orchestrator copies the
+            # selector's block here. Absent from the table, this write
+            # was blocked mid-run and told to delegate the routing
+            # decision the conductor had just made.
+            ("skills-required.yaml",
+             str(cbd / "context/implement-2026-08-03/skills-required.yaml")),
         ]
         for label, path in owned:
             case(f"delegation: conductor owns {label} -> allow",
@@ -70,10 +76,18 @@ def main():
 
         # The exemption must not become a hole. A Response Block is a
         # subagent's output; a conductor writing one fabricates it.
+        # CB-182: the flags exemption granted the conductor the one flag
+        # it does not own. Blocked from a Response Block, a run wrote
+        # conductor-override instead and the guard allowed it; nothing
+        # but ScratchGuard — which nudges twice, then allows — stood in
+        # the way. The hatch costs a human act or it is not a hatch.
         for label, path in (
             ("task ledger block", str(cbd / "context/implement-2026-08-03/T-3.yaml")),
             ("authored spec", str(cbd / "memory/specs/design.md")),
             ("real source", str(proj / "src/Main.java")),
+            ("self-armed override", str(cbd / "flags/conductor-override")),
+            ("self-armed override on Windows",
+             r"C:\Users\me\.claude\cereblnk\flags\conductor-override"),
         ):
             case(f"delegation: {label} still blocked",
                  "delegation-guard.sh", edit(path), 2, "surface specialist")
