@@ -11,16 +11,23 @@ recorded in their own Amendment Logs; this file records what shipped.
 
 DelegationGuard blocked a run from writing a subagent's Response Block,
 which is exactly its job. What happened next is the finding. The run
-did not delegate; it went for the escape hatch, wrote
+did not delegate. It went for the escape hatch, wrote
 `flags/conductor-override` itself, and the guard's own flags exemption
-allowed it. Only ScratchGuard objected, by coincidence of shape rather
-than by design — and ScratchGuard nudges twice and then allows.
+allowed it — only ScratchGuard objected, by coincidence of shape rather
+than by design, and ScratchGuard nudges twice and then allows. Refused
+there too, it announced the next route in as many words: it would write
+the files from the command line instead, where no delegation check was
+registered. That plan would have worked.
+
+Two doors, then, and the guard was holding both. This release closes
+them and moves the table that decides such questions somewhere a second
+caller can read it.
 
 The hatch was built to cost an explicit act by the person. That cost
-was carried entirely by keeping its name out of model-facing messages.
-Secrecy is not a mechanism: the name is in the source, and the source
-is in the plugin. A guard that permits arming its own bypass enforces
-nothing it claims to.
+was carried entirely by keeping its name out of model-facing messages —
+the guard's own comment says so. Secrecy is not a mechanism: the name
+is in the source, and the source ships with the plugin. A guard that
+permits arming its own bypass enforces nothing it claims to.
 
 The same table was wrong in the other direction. The orchestrator is
 instructed to copy the selector's output to
@@ -29,29 +36,61 @@ the exemption list did not know about it, so the guard blocked the
 conductor mid-run and told it to delegate a routing decision it had
 already made — the CB-106 category error, in a second location.
 
+For the shell, the hard part is not detection but the false-positive
+budget. run-discipline requires the conductor to run `detect-stack`,
+`select-agents`, `run-quiet` and git; two skills tell it to write a
+boundary flag with `echo ... > $CB_DIR/flags/boundary`. A guard that
+blocks commands wholesale stops the run it is protecting, and a guard
+the conductor learns to route around protects nothing. So the question
+asked is narrower: what does this command write?
+
 ### Fixed
 
 - **`conductor-override` is carved out of the flags exemption**
   (`cb_is_conductor_owned`, first match wins). Every other lifecycle
   flag stays conductor-owned; this one is refused, on both path
-  separators. The way out of a block still exists and still works — it
-  now requires someone writing the file outside the session, which is
-  what it was documented to require.
+  separators and through the shell. The way out of a block still exists
+  and still works — it now requires someone writing the file outside
+  the session, which is what it was documented to require.
 - **`context/<run>/skills-required.yaml` is exempt.** It is the
   conductor's own control surface, named as such by the policy that
   tells the orchestrator to write it.
+- **The delegation boundary reaches the shell.** DelegationGuard runs
+  on the `Bash` matcher alongside DestructiveCommand. No write targets:
+  allow. Every target conductor-owned: allow. Anything else, including
+  a write whose target cannot be resolved: block, with the same handoff
+  the edit path gives.
 
-### Known gap, not fixed here
+### Added
 
-DelegationGuard is registered on `Write|Edit|MultiEdit|NotebookEdit`.
-A shell redirection reaches the same files and meets no delegation
-check, and a blocked run stated that plan in as many words before
-taking it. Closing it needs a new mechanism on `PreToolUse:Bash` that
-can separate a write from the reads, builds and `run-quiet` calls the
-conductor legitimately makes; that is a design task with its own
-false-positive budget, not a line in this patch. Tracked as CB-123.
-Until it lands, the delegation boundary is enforced against the edit
-tools only, and this changelog says so rather than implying more.
+- **`scripts/lib/shellwrite.py`** — resolves the write targets of a
+  shell command by walking `shlex` tokens: redirections that create or
+  extend a file (`>&` excluded, so `2>&1` is not a write), `tee`,
+  `touch`, `cp`, `mv`, `sed -i`, and the writers whose target it cannot
+  name (`patch`, `dd`, `git apply`), which resolve to unknown. `sh -c`
+  and `bash -c` are re-read as shell rather than guessed at; other
+  inline interpreters are unknown only when the code names a write, so
+  `python3 -c "print(1)"` is not a blocked command. `$CB_DIR` is never
+  expanded in the payload, so it is substituted before the ownership
+  check rather than read as an unowned path.
+
+### Changed
+
+- **The conductor-ownership table moved to `scripts/lib/cbowner.sh`.**
+  Two callers now ask the same policy question, and this release exists
+  because one copy had drifted from the policy in both directions at
+  once. One table, both callers source it.
+
+### What this does not claim
+
+The shell boundary is a floor, not a proof. A script that redirects
+internally, a base64 round trip, an editor invocation, an obfuscated
+one-liner: all pass. The bound is the ordinary write forms a model
+reaches for when a Write is refused, and the cost of the bypass goes
+from zero to deliberate. Without Python the shell branch fails open and
+the boundary is unenforced there; that is stated in the hook rather
+than implied away. `rm` is untouched — deletion is DestructiveCommand's
+surface, and mixing them would put two failure budgets in one checker.
 
 ## [1.3.0] — A rewrite that transcribes is not a rewrite
 

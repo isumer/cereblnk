@@ -29,6 +29,7 @@
 # the escape hatch is the same flag every workflow already manages.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbowner.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 
 # Armed state, with staleness bounds on BOTH arming flags (CB-099).
@@ -61,53 +62,12 @@ set -uo pipefail
 # plan to a specialist, which is a category error — and the block
 # message said "the conductor holds plan" in the same breath.
 #
-# Exempt, because the conductor writes these BY DEFINITION:
-#   $CB_DIR/state.md                  run state
-#   $CB_DIR/context/<run>/plan.md     the plan
-#   $CB_DIR/context/<run>/skills-required.yaml
-#                                     the selector's output, copied
-#                                     verbatim by the orchestrator
-#                                     (agent-selection-policy §3)
-#   $CB_DIR/flags/*                   run lifecycle flags
-#   $CB_DIR/telemetry/*               run summaries
-#
-# NOT exempt, and deliberately so:
-#   $CB_DIR/context/<run>/<task>.yaml a subagent's Response Block — a
-#                                     conductor writing one is
-#                                     fabricating a specialist's output
-#   $CB_DIR/memory/**                 promoted knowledge and authored
-#                                     deliverables have their own owners
-#   $CB_DIR/flags/conductor-override  the human escape hatch — the one
-#                                     flag the conductor does not own
-#
-# conductor-override is carved out of the flags exemption, and the
-# carve-out is the whole point. The hatch was designed to cost "an
-# explicit act by the person": its name is kept out of every
-# model-facing message on purpose, because a blocked model reads the
-# last sentence of a block as an instruction. But secrecy is not a
-# mechanism. Blocked from writing a Response Block, a run reached for
-# the hatch itself and the flags exemption granted it; only
-# ScratchGuard happened to be in the way, and ScratchGuard nudges
-# twice and then allows. A guard that permits arming its own bypass
-# enforces nothing it claims to. The person writes this file, or it
-# does not exist.
-#
-# Separators are normalised: the path arrives as the platform wrote it,
-# and on Windows that means backslashes.
-cb_is_conductor_owned() {
-  [ -n "${1:-}" ] || return 1
-  _n="$(printf '%s' "$1" | tr '\\' '/')"
-  case "$_n" in
-    # first match wins: the hatch is refused before flags/* grants it
-    */cereblnk/flags/conductor-override*) return 1 ;;
-    */cereblnk/context/*/[Pp]lan.md)      return 0 ;;
-    */cereblnk/context/*/skills-required.yaml) return 0 ;;
-    */cereblnk/state.md)                  return 0 ;;
-    */cereblnk/flags/*)                   return 0 ;;
-    */cereblnk/telemetry/*)               return 0 ;;
-  esac
-  return 1
-}
+# The conductor-ownership table lives in scripts/lib/cbowner.sh, because
+# the shell path (below) asks the same question about the same files
+# and a second copy would drift from the first — which is the defect
+# CB-122 fixed. Sourced above with cbenv; if it is missing, every path
+# reads as unowned and the guard blocks conductor writes it should
+# allow, so the absence is loud rather than silent.
 
 cb_handoff() {
   _p="${CB_BLOCKED_PATH:-}"
@@ -196,6 +156,39 @@ for k in ("file_path", "path", "notebook_path"):
         break
 ' 2>/dev/null || true)"
   export CB_BLOCKED_PATH
+  # CB-123 — the shell reaches the same files. A Bash call carries no
+  # file_path, so without this branch the guard would either wave every
+  # command through (the hole a blocked run announced it would use) or
+  # block all of them, including the detect-stack / select-agents /
+  # run-quiet / git calls run-discipline requires the conductor to make.
+  # So: ask what the command writes. Nothing -> allow. Targets the
+  # conductor owns -> allow. Anything else, including a write whose
+  # target cannot be resolved -> block, on the same terms as an edit.
+  CB_SHELL_WRITES=""
+  if [ "$(printf '%s' "$INPUT" | $PYBIN -c '
+import json, sys
+try:
+    print((json.load(sys.stdin) or {}).get("tool_name") or "")
+except Exception:
+    print("")
+' 2>/dev/null || true)" = "Bash" ]; then
+    _sw="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/shellwrite.py"
+    CB_SHELL_WRITES="$(printf '%s' "$INPUT" | $PYBIN "$_sw" 2>/dev/null || true)"
+    [ -n "$CB_SHELL_WRITES" ] || exit 0   # a read-only command
+    _unowned=""
+    while IFS= read -r _t; do
+      [ -n "$_t" ] || continue
+      cb_is_conductor_owned "$_t" || { _unowned="$_t"; break; }
+    done <<EOF
+$CB_SHELL_WRITES
+EOF
+    [ -n "$_unowned" ] || exit 0          # every target is the conductor's own
+    CB_BLOCKED_PATH="$_unowned"
+    export CB_BLOCKED_PATH
+    [ "$CB_BLOCKED_PATH" = "?" ] && CB_BLOCKED_PATH="" && export CB_BLOCKED_PATH
+    echo "Cereblnk DelegationGuard: a run is active — this command writes, and file edits belong to the surface specialist subagent (agent-selection-policy §1/§3b), not the conducting conversation. Reaching the file through the shell is the same edit under another tool.$(cb_handoff)" >&2
+    exit 2
+  fi
   if cb_is_conductor_owned "$CB_BLOCKED_PATH"; then
     exit 0   # the conductor's own plan/state/flags/telemetry
   fi
@@ -212,6 +205,14 @@ else
   # is the cheaper mistake.
   case "$INPUT" in
     *cereblnk*plan.md*|*cereblnk*state.md*) exit 0 ;;
+  esac
+  # The shell branch needs a parser it does not have here. Blocking
+  # every command instead would stop the conductor running the scripts
+  # run-discipline requires of it, so this path fails open and the
+  # shell boundary is simply unenforced without Python. Stated, not
+  # implied: cbenv-equipped installs always have PYBIN.
+  case "$INPUT" in
+    *'"tool_name"'*'"Bash"'*|*'"command"'*) exit 0 ;;
   esac
 fi
 
