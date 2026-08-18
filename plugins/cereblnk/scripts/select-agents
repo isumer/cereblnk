@@ -197,11 +197,33 @@ for r in rules:
 if not agents:
     print("# select-agents — UNRESOLVED", file=sys.stderr)
     print("unresolved: true", file=sys.stderr)
-    print("reason: no path rule and no text rule matched", file=sys.stderr)
-    print("next: re-run with --text \"<the request>\" or name the surface; "
-          "agent-selection-policy.md 1 stays authoritative. A silent "
-          "single-agent default is how a run gets the wrong specialist.",
-          file=sys.stderr)
+    # The advice has to differ by what was already tried. Observed live:
+    # a request naming a class and a verb ("review the OrderValidator
+    # class") carries no surface noun, so no text rule matches — which
+    # is correct, because "review" does not say whose work it is. But
+    # the message answered a --text call by asking for a --text call.
+    # The run made that call twice, got the same sentence twice, then
+    # abandoned the selector and chose the specialist by reading the
+    # policy itself: routing decided by a model instead of by the
+    # table, which is the failure exit 3 exists to prevent. A refusal
+    # that repeats the step just taken is not a refusal, it is a loop.
+    if text:
+        print("reason: --text was supplied and no rule matched it — the "
+              "request names no surface", file=sys.stderr)
+        print("next: resolve the symbol, class or file the request names "
+              "to a repository path and pass that path "
+              "(`select-agents <path>`); a path carries the surface a "
+              "verb cannot. Reading agent-selection-policy.md and "
+              "choosing by hand is not the fallback — §1 stays "
+              "authoritative precisely because a specialist chosen "
+              "silently is how a run gets the wrong one.",
+              file=sys.stderr)
+    else:
+        print("reason: no path rule matched", file=sys.stderr)
+        print("next: re-run with --text \"<the request>\" or name the "
+              "surface; agent-selection-policy.md §1 stays authoritative. "
+              "A silent single-agent default is how a run gets the wrong "
+              "specialist.", file=sys.stderr)
     raise SystemExit(3)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")

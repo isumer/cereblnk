@@ -175,6 +175,32 @@ def main():
         if "refactoring-agent" in r.stdout:
             ok = False; why.append(text[:24] + " (refactoring-agent selected)")
 
+    # CB-124: exit 3 is correct here — "review the OrderValidator class"
+    # names a verb and a symbol, not a surface. The advice was not: it
+    # answered a --text call by asking for a --text call, and the run
+    # that got it twice abandoned the selector and chose the specialist
+    # by reading the policy itself. The refusal must name the step that
+    # has not been tried, and the path route must actually resolve.
+    r_txt = sh(["bash", str(PS / "select-agents"), "--text",
+                "review the OrderValidator class"])
+    if r_txt.returncode != 3:
+        ok = False; why.append("unresolved --text did not exit 3")
+    if "re-run with --text" in r_txt.stderr:
+        ok = False; why.append("unresolved --text still asks for --text")
+    if "select-agents <path>" not in r_txt.stderr:
+        ok = False; why.append("unresolved --text does not name the path route")
+    r_bare = sh(["bash", str(PS / "select-agents"), "nothing.zzz"])
+    if r_bare.returncode != 3 or "re-run with --text" not in r_bare.stderr:
+        ok = False; why.append("unresolved path lost its --text advice")
+    for r_msg in (r_txt, r_bare):
+        if "policy.md 1 " in r_msg.stderr or "§1" not in r_msg.stderr:
+            ok = False; why.append("unresolved message lost its section reference")
+    # the escape the message names has to work
+    r_resolved = sh(["bash", str(PS / "select-agents"),
+                     "src/main/java/com/x/OrderValidator.java"])
+    if r_resolved.returncode != 0 or "backend-agent" not in r_resolved.stdout:
+        ok = False; why.append("the path route the message names does not resolve")
+
     suite("select-agents triples", ok, f"mismatch on {why}")
 
     print("verify:"); print("\n".join(results))

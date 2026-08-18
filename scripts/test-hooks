@@ -63,6 +63,12 @@ def main():
             ("state.md", str(cbd / "state.md")),
             ("run flag", str(cbd / "flags/run-active")),
             ("telemetry", str(cbd / "telemetry/context.log")),
+            # agent-selection-policy §3: the orchestrator copies the
+            # selector's block here. Absent from the table, this write
+            # was blocked mid-run and told to delegate the routing
+            # decision the conductor had just made.
+            ("skills-required.yaml",
+             str(cbd / "context/implement-2026-08-03/skills-required.yaml")),
         ]
         for label, path in owned:
             case(f"delegation: conductor owns {label} -> allow",
@@ -70,14 +76,67 @@ def main():
 
         # The exemption must not become a hole. A Response Block is a
         # subagent's output; a conductor writing one fabricates it.
+        # CB-122: the flags exemption granted the conductor the one flag
+        # it does not own. Blocked from a Response Block, a run wrote
+        # conductor-override instead and the guard allowed it; nothing
+        # but ScratchGuard — which nudges twice, then allows — stood in
+        # the way. The hatch costs a human act or it is not a hatch.
         for label, path in (
             ("task ledger block", str(cbd / "context/implement-2026-08-03/T-3.yaml")),
             ("authored spec", str(cbd / "memory/specs/design.md")),
             ("real source", str(proj / "src/Main.java")),
+            ("self-armed override", str(cbd / "flags/conductor-override")),
+            ("self-armed override on Windows",
+             r"C:\Users\me\.claude\cereblnk\flags\conductor-override"),
         ):
             case(f"delegation: {label} still blocked",
                  "delegation-guard.sh", edit(path), 2, "surface specialist")
         case("delegation: unparseable while armed -> block", "delegation-guard.sh", "not-json", 2)
+
+        # CB-123: the shell reaches the same files. The boundary has to
+        # hold under a redirection without stopping the scripts
+        # run-discipline requires the conductor to run.
+        def bash(cmd, **extra):
+            return json.dumps(dict({"tool_name": "Bash",
+                                    "tool_input": {"command": cmd}}, **extra))
+
+        for label, cmd in (
+            ("git read", "git diff --name-only main..."),
+            ("selector", "scripts/select-agents --text 'add idempotency'"),
+            ("wrapped build", "scripts/run-quiet T-1 npm test"),
+            ("stderr merge", "npm test 2>&1 | head -20"),
+            ("redirect to sink", "ls -la > /dev/null"),
+            ("quoted angle bracket", "grep -r 'a > b' src/"),
+            ("arithmetic in python", 'python3 -c "print(1)"'),
+            ("mkdir", "mkdir -p .claude/cereblnk/flags"),
+            ("boundary flag via literal path",
+             'echo "src/" > .claude/cereblnk/flags/boundary'),
+            ("boundary flag via $CB_DIR", 'echo "src/" > $CB_DIR/flags/boundary'),
+        ):
+            case(f"delegation: shell {label} -> allow", "delegation-guard.sh",
+                 bash(cmd), 0)
+
+        for label, cmd in (
+            ("heredoc into a Response Block",
+             "cat > .claude/cereblnk/context/R-1/T-001-planner.yaml <<'EOF'\nx: 1\nEOF"),
+            ("in-place edit of source", "sed -i 's/a/b/' src/Main.java"),
+            ("copy over source", "cp /tmp/staged src/Main.java"),
+            ("tee into the tree", "npm run build | tee build.log"),
+            ("self-armed override through the shell",
+             "echo 1 > $CB_DIR/flags/conductor-override"),
+            ("nested shell redirect", 'bash -c "echo x > src/a.txt"'),
+            ("inline interpreter write", "python3 -c \"open('src/a','w')\""),
+            ("opaque writer via git", "git apply /tmp/patch.diff"),
+            ("opaque writer via patch", "patch -p1 < /tmp/d.diff"),
+            # an owned target does not launder an unresolved one
+            ("owned write chained to an opaque one",
+             'echo "src/" > $CB_DIR/flags/boundary && git apply /tmp/p.diff'),
+        ):
+            case(f"delegation: shell {label} -> block", "delegation-guard.sh",
+                 bash(cmd), 2, "the same edit under another tool")
+
+        case("delegation: shell subagent -> allow", "delegation-guard.sh",
+             bash("sed -i 's/a/b/' src/Main.java", agent_id="abc"), 0)
 
         # CB-099: staleness bounds. An aged flag whose run ledger is also
         # cold is a dead run, and must not brick editing forever.
