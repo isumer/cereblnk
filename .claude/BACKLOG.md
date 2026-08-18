@@ -142,4 +142,4 @@ read.
 - [x] **CB-120** — Correct and unread: the generated panels reverted for a systems note
 - [x] **CB-121** — Rewrite: the old behaviour is ruled, not transcribed
 - [x] **CB-122** — The guard held the door it was guarding
-- [ ] **CB-123** — Delegation boundary reaches the shell
+- [x] **CB-123** — Delegation boundary reaches the shell
