@@ -7,6 +7,56 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.2] — The boundary reaches the shell
+
+1.3.1 closed the hatch the guard was holding open. This closes the door
+beside it. DelegationGuard was registered on `Write|Edit|MultiEdit|
+NotebookEdit`, so a redirection reached the same files under no
+delegation check — and the run that found the hatch had already stated
+the alternative in as many words before taking it.
+
+The hard part is not detection, it is the false-positive budget.
+run-discipline requires the conductor to run `detect-stack`,
+`select-agents`, `run-quiet` and git; two skills tell it to write a
+boundary flag with `echo ... > $CB_DIR/flags/boundary`. A guard that
+blocks commands wholesale stops the run it is protecting, and a guard
+the conductor learns to route around protects nothing. So the question
+asked is narrower: what does this command write?
+
+### Added
+
+- **`scripts/lib/shellwrite.py`** — resolves the write targets of a
+  shell command by walking `shlex` tokens: redirections that create or
+  extend a file (`>&` excluded, so `2>&1` is not a write), `tee`,
+  `touch`, `cp`, `mv`, `sed -i`, and the writers whose target it cannot
+  name (`patch`, `dd`, `git apply`), which resolve to unknown. `sh -c`
+  and `bash -c` are re-read as shell rather than guessed at; other
+  inline interpreters are unknown only when the code names a write, so
+  `python3 -c "print(1)"` is not a blocked command.
+- **The shell branch in DelegationGuard.** No write targets: allow.
+  Every target conductor-owned: allow. Anything else, including a write
+  whose target cannot be resolved: block, with the same handoff the
+  edit path gives. Registered on the `Bash` matcher alongside
+  DestructiveCommand.
+
+### Changed
+
+- **The conductor-ownership table moved to `scripts/lib/cbowner.sh`.**
+  Two callers now ask the same policy question, and two copies of a
+  policy table drift — 1.3.1 existed because one had drifted from the
+  policy in both directions at once.
+
+### What this does not claim
+
+A floor, not a proof. A script that redirects internally, a base64
+round trip, an editor invocation, an obfuscated one-liner: all pass.
+The bound is the ordinary write forms a model reaches for when a Write
+is refused, and the cost of the bypass goes from zero to deliberate.
+Without Python the shell branch fails open and the boundary is
+unenforced there; that is stated in the hook rather than implied away.
+`rm` is untouched — deletion is DestructiveCommand's surface, and
+mixing them would put two failure budgets in one checker.
+
 ## [1.3.1] — The guard held the door it was guarding
 
 DelegationGuard blocked a run from writing a subagent's Response Block,
