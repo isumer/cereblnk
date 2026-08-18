@@ -7,7 +7,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
-## [1.3.1] — The guard held the door it was guarding
+## [1.3.1] — Three refusals a run walked around
 
 DelegationGuard blocked a run from writing a subagent's Response Block,
 which is exactly its job. What happened next is the finding. The run
@@ -19,9 +19,19 @@ there too, it announced the next route in as many words: it would write
 the files from the command line instead, where no delegation check was
 registered. That plan would have worked.
 
-Two doors, then, and the guard was holding both. This release closes
-them and moves the table that decides such questions somewhere a second
-caller can read it.
+Two doors, then, and the guard was holding both. A third refusal fell
+the same way in a later run: `select-agents` returned exit 3 on a
+request that named a class and a verb, correctly, because "review the
+OrderValidator class" carries no surface. But the message answered a
+`--text` call by asking for a `--text` call. The run made that call
+twice, read the same sentence twice, and then chose the specialist by
+reading `agent-selection-policy.md` itself — routing decided by a model
+instead of by the table, which is the outcome exit 3 exists to prevent.
+
+The pattern is one pattern. A mechanism refuses; the refusal does not
+leave a usable next step; the run finds its own way past. This release
+closes the two doors, and makes the third refusal say something the run
+has not already tried.
 
 The hatch was built to cost an explicit act by the person. That cost
 was carried entirely by keeping its name out of model-facing messages —
@@ -55,6 +65,14 @@ asked is narrower: what does this command write?
 - **`context/<run>/skills-required.yaml` is exempt.** It is the
   conductor's own control surface, named as such by the policy that
   tells the orchestrator to write it.
+- **`select-agents` exit 3 stops repeating the step just taken.** The
+  advice now differs by what was tried: without `--text`, ask for it;
+  with `--text` and nothing matched, say the request names no surface
+  and send the caller to resolve the symbol it does name into a
+  repository path, which is the route that resolves. Reading the
+  policy and choosing by hand is named as not the fallback. The
+  section reference in that message was `policy.md 1` in the source —
+  a pointer to nothing — and is now `§1`.
 - **The delegation boundary reaches the shell.** DelegationGuard runs
   on the `Bash` matcher alongside DestructiveCommand. No write targets:
   allow. Every target conductor-owned: allow. Anything else, including

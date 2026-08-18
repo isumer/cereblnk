@@ -143,3 +143,4 @@ read.
 - [x] **CB-121** — Rewrite: the old behaviour is ruled, not transcribed
 - [x] **CB-122** — The guard held the door it was guarding
 - [x] **CB-123** — Delegation boundary reaches the shell
+- [x] **CB-124** — A refusal that repeats the step just taken
