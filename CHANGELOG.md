@@ -7,6 +7,52 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.2] — A verdict from a specialist that was never shipped
+
+1.3.1 closed three refusals a run had walked around. This is the fourth,
+and it followed directly from the third. Having abandoned
+`select-agents` and chosen by hand, the conductor asked for
+`domain-expert` — a name it took from the project's own skills
+directory, where it is a skill, not an agent, and which ships with no
+agent file at all.
+
+The Task returned "Done" with zero tool uses and no Response Block. A
+silent no-op, read by the run as a finished task. It then re-ran the
+work on a general-purpose agent under a domain-expertise prompt and
+wrote the block itself, so a fabricated specialist's verdict reached the
+gate and the gate believed it. Nothing in the pipeline asked whether the
+specialist existed.
+
+The category error is worth naming because it is what produced the
+failure: a skill is a capability an agent loads, not an agent. The check
+that catches it needs no discovery at all. It needs only the roster
+Cereblnk ships, which it knows by definition — no directory is scanned
+and no project layout is assumed, which matters because a plugin that
+expects one project's structure has stopped being general.
+
+### Fixed
+
+- **`acp-lint` validates `role:` against the shipped roster.**
+  CamelCase (`SecurityAgent`) resolves to filenames
+  (`security-agent.md`); a role with no agent file is a V-1 violation,
+  and the message lists the agents that do exist and names the
+  skill/agent distinction. Fails open when `agents/` cannot be
+  resolved: acp-lint is run against blocks outside the plugin tree, and
+  a linter that rejects every role because it cannot find its own
+  roster is worse than one that checks a field less.
+
+### What this does not claim
+
+The fabricated specialist is caught at the artifact, not at the spawn.
+Whether a Task naming a nonexistent agent can be refused before it runs
+depends on whether the platform delivers `Task` to `PreToolUse`, which
+is unverified and therefore not designed against.
+
+Task Blocks are left alone. A shipped fixture asserts
+`role: LegalReviewAgent`, a name outside the roster, so whether the
+roster is closed for task blocks is an open question rather than one
+this patch answers quietly.
+
 ## [1.3.1] — Three refusals a run walked around
 
 DelegationGuard blocked a run from writing a subagent's Response Block,
