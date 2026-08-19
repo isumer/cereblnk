@@ -39,4 +39,4 @@ confident wrong one.
 | G-2 | `scripts/ground-check` (M) — dangling refs exit 1 |
 | G-3 | acp-lint V-3 evidence requirement + PATTERNS frontmatter |
 | G-4 | authoring-style + gate review: bare numbers → Estimated downgrade |
-| G-5 | ACP `unknowns` field is never compressed away (02 §4.2) |
+| G-5 | ACP `unknowns` field is never compressed away (02 §3) |

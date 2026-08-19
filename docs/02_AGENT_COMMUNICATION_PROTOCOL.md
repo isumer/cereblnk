@@ -1,6 +1,6 @@
 # Agent Communication Protocol (ACP)
 
-> Status: Frozen v1.1 (Amendment A1 applied — see Appendix)
+> Status: Frozen v1.2 (Amendments A1, A3 applied — see Appendix)
 > This document defines the ONLY format in which agents exchange information.
 > Depends on: 00_MANIFESTO.md, 01_RUNTIME_SPECIFICATION.md
 > No agent output in free-form text is ever accepted by another agent.
@@ -125,7 +125,25 @@ Rules:
 - If a decision depends on any `assumed` fact, the decision text must say so.
 - Labels are preserved verbatim through compression and synthesis.
 
-### 4.2 Evidence references
+### 4.2 The role vocabulary is closed
+
+`role:` names an agent that exists. The legal values are exactly the
+agent files the platform ships — `agents/**/<name>-agent.md` — matched
+without regard to case or separators, so `SecurityAgent` and
+`security-agent` are the same role.
+
+A role is not a description of the expertise wanted. It is the address
+of something that can be spawned. A block naming a role with no agent
+file addresses nothing: the Task Block assigns work that cannot be
+picked up, and the Response Block reports a verdict nobody reached.
+
+The distinction this closes is skill against agent. A skill is a
+capability an agent loads; an agent is what runs. When a request needs
+expertise the roster does not name, the answer is the surface
+specialist that owns the files, carrying whatever skills apply — never
+a new role invented at the point of use.
+
+### 4.3 Evidence references
 
 - Evidence is referenced, never inlined in bulk: `CTX-114#L42-58`.
 - A claim without an evidence reference cannot be labeled `known`.
@@ -139,13 +157,13 @@ Rules:
   reference from a pointer into evidence. `scripts/ground-check`
   resolves both forms and fails on a dangling one.
 
-### 4.3 Confidence
+### 4.4 Confidence
 
 - Single calibrated number plus a one-line basis.
 - Confidence above 0.9 requires zero `assumed` facts in the decision chain.
 - Confidence is about the decision, not about individual facts.
 
-### 4.4 Status semantics
+### 4.5 Status semantics
 
 | Status | Meaning | Runtime action |
 |---|---|---|
@@ -207,6 +225,30 @@ re-issues the task:
 ---
 
 ## Appendix — Amendment Log
+
+**A3 (v1.1 → v1.2).**
+- §4 Field Rules: adds §4.2, closing the `role:` vocabulary to the
+  agent files the platform ships; former §4.2 becomes §4.3.
+- Old text: none. `role:` appeared only in the §2 and §3 examples, both
+  spelling it `SecurityAgent`. No rule anywhere said which values were
+  legal.
+- New text: §4.2 as written above.
+- Reason: the silence was load-bearing. A run whose selector returned
+  UNRESOLVED chose a specialist by hand and wrote `role: domain-expert`
+  in a Task Block — a name it took from the project's own skills
+  directory, where it is a skill and not an agent. The Task returned
+  "Done" with zero tool uses and no Response Block, the run read that
+  silent no-op as a finished task, re-ran the work on a general-purpose
+  agent and wrote the block itself. A fabricated specialist's verdict
+  reached the gate. Nothing had asked whether the specialist existed,
+  because nothing had ever said it must.
+- Impact: `tests/fixtures/acp/good-task-block.yaml` asserted
+  `role: LegalReviewAgent`, a name with no agent file, and was the only
+  evidence anyone had ever considered the question — it is now
+  `RequirementsAgent`, and the objective is unchanged. `acp-lint`
+  checks the roster on every block kind rather than responses only, so
+  the check reaches the Task Block, which is where an invented role is
+  written first. Blocks naming real agents are unaffected.
 
 **A1 (v1.0 → v1.1).**
 - §2 Task Block: adds the optional `documents:` field — a list of

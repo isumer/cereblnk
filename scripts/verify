@@ -48,7 +48,7 @@ unsupported paths where the tool has them):
 
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
-import pathlib, subprocess, sys
+import pathlib, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
@@ -131,6 +131,50 @@ def main():
     # doc_id, an empty section list and a non-outline section id are not.
     t_good = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/good-task-block.yaml")])
     t_bad = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/bad-task-block.yaml")])
+    # CB-125: a run spawned a specialist that was never shipped, got a
+    # silent no-op, re-ran the work on a general-purpose agent and wrote
+    # the block itself. The fabricated verdict reached the gate. The
+    # roster is the one thing Cereblnk knows without discovering
+    # anything, so the block that claims a role has to match it.
+    _acp_good = (ROOT / "tests/fixtures/acp/good-block.yaml").read_text()
+    _tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-acp-"))
+    fake = _tmp / "fabricated-role.yaml"
+    fake.write_text(
+        _acp_good
+        .replace("role: SecurityAgent", "role: DomainExpert"),
+        encoding="utf-8")
+    f_bad = sh(["bash", str(PS / "acp-lint"), str(fake)])
+    real = _tmp / "real-role.yaml"
+    real.write_text(
+        _acp_good
+        .replace("role: SecurityAgent", "role: security-agent"),
+        encoding="utf-8")
+    f_ok = sh(["bash", str(PS / "acp-lint"), str(real)])
+    # ACP writes the role CamelCase (`role: SecurityAgent`) while the
+    # roster is filenames (`security-agent.md`). Both spellings have to
+    # resolve, or the check rejects every well-formed block there is.
+    camel = _tmp / "camel-role.yaml"
+    camel.write_text(_acp_good, encoding="utf-8")
+    f_camel = sh(["bash", str(PS / "acp-lint"), str(camel)])
+    # CB-127: the assignment is where an invented role is written first.
+    # Before this, the check ran on responses only and the Task Block
+    # carrying `role: domain-expert` sailed through — twenty-seven
+    # minutes ahead of the block that got refused.
+    t_fake = _tmp / "fabricated-task-role.yaml"
+    t_fake.write_text(
+        (ROOT / "tests/fixtures/acp/good-task-block.yaml").read_text()
+        .replace("role: RequirementsAgent", "role: DomainExpert"),
+        encoding="utf-8")
+    t_bad_role = sh(["bash", str(PS / "acp-lint"), str(t_fake)])
+    suite("acp-lint roster",
+          f_bad.returncode == 1 and "is not a Cereblnk agent" in f_bad.stderr
+          and "not an agent" in f_bad.stderr
+          and f_ok.returncode == 0 and f_camel.returncode == 0
+          and t_bad_role.returncode == 1
+          and "is not a Cereblnk agent" in t_bad_role.stderr,
+          f"fabricated rc={f_bad.returncode}, spelled-out rc={f_ok.returncode}, "
+          f"CamelCase rc={f_camel.returncode}, task rc={t_bad_role.returncode}")
+
     suite("acp-lint fixtures",
           good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids)
           and t_good.returncode == 0 and t_bad.returncode == 1

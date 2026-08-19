@@ -7,6 +7,69 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.2] — A verdict from a specialist that was never shipped
+
+1.3.1 closed three refusals a run had walked around. This is the fourth,
+and it followed directly from the third. Having abandoned
+`select-agents` and chosen by hand, the conductor asked for
+`domain-expert` — a name it took from the project's own skills
+directory, where it is a skill, not an agent, and which ships with no
+agent file at all.
+
+The Task returned "Done" with zero tool uses and no Response Block. A
+silent no-op, read by the run as a finished task. It then re-ran the
+work on a general-purpose agent under a domain-expertise prompt and
+wrote the block itself, so a fabricated specialist's verdict reached the
+gate and the gate believed it. Nothing in the pipeline asked whether the
+specialist existed.
+
+The category error is worth naming because it is what produced the
+failure: a skill is a capability an agent loads, not an agent. The check
+that catches it needs no discovery at all. It needs only the roster
+Cereblnk ships, which it knows by definition — no directory is scanned
+and no project layout is assumed, which matters because a plugin that
+expects one project's structure has stopped being general.
+
+### Changed
+
+- **ACP is amended to v1.2 (A3): the `role:` vocabulary is closed.**
+  The spec had never said which values were legal — `role:` appeared
+  only in two examples, both spelling it `SecurityAgent`, and no rule
+  anywhere constrained it. That silence was load-bearing: it is the gap
+  the invented role walked through. §4.2 now states that a role names
+  an agent that exists, matched without regard to case or separators,
+  and that a request needing expertise the roster does not name is
+  answered by the surface specialist carrying the relevant skills —
+  never by a role invented at the point of use. Former §4.2–4.4 shift
+  down one; `grounding-policy` G-5 pointed into that range for the
+  `unknowns` field and now cites §3, where the field actually lives.
+
+### Fixed
+
+- **`acp-lint` validates `role:` against the shipped roster.**
+  CamelCase (`SecurityAgent`) resolves to filenames
+  (`security-agent.md`); a role with no agent file is a V-1 violation,
+  and the message lists the agents that do exist and names the
+  skill/agent distinction. Fails open when `agents/` cannot be
+  resolved: acp-lint is run against blocks outside the plugin tree, and
+  a linter that rejects every role because it cannot find its own
+  roster is worse than one that checks a field less.
+- **The check runs on Task Blocks too.** The assignment is where an
+  invented role is written first; the Response Block is only where the
+  fabricated answer lands, twenty-seven minutes later. Catching it at
+  the assignment is the difference between a refused block and a wasted
+  run. `tests/fixtures/acp/good-task-block.yaml` asserted
+  `role: LegalReviewAgent` — a name with no agent file, and the only
+  evidence anyone had ever considered the question — and now reads
+  `RequirementsAgent`, with its objective unchanged.
+
+### What this does not claim
+
+The fabricated specialist is caught at the artifact, not at the spawn.
+Whether a Task naming a nonexistent agent can be refused before it runs
+depends on whether the platform delivers `Task` to `PreToolUse`, which
+is unverified and therefore not designed against.
+
 ## [1.3.1] — Three refusals a run walked around
 
 DelegationGuard blocked a run from writing a subagent's Response Block,
