@@ -2,7 +2,7 @@ acp_version: "1.0"
 kind: task
 task_id: T-021
 run_id: R-2026-08-06-001
-role: LegalReviewAgent
+role: RequirementsAgent
 objective: >
   Determine whether the termination clause permits unilateral exit
   inside the initial term.

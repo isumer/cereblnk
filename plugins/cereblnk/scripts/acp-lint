@@ -18,6 +18,7 @@ cb_require_python
 [ $# -ge 1 ] || { echo "usage: acp-lint <response-block.yaml>" >&2; exit 2; }
 [ -f "$1" ] || { echo "acp-lint: no such file: $1" >&2; exit 2; }
 export BLOCK="$1"
+export CB_AGENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../agents" 2>/dev/null && pwd || true)"
 $PYBIN << 'PY'
 import os, re, sys
 
@@ -34,6 +35,50 @@ kind = top("kind")
 # ---- T-1: Task Block documents: field (ACP A1) ----
 # A task may hand over indexed sections; it may never hand over a bare
 # path, which is an instruction to read the whole file.
+# ---- V-1: the role has to be an agent that exists (CB-125, CB-127) ----
+# Checked on every kind, Task Blocks included. The Task Block is where
+# an invented role is written FIRST — the conductor assigning the work —
+# and the Response Block is only where the fabricated answer lands,
+# twenty-seven minutes later. ACP §4.2 closes the vocabulary; catching
+# it at the assignment is the difference between a refused block and a
+# wasted run.
+#
+# A run asked for a specialist that was never shipped. The Task returned
+# "Done" with zero tool uses and no Response Block — a silent no-op the
+# conductor read as a finished task. It then re-ran the work on a
+# general-purpose agent under a domain-expertise prompt and wrote the
+# block itself, so a fabricated specialist's verdict reached the gate
+# and the gate believed it.
+#
+# The name came from the project's own skills directory. That is the
+# category error worth naming in the message: a skill is a capability an
+# agent loads, not an agent. Nothing here scans for skills or assumes
+# any project layout — the check needs only the roster Cereblnk ships,
+# which it knows by definition.
+#
+# Fails open when agents/ cannot be resolved: acp-lint is also run
+# against blocks outside the plugin tree, and a linter that rejects
+# every role because it cannot find its own roster is worse than one
+# that checks a field less.
+def _norm(s):
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+role = (top("role") or "").split("#")[0].strip()
+agent_dir = os.environ.get("CB_AGENT_DIR") or ""
+roster = {}
+if agent_dir and os.path.isdir(agent_dir):
+    for dirpath, _dirnames, filenames in os.walk(agent_dir):
+        for fn in filenames:
+            if fn.endswith("-agent.md"):
+                roster[_norm(fn[:-3])] = fn[:-3]
+if role and roster and _norm(role) not in roster:
+    V.append(f"V-1: role {role!r} is not a Cereblnk agent — no agents/**/"
+             f"{_norm(role)}.md ships with the plugin. If this names a "
+             f"skill, a skill is a capability an agent loads, not an "
+             f"agent: keep the surface specialist and attach the skill "
+             f"to it. Known agents: " + ", ".join(sorted(roster.values())))
+
+
 if kind == "task":
     dm = re.search(r'^documents\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
     if dm:
@@ -68,6 +113,7 @@ if kind not in ("response", "verification", "challenge"):
 for key in ("acp_version", "task_id", "role", "status", "decision", "confidence"):
     if top(key) is None:
         V.append(f"V-1: missing top-level field: {key}")
+
 status = (top("status") or "").split("#")[0].strip()
 if status and status not in ("completed", "blocked", "escalated"):
     V.append(f"V-1: status must be completed|blocked|escalated (got: {status!r})")
