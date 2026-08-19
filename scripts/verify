@@ -156,12 +156,24 @@ def main():
     camel = _tmp / "camel-role.yaml"
     camel.write_text(_acp_good, encoding="utf-8")
     f_camel = sh(["bash", str(PS / "acp-lint"), str(camel)])
+    # CB-127: the assignment is where an invented role is written first.
+    # Before this, the check ran on responses only and the Task Block
+    # carrying `role: domain-expert` sailed through — twenty-seven
+    # minutes ahead of the block that got refused.
+    t_fake = _tmp / "fabricated-task-role.yaml"
+    t_fake.write_text(
+        (ROOT / "tests/fixtures/acp/good-task-block.yaml").read_text()
+        .replace("role: RequirementsAgent", "role: DomainExpert"),
+        encoding="utf-8")
+    t_bad_role = sh(["bash", str(PS / "acp-lint"), str(t_fake)])
     suite("acp-lint roster",
           f_bad.returncode == 1 and "is not a Cereblnk agent" in f_bad.stderr
           and "not an agent" in f_bad.stderr
-          and f_ok.returncode == 0 and f_camel.returncode == 0,
+          and f_ok.returncode == 0 and f_camel.returncode == 0
+          and t_bad_role.returncode == 1
+          and "is not a Cereblnk agent" in t_bad_role.stderr,
           f"fabricated rc={f_bad.returncode}, spelled-out rc={f_ok.returncode}, "
-          f"CamelCase rc={f_camel.returncode}")
+          f"CamelCase rc={f_camel.returncode}, task rc={t_bad_role.returncode}")
 
     suite("acp-lint fixtures",
           good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids)
