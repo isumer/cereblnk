@@ -146,3 +146,4 @@ read.
 - [x] **CB-124** — A refusal that repeats the step just taken
 - [x] **CB-125** — A verdict from a specialist that was never shipped
 - [ ] **CB-126** — Project-local skills: an additive binding surface
+- [x] **CB-127** — The role vocabulary is closed (ACP A3)

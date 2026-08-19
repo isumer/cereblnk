@@ -30,6 +30,20 @@ Cereblnk ships, which it knows by definition — no directory is scanned
 and no project layout is assumed, which matters because a plugin that
 expects one project's structure has stopped being general.
 
+### Changed
+
+- **ACP is amended to v1.2 (A3): the `role:` vocabulary is closed.**
+  The spec had never said which values were legal — `role:` appeared
+  only in two examples, both spelling it `SecurityAgent`, and no rule
+  anywhere constrained it. That silence was load-bearing: it is the gap
+  the invented role walked through. §4.2 now states that a role names
+  an agent that exists, matched without regard to case or separators,
+  and that a request needing expertise the roster does not name is
+  answered by the surface specialist carrying the relevant skills —
+  never by a role invented at the point of use. Former §4.2–4.4 shift
+  down one; `grounding-policy` G-5 pointed into that range for the
+  `unknowns` field and now cites §3, where the field actually lives.
+
 ### Fixed
 
 - **`acp-lint` validates `role:` against the shipped roster.**
@@ -40,6 +54,14 @@ expects one project's structure has stopped being general.
   resolved: acp-lint is run against blocks outside the plugin tree, and
   a linter that rejects every role because it cannot find its own
   roster is worse than one that checks a field less.
+- **The check runs on Task Blocks too.** The assignment is where an
+  invented role is written first; the Response Block is only where the
+  fabricated answer lands, twenty-seven minutes later. Catching it at
+  the assignment is the difference between a refused block and a wasted
+  run. `tests/fixtures/acp/good-task-block.yaml` asserted
+  `role: LegalReviewAgent` — a name with no agent file, and the only
+  evidence anyone had ever considered the question — and now reads
+  `RequirementsAgent`, with its objective unchanged.
 
 ### What this does not claim
 
@@ -47,11 +69,6 @@ The fabricated specialist is caught at the artifact, not at the spawn.
 Whether a Task naming a nonexistent agent can be refused before it runs
 depends on whether the platform delivers `Task` to `PreToolUse`, which
 is unverified and therefore not designed against.
-
-Task Blocks are left alone. A shipped fixture asserts
-`role: LegalReviewAgent`, a name outside the roster, so whether the
-roster is closed for task blocks is an open question rather than one
-this patch answers quietly.
 
 ## [1.3.1] — Three refusals a run walked around
 
