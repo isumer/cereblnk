@@ -145,5 +145,7 @@ read.
 - [x] **CB-123** — Delegation boundary reaches the shell
 - [x] **CB-124** — A refusal that repeats the step just taken
 - [x] **CB-125** — A verdict from a specialist that was never shipped
-- [ ] **CB-126** — Project-local skills: an additive binding surface
+- [x] **CB-126** — Project-local skills: dropped, the host already binds them
 - [x] **CB-127** — The role vocabulary is closed (ACP A3)
+- [x] **CB-128** — A gate that had never once applied
+- [x] **CB-129** — Backlog ids stop shipping in copied templates

@@ -59,7 +59,7 @@ next_action: >
 skills_loaded: [java, spring-boot]   # every skill this agent loaded,
                                      # floor first, discovery additions after.
                                      # Verifier compares against the run's
-                                     # skills-required.yaml (CB-097).
+                                     # skills-required.yaml.
 
 artifacts: []
 
