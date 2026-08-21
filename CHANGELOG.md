@@ -7,6 +7,61 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.4] — Rules that claimed every class in the project
+
+1.3.3 made the stack gate apply for the first time. This is the other
+half of the same question, and the larger half: the gate decides which
+*families* of rules are relevant, and the path globs inside each family
+decide which *files* pull them.
+
+Three spring-boot rules claimed `**/src/main/java/**/*.java` — every
+class in a Maven project. Opening one service class pulled all five
+spring-boot rule files, and the service used two of them.
+
+Each of those files already says something narrower, in its own Trigger
+table:
+
+| File | Its own triggers |
+|---|---|
+| `hooks` | a property file changed · a controller mapping changed · a bean or configuration class changed |
+| `patterns` | a unit of work spans writes · an exception reaches the edge · work runs off the request thread |
+| `security` | an endpoint is added or mapped · a request payload is bound · management or error output changes |
+
+None of those is "any class in the project". The globs now say what the
+tables have said all along, which is why this is a correction rather
+than an opinion.
+
+### Fixed
+
+- **`frameworks/spring-boot/{hooks,patterns,security}.md` narrowed** to
+  the surfaces their Trigger tables name. Measured on a Spring profile:
+  a service class drops from five spring-boot rules to two; a
+  controller keeps four.
+- **Every directory glob is paired with a filename glob** —
+  `**/service/**/*.java` *and* `**/*Service.java` — the idiom
+  `hibernate-jpa` already used. A project that does not split layers
+  into directories still matches, so nobody loses a constraint to a
+  naming convention they never adopted. Losing a rule silently is the
+  failure this release is most exposed to, and the pairing is the guard
+  against it.
+
+### Unchanged, deliberately
+
+`coding-style` keeps `**/src/main/java/**/*.java`. Its triggers — a
+bean is declared, a setting is read, a controller or entity is touched
+— really are project-wide. Narrowing it would have been an opinion
+about Spring rather than a reading of the file, and the suite asserts
+it stayed broad so a later tidy-up cannot quietly take it.
+
+### What this does not touch
+
+Five families each ship a `testing.md` matching `**/*Test.java`, so a
+single test file in scope pulls five rule files. Whether that is
+redundancy or five genuinely different sets of test constraints is not
+something this release measured, and cutting it on the assumption that
+frameworks have nothing distinct to say about their own tests would be
+a guess.
+
 ## [1.3.3] — A gate that had never once applied
 
 CB-109 added a stack gate to the rules layer: a rule file is returned
