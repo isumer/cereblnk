@@ -113,6 +113,38 @@ def main():
     suite("protocols carry no backlog ids", not tmpl_hits,
           ", ".join(tmpl_hits[:3]))
 
+    # CB-131: eleven files told the conductor to arm the run with a raw
+    # `mkdir`/`touch` pair. A raw command carries no environment, so an
+    # unresolved $CB_DIR aimed at /flags and failed on permissions —
+    # and nothing looked. DelegationGuard and RunGuard read that file
+    # and treat its absence as "no run", so the failed arm did not
+    # weaken the boundary, it removed it. The session then ran a whole
+    # workflow inline: no Task Blocks on disk, and a context-length
+    # error at 96001 tokens.
+    rf = PS / "run-flag"
+    rf_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-flag-")) / "cereblnk"
+    fw = []
+    a = sh(["bash", str(rf), "arm", str(rf_root)])
+    if a.returncode != 0 or not (rf_root / "flags/run-active").is_file():
+        fw.append(f"arm did not land (rc={a.returncode})")
+    d = sh(["bash", str(rf), "disarm", str(rf_root)])
+    if d.returncode != 0 or (rf_root / "flags/run-active").exists():
+        fw.append(f"disarm did not remove it (rc={d.returncode})")
+    # the case that started this: a target that cannot be written must
+    # be loud, because a silent failure is indistinguishable from a
+    # session that is simply not a run.
+    u = sh(["bash", str(rf), "arm", "/proc/cb-nonexistent/cereblnk"])
+    if u.returncode == 0:
+        fw.append("an unwritable target armed silently")
+    if "NOT guarded" not in u.stderr:
+        fw.append("the failure does not say the run is unguarded")
+    # and the prose must call the script, or the script is never run
+    raw = 'touch "$CB_DIR/flags/run-active"'
+    for f in sorted((ROOT / "plugins/cereblnk").rglob("*.md")):
+        if raw in f.read_text(encoding="utf-8", errors="replace"):
+            fw.append(f"{f.relative_to(ROOT)} still arms by hand")
+    suite("run flag is armed by a mechanism", not fw, "; ".join(fw[:3]))
+
     xb = sh([sys.executable, str(S / "check-exec-bit")])
     suite("check-exec-bit", xb.returncode == 0,
           (xb.stdout or xb.stderr).strip().splitlines()[0][:100] if xb.returncode else "")
