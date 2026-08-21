@@ -3,10 +3,16 @@ name: spring-boot-patterns
 genre: constraint
 category: frameworks
 paths:
-  - "**/src/main/java/**/*.java"
-  - "**/application*.yml"
-  - "**/application*.yaml"
-  - "**/application*.properties"
+  - "**/service/**/*.java"
+  - "**/*Service.java"
+  - "**/*ServiceImpl.java"
+  - "**/controller/**/*.java"
+  - "**/*Controller.java"
+  - "**/*Resource.java"
+  - "**/*ControllerAdvice.java"
+  - "**/*ExceptionHandler.java"
+  - "**/*Scheduler.java"
+  - "**/*Listener.java"
 ---
 
 # Spring Boot Patterns

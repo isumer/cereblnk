@@ -3,10 +3,16 @@ name: spring-boot-security
 genre: constraint
 category: frameworks
 paths:
-  - "**/src/main/java/**/*.java"
   - "**/application*.yml"
   - "**/application*.yaml"
   - "**/application*.properties"
+  - "**/controller/**/*.java"
+  - "**/*Controller.java"
+  - "**/*Resource.java"
+  - "**/config/**/*.java"
+  - "**/*Config.java"
+  - "**/*Configuration.java"
+  - "**/*ControllerAdvice.java"
 ---
 
 # Spring Boot Security
