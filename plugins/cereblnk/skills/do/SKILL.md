@@ -112,7 +112,7 @@ assumed, and what the absent spec would have pinned down.
 
 ## Run flag
 
-Arm at start: `mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"`.
+Arm at start: `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm`.
 Remove it before any turn that ends awaiting the user. Remove it at
 final synthesis. Full semantics live in `policies/run-discipline.md` §5.
 

@@ -150,3 +150,4 @@ read.
 - [x] **CB-128** — A gate that had never once applied
 - [x] **CB-129** — Backlog ids stop shipping in copied templates
 - [x] **CB-130** — Rule globs narrowed to their own trigger tables
+- [x] **CB-131** — The arm that failed, and the boundary that went with it

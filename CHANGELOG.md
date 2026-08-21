@@ -7,6 +7,60 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.5] — The arm that failed, and the boundary that went with it
+
+Eleven files told the conductor to arm a run by hand:
+
+```
+mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"
+```
+
+A raw command carries no environment. `$CB_DIR` is exported by
+`lib/cbenv.sh`, which that pair never sources, so the target resolved to
+`/flags` — the root of the filesystem — and the run died on
+`mkdir: cannot create directory '/flags': Permission denied`.
+
+Nothing looked. DelegationGuard and RunGuard read
+`$CB_DIR/flags/run-active` and treat its absence as "no run in
+progress", which is correct for a session that is not a run and
+catastrophic for one that tried to be. The failed arm did not weaken
+the delegation boundary; it removed it. From the outside the two states
+are identical.
+
+That session then ran a full `/cb-rewrite` workflow — a skill whose own
+topology names ten specialists — entirely inline. No Task Blocks
+reached disk. The rule payload, the source and a Maven failure shared
+one window, and the model returned a context-length error at 96001
+tokens against a 96000 ceiling.
+
+Everything 1.3.1 through 1.3.4 added depends on that flag existing. A
+guard that cannot be armed is not a guard.
+
+### Added
+
+- **`scripts/run-flag arm|disarm|status`.** Sources cbenv so `$CB_DIR`
+  resolves the way `run-status` and `plan-status` resolve it; stats the
+  file after writing it; exits non-zero when it is not there, saying
+  that the run is not guarded rather than failing quietly. One stable
+  command string, so a host that remembers a permission decision can
+  match it next time — eleven improvised spellings never did.
+
+### Changed
+
+- **Nine skills, `orchestrate`, and `run-discipline` §5 call the
+  script.** Writing the mechanism changes nothing while the prose the
+  conductor actually reads still hands it a raw command. The raw form
+  is now absent from the tree, and `verify` greps for it so it cannot
+  return in the next skill someone writes.
+
+### What this does not claim
+
+The script can refuse; it cannot make a conductor stop. A run that
+reads a non-zero exit and proceeds anyway is the same failure class as
+the selector that returned exit 3 twice and was abandoned. Closing that
+needs a hook, and which hook depends on platform behaviour that has not
+been measured here, so it is not designed against.
+
 ## [1.3.4] — Rules that claimed every class in the project
 
 1.3.3 made the stack gate apply for the first time. This is the other
