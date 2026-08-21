@@ -247,6 +247,47 @@ def main():
 
     suite("select-agents triples", ok, f"mismatch on {why}")
 
+    # CB-128: the rules-side stack gate had never applied. detect-stack
+    # caches to $CB_DIR/context/stack-profile.yaml; select-rules looked
+    # for .claude/cereblnk/stack-profile.yaml, without the context/
+    # segment, found nothing, and returned every glob match — the
+    # behaviour CB-109 was written to replace. select-agents read the
+    # same cache correctly, which is why one half of the gate worked.
+    gate_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-gate-"))
+    (gate_root / "src/main/java/com/x").mkdir(parents=True)
+    prof_dir = gate_root / ".claude/cereblnk/context"
+    prof_dir.mkdir(parents=True)
+    target = "src/main/java/com/x/Foo.java"
+
+    def rules_for(cwd):
+        r = subprocess.run(["python3", str(PS / "select-rules"), target],
+                           cwd=str(cwd), capture_output=True, text=True)
+        listed = [l.strip()[2:] for l in r.stdout.splitlines()
+                  if l.startswith("  - ")]
+        return r.stdout, listed
+
+    ungated_out, ungated = rules_for(gate_root)
+    (prof_dir / "stack-profile.yaml").write_text(
+        "tokens:\n  - java\nmanifests:\n  - pom.xml\n", encoding="utf-8")
+    gated_out, gated = rules_for(gate_root)
+
+    ok, why = True, []
+    if "absent" not in ungated_out:
+        ok = False; why.append("no profile did not report absent")
+    if "present" not in gated_out:
+        ok = False; why.append("profile present but not read")
+    # a java-only profile drops the framework rules and keeps the
+    # language rules, which carry no stack token and are never gated
+    if any("frameworks/spring-boot" in f for f in gated):
+        ok = False; why.append("spring-boot survived a java-only profile")
+    if not any("frameworks/spring-boot" in f for f in ungated):
+        ok = False; why.append("spring-boot absent even ungated — fixture drifted")
+    if not any("languages/java" in f for f in gated):
+        ok = False; why.append("language rules were gated away")
+    if len(gated) >= len(ungated):
+        ok = False; why.append(f"gate reduced nothing ({len(ungated)} -> {len(gated)})")
+    suite("select-rules gate", ok, "; ".join(why))
+
     print("verify:"); print("\n".join(results))
     if bad:
         print(f"verify: {bad} suite(s) failed", file=sys.stderr); return 1

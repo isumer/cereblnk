@@ -147,3 +147,4 @@ read.
 - [x] **CB-125** — A verdict from a specialist that was never shipped
 - [ ] **CB-126** — Project-local skills: an additive binding surface
 - [x] **CB-127** — The role vocabulary is closed (ACP A3)
+- [x] **CB-128** — A gate that had never once applied
