@@ -69,6 +69,29 @@ rules for a single review, then re-reading several of them with `Read`.
   whereas backlog numbers are already public in `BACKLOG.md`. Different
   problem, separate check.
 
+### Dropped
+
+- **CB-126 — an additive binding surface for project-local skills.**
+  Filed when a run turned `domain-expert`, a skill in the project's own
+  directory, into an agent it then spawned. The reading at the time was
+  that Cereblnk has no way for a project's skills to reach a specialist,
+  so it needed one.
+
+  It already has one, and it is not Cereblnk's. The host puts project
+  skills in front of every agent — a live run shows
+  `Skills restored (domain-expert, cereblnk:orchestrate,
+  cereblnk:dispatch)` — and the Verifier treats a skill outside
+  `skills-required.yaml` as unremarkable, since only a *missing* one
+  weakens a verdict. A binding surface would have been machinery for a
+  path that is already open.
+
+  What the same run does expose is narrower and was not the filed item:
+  those skills arrive by restore, not by a `Skill()` call, so
+  `SkillLedgerHook` never fires and `skills-loaded.log` stays empty.
+  "The agent loaded its skills" is unverifiable in exactly the case the
+  ledger was built to make verifiable. That is a gap in the evidence
+  chain, not in binding, and it is left recorded rather than fixed here.
+
 ### What this does not claim
 
 Fifteen files is smaller, not small. Eleven of them are `common/`,
