@@ -50,6 +50,25 @@ rules for a single review, then re-reading several of them with `Read`.
   `languages/java/` files stay, because language rules carry no stack
   token and are never gated.
 
+### Also fixed
+
+- **`CB-097` no longer ships into other people's repositories.** A run's
+  `T-00N.yaml` was observed carrying a Cereblnk backlog number. It came
+  from a comment in `protocols/acp-response-block.template.yaml`: an
+  agent copies the template to write its Response Block, and copies the
+  comments with it. A backlog id means nothing in someone else's tree.
+  The comment loses the reference and `verify` gains
+  `protocols carry no backlog ids`, so the next one fails the suite
+  instead of shipping.
+
+  Scoped to `protocols/` deliberately. Policies, skills and agents cite
+  CB numbers as provenance and are read, not copied — removing them
+  there would delete useful history to solve a problem those files do
+  not have. It is also not the leakage scanner's job: that wordlist is
+  uncommitted precisely because publishing it would be the leak,
+  whereas backlog numbers are already public in `BACKLOG.md`. Different
+  problem, separate check.
+
 ### What this does not claim
 
 Fifteen files is smaller, not small. Eleven of them are `common/`,

@@ -48,7 +48,7 @@ unsupported paths where the tool has them):
 
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
-import pathlib, subprocess, sys, tempfile
+import pathlib, re, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
@@ -88,6 +88,30 @@ def main():
           if lk.returncode == 3
           else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
           skipped=(lk.returncode == 3))
+
+    # CB-129: templates are copied verbatim into a user's run ledger, so
+    # anything in one ships to their repository. `CB-097` was observed in
+    # a project's T-00N.yaml, carried out of the Response Block template
+    # comment an agent had copied along with the fields. A backlog number
+    # means nothing in someone else's repository.
+    #
+    # Scoped to protocols/ on purpose. Policies, skills and agents cite CB
+    # numbers as provenance and are READ, not copied — banning them there
+    # would remove useful history to solve a problem those files do not
+    # have. This is also not the leakage scanner's job: that list is
+    # deliberately uncommitted because publishing it would be the leak,
+    # whereas backlog numbers are public in BACKLOG.md. Different problem,
+    # separate check.
+    tmpl_hits = []
+    for f in sorted((ROOT / "plugins/cereblnk/protocols").rglob("*")):
+        if not f.is_file():
+            continue
+        for n, line in enumerate(
+                f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if re.search(r"\bCB-\d{3}\b", line):
+                tmpl_hits.append(f"{f.relative_to(ROOT)}:{n}")
+    suite("protocols carry no backlog ids", not tmpl_hits,
+          ", ".join(tmpl_hits[:3]))
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])
     suite("check-exec-bit", xb.returncode == 0,
