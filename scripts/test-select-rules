@@ -61,9 +61,16 @@ def main():
               r.stdout[:120])
         baseline = r.stdout.count("\n  - ")
 
+        # CB-128: this fixture wrote the profile to
+        # .claude/cereblnk/stack-profile.yaml, which is where the old
+        # select-rules looked and is not where detect-stack writes.
+        # Test and code agreed with each other and both disagreed with
+        # the runtime, so every gate case here passed while the gate had
+        # never applied to a real repository once. The fixture now
+        # writes where detect-stack does.
         gated = pathlib.Path(td) / "gated"
-        (gated / ".claude/cereblnk").mkdir(parents=True)
-        (gated / ".claude/cereblnk/stack-profile.yaml").write_text(
+        (gated / ".claude/cereblnk/context").mkdir(parents=True)
+        (gated / ".claude/cereblnk/context/stack-profile.yaml").write_text(
             PROFILE.format(root=str(gated)), encoding="utf-8")
 
         r = run(gated, "--explain", "src/components/Widget.tsx")

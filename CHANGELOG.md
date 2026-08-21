@@ -7,6 +7,101 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.3] — A gate that had never once applied
+
+CB-109 added a stack gate to the rules layer: a rule file is returned
+when its glob matches the file **and** the owning skill's stack token
+appears in the profile `detect-stack` caches. The point was that a lone
+`.tsx` in a project with no Next.js dependency should not pull the
+Next.js ruleset.
+
+It never applied. Not once.
+
+`detect-stack` writes to `$CB_DIR/context/stack-profile.yaml`.
+`select-rules` looked for `.claude/cereblnk/stack-profile.yaml`, without
+the `context/` segment, found nothing, and took the documented
+absent-profile branch: return every glob match. That branch is correct —
+a missing constraint is worse than an extra one — so the failure printed
+`stack_profile: absent — no gate applied` and looked like a project
+without a profile rather than a reader that could not find one.
+
+`select-agents` reads the same cache from `$CB_DIR/context/` and finds
+it, which is why the agent half of the gate worked and nobody noticed
+the rules half did not. Two copies of a path convention drift for the
+same reason two copies of a policy table drift, which is what 1.3.1
+cost.
+
+Observed in a live run: one agent loading java, spring-boot,
+spring-security, hibernate-jpa, junit-testing, backend and security
+rules for a single review, then re-reading several of them with `Read`.
+
+### Fixed
+
+- **`lib/cbpaths.py` — runtime path resolution, answered once.**
+  `$CB_DIR` when set, otherwise `.claude/cereblnk` found by walking up
+  from the working directory, otherwise nothing. The walk-up is not
+  decoration: `select-rules` is called directly by agents, from
+  anywhere in the tree, often with no sourced environment. Absence
+  still means "no evidence" and still returns more rules rather than
+  fewer.
+- **`select-rules` reads the profile through it**, so the stack gate
+  applies. Measured on a java-only profile: 19 rule files before, 15
+  after — the four `frameworks/spring-boot/` files drop, and the four
+  `languages/java/` files stay, because language rules carry no stack
+  token and are never gated.
+
+### Also fixed
+
+- **`CB-097` no longer ships into other people's repositories.** A run's
+  `T-00N.yaml` was observed carrying a Cereblnk backlog number. It came
+  from a comment in `protocols/acp-response-block.template.yaml`: an
+  agent copies the template to write its Response Block, and copies the
+  comments with it. A backlog id means nothing in someone else's tree.
+  The comment loses the reference and `verify` gains
+  `protocols carry no backlog ids`, so the next one fails the suite
+  instead of shipping.
+
+  Scoped to `protocols/` deliberately. Policies, skills and agents cite
+  CB numbers as provenance and are read, not copied — removing them
+  there would delete useful history to solve a problem those files do
+  not have. It is also not the leakage scanner's job: that wordlist is
+  uncommitted precisely because publishing it would be the leak,
+  whereas backlog numbers are already public in `BACKLOG.md`. Different
+  problem, separate check.
+
+### Dropped
+
+- **CB-126 — an additive binding surface for project-local skills.**
+  Filed when a run turned `domain-expert`, a skill in the project's own
+  directory, into an agent it then spawned. The reading at the time was
+  that Cereblnk has no way for a project's skills to reach a specialist,
+  so it needed one.
+
+  It already has one, and it is not Cereblnk's. The host puts project
+  skills in front of every agent — a live run shows
+  `Skills restored (domain-expert, cereblnk:orchestrate,
+  cereblnk:dispatch)` — and the Verifier treats a skill outside
+  `skills-required.yaml` as unremarkable, since only a *missing* one
+  weakens a verdict. A binding surface would have been machinery for a
+  path that is already open.
+
+  What the same run does expose is narrower and was not the filed item:
+  those skills arrive by restore, not by a `Skill()` call, so
+  `SkillLedgerHook` never fires and `skills-loaded.log` stays empty.
+  "The agent loaded its skills" is unverifiable in exactly the case the
+  ledger was built to make verifiable. That is a gap in the evidence
+  chain, not in binding, and it is left recorded rather than fixed here.
+
+### What this does not claim
+
+Fifteen files is smaller, not small. Eleven of them are `common/`,
+returned for every file in every language, and whether all eleven need
+to be resident is a real question this does not touch — it could not be
+asked honestly while the gate was dead. The same goes for the duplicate
+loading in that run, where files arrived through the rules layer and
+were then read again with `Read`: that is a behaviour, not a path bug,
+and it should be measured before anything is designed against it.
+
 ## [1.3.2] — A verdict from a specialist that was never shipped
 
 1.3.1 closed three refusals a run had walked around. This is the fourth,
