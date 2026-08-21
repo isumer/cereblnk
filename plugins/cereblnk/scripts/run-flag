@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# run-flag (CB-131) — the run flag is set by a mechanism, not by prose.
+#
+# Eleven files told the conductor to arm the run with a raw command:
+#
+#   mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"
+#
+# A raw command carries no environment. `$CB_DIR` is exported by
+# lib/cbenv.sh, which that command never sources, so an unresolved
+# variable made the target `/flags` — the root of the filesystem. The
+# run observed died there with `mkdir: cannot create directory
+# '/flags': Permission denied`, and nothing noticed.
+#
+# Nothing noticed is the part that matters. DelegationGuard, RunGuard
+# and every check built on them read `$CB_DIR/flags/run-active` and
+# treat its absence as "no run in progress". A failed arm does not
+# weaken the delegation boundary; it removes it. That session then ran
+# a full rewrite workflow inline — zero Task Blocks on disk, the whole
+# rule payload, the source and a Maven failure in one window, and a
+# context-length error at 96001 tokens. From the outside, a run whose
+# flag never landed and a session that is not a run are the same thing.
+#
+# So this script does three things the prose could not:
+#
+#   1. Sources cbenv, so $CB_DIR is resolved the way run-status and
+#      plan-status resolve it.
+#   2. Verifies. After touch, the file is stat'ed. If it is not there,
+#      exit 1 with the reason on stderr. Silent success was the bug.
+#   3. Presents one stable command string. A host that remembers a
+#      permission decision remembers it per command; eleven improvised
+#      spellings meant the decision never matched the next run.
+#
+# Usage: run-flag arm|disarm|status [cb_dir]
+# Exit:  0 the flag is in the requested state (verified on disk)
+#        1 it is not, and stderr says why
+#        2 usage
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+
+CMD="${1:-}"
+DIR="${2:-${CB_DIR:-}}"
+
+case "$CMD" in
+  arm|disarm|status) ;;
+  *) echo "usage: run-flag arm|disarm|status [cb_dir]" >&2; exit 2 ;;
+esac
+
+if [ -z "$DIR" ]; then
+  echo "run-flag: no project root resolved — cbenv found no .claude/cereblnk above $(pwd)." >&2
+  echo "run-flag: refusing to guess. Pass the directory explicitly: run-flag $CMD <cb_dir>" >&2
+  exit 1
+fi
+
+FLAG="$DIR/flags/run-active"
+
+case "$CMD" in
+  status)
+    if [ -f "$FLAG" ]; then echo "run-flag: armed ($FLAG)"; else echo "run-flag: not armed"; fi
+    exit 0
+    ;;
+  arm)
+    mkdir -p "$DIR/flags" 2>/dev/null || true
+    touch "$FLAG" 2>/dev/null || true
+    if [ ! -f "$FLAG" ]; then
+      echo "run-flag: could not arm $FLAG — the run is NOT guarded." >&2
+      echo "run-flag: DelegationGuard and RunGuard read this file; without it they pass everything through. Do not proceed as though a run is active." >&2
+      exit 1
+    fi
+    echo "run-flag: armed ($FLAG)"
+    ;;
+  disarm)
+    rm -f "$FLAG" 2>/dev/null || true
+    if [ -f "$FLAG" ]; then
+      echo "run-flag: could not remove $FLAG — the guards still consider this run active." >&2
+      exit 1
+    fi
+    echo "run-flag: disarmed"
+    ;;
+esac
