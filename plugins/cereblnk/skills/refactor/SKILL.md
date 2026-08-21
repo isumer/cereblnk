@@ -83,8 +83,10 @@ flag lifecycle, context-error recovery.
 ## Run flag (RunGuardHook wiring)
 
 Arm at execution start:
-`mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"`.
-Here `$CB_DIR` is `<project root>/.claude/cereblnk`.
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm`.
+It resolves `$CB_DIR` and verifies the flag landed.
+A non-zero exit means the run is not guarded.
+Do not proceed as though it were.
 Remove it before ANY turn that ends awaiting the user.
 Remove it at final synthesis.
 Full lifecycle semantics live in `policies/run-discipline.md` §5.

@@ -41,9 +41,21 @@ Resolve the root once at run start; subagents inherit the absolute
 path in their Task Blocks.
 
 ## 5. Run flag lifecycle (RunGuardHook, DelegationGuardHook)
-Arm `$CB_DIR/flags/run-active` at execution start; remove it before
-ANY turn that ends awaiting the user, and at final synthesis. While
-armed, a premature stop gets exactly one continue-nudge.
+Arm with `scripts/run-flag arm` at execution start; disarm with
+`scripts/run-flag disarm` before ANY turn that ends awaiting the user,
+and at final synthesis. While armed, a premature stop gets exactly one
+continue-nudge.
+
+The flag is `$CB_DIR/flags/run-active`; the script exists because
+writing it by hand went wrong in a way nothing could see. A raw
+`mkdir`/`touch` pair carries no environment, so an unresolved `$CB_DIR`
+aimed at `/flags` and failed on permissions. DelegationGuard and
+RunGuard read this file and treat its absence as "no run", so the arm
+failing did not weaken the boundary — it removed it, and the session
+went on to run a full workflow inline with no Task Blocks on disk.
+`run-flag` resolves `$CB_DIR` through cbenv and stats the file
+afterwards: a non-zero exit means the run is NOT guarded. A run that
+cannot arm does not proceed as though it did.
 
 At final synthesis the flag is not merely removed — it is HANDED OFF:
 write `$CB_DIR/flags/run-completed`, which keeps DelegationGuard armed
