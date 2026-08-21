@@ -7,6 +7,59 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.3] — A gate that had never once applied
+
+CB-109 added a stack gate to the rules layer: a rule file is returned
+when its glob matches the file **and** the owning skill's stack token
+appears in the profile `detect-stack` caches. The point was that a lone
+`.tsx` in a project with no Next.js dependency should not pull the
+Next.js ruleset.
+
+It never applied. Not once.
+
+`detect-stack` writes to `$CB_DIR/context/stack-profile.yaml`.
+`select-rules` looked for `.claude/cereblnk/stack-profile.yaml`, without
+the `context/` segment, found nothing, and took the documented
+absent-profile branch: return every glob match. That branch is correct —
+a missing constraint is worse than an extra one — so the failure printed
+`stack_profile: absent — no gate applied` and looked like a project
+without a profile rather than a reader that could not find one.
+
+`select-agents` reads the same cache from `$CB_DIR/context/` and finds
+it, which is why the agent half of the gate worked and nobody noticed
+the rules half did not. Two copies of a path convention drift for the
+same reason two copies of a policy table drift, which is what 1.3.1
+cost.
+
+Observed in a live run: one agent loading java, spring-boot,
+spring-security, hibernate-jpa, junit-testing, backend and security
+rules for a single review, then re-reading several of them with `Read`.
+
+### Fixed
+
+- **`lib/cbpaths.py` — runtime path resolution, answered once.**
+  `$CB_DIR` when set, otherwise `.claude/cereblnk` found by walking up
+  from the working directory, otherwise nothing. The walk-up is not
+  decoration: `select-rules` is called directly by agents, from
+  anywhere in the tree, often with no sourced environment. Absence
+  still means "no evidence" and still returns more rules rather than
+  fewer.
+- **`select-rules` reads the profile through it**, so the stack gate
+  applies. Measured on a java-only profile: 19 rule files before, 15
+  after — the four `frameworks/spring-boot/` files drop, and the four
+  `languages/java/` files stay, because language rules carry no stack
+  token and are never gated.
+
+### What this does not claim
+
+Fifteen files is smaller, not small. Eleven of them are `common/`,
+returned for every file in every language, and whether all eleven need
+to be resident is a real question this does not touch — it could not be
+asked honestly while the gate was dead. The same goes for the duplicate
+loading in that run, where files arrived through the rules layer and
+were then read again with `Read`: that is a behaviour, not a path bug,
+and it should be measured before anything is designed against it.
+
 ## [1.3.2] — A verdict from a specialist that was never shipped
 
 1.3.1 closed three refusals a run had walked around. This is the fourth,

@@ -45,6 +45,10 @@ try:
     import cbmap
 except Exception:
     cbmap = None
+try:
+    import cbpaths
+except Exception:
+    cbpaths = None
 
 
 def globs_of(path):
@@ -60,18 +64,27 @@ def globs_of(path):
 
 
 def stack_tokens():
-    """Tokens detect-stack found. Empty means the gate does not apply."""
-    for base in (pathlib.Path.cwd(), ROOT.parent.parent):
-        p = base / ".claude/cereblnk/stack-profile.yaml"
-        if p.is_file():
-            body = p.read_text(encoding="utf-8", errors="replace")
-            if "tokens:" not in body:
-                return set()
-            tail = body[body.find("tokens:"):]
-            tail = tail.split("\nmanifests:")[0]
-            return {t.strip().strip("\"'")
-                    for t in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if t.strip()}
-    return set()
+    """Tokens detect-stack found. Empty means the gate does not apply.
+
+    The path used to be spelled here, and it was spelled wrong:
+    `.claude/cereblnk/stack-profile.yaml`, without the `context/`
+    segment detect-stack actually writes to. The file was never found,
+    so the gate never applied and every glob match was returned — the
+    behaviour CB-109 replaced, still running. `select-agents` read the
+    same cache correctly from `$CB_DIR/context/`, which is why the
+    agent side of the gate worked and the rules side did not.
+    Resolution now lives in lib/cbpaths so there is one answer.
+    """
+    p = cbpaths.stack_profile() if cbpaths else None
+    if p is None:
+        return set()
+    body = p.read_text(encoding="utf-8", errors="replace")
+    if "tokens:" not in body:
+        return set()
+    tail = body[body.find("tokens:"):]
+    tail = tail.split("\nmanifests:")[0]
+    return {t.strip().strip("\"'")
+            for t in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if t.strip()}
 
 
 def gate_of(rule_path):
