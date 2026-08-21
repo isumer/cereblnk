@@ -312,6 +312,43 @@ def main():
         ok = False; why.append(f"gate reduced nothing ({len(ungated)} -> {len(gated)})")
     suite("select-rules gate", ok, "; ".join(why))
 
+    # CB-130: three spring-boot rules claimed every file under
+    # src/main/java, which is every class in a Maven project. Their own
+    # Trigger tables say otherwise — hooks fires on property files,
+    # controller mappings and config classes; patterns on units of work,
+    # exceptions at the edge and off-thread work; security on endpoints,
+    # payload binding and management output. A service class pulled all
+    # three and used none. Directory globs are paired with filename
+    # globs so a flat package layout still matches.
+    sw = []
+    # Its own root: gate_root carries a java-only profile, which gates
+    # every spring-boot rule away and would prove nothing here.
+    sb_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-sb-"))
+    for d in ("src/main/java/com/x/service", "src/main/java/com/x/controller",
+              ".claude/cereblnk/context"):
+        (sb_root / d).mkdir(parents=True)
+    (sb_root / ".claude/cereblnk/context/stack-profile.yaml").write_text(
+        "tokens:\n  - java\n  - spring-boot\nmanifests:\n  - pom.xml\n",
+        encoding="utf-8")
+
+    def rules_text(rel):
+        return subprocess.run(["python3", str(PS / "select-rules"), rel],
+                              cwd=str(sb_root), capture_output=True,
+                              text=True).stdout
+
+    r_svc = rules_text("src/main/java/com/x/service/PaymentService.java")
+    r_ctl = rules_text("src/main/java/com/x/controller/OrderController.java")
+    for rule in ("spring-boot/hooks.md", "spring-boot/security.md"):
+        if rule in r_svc:
+            sw.append(f"{rule} still matches a service class")
+        if rule not in r_ctl:
+            sw.append(f"{rule} lost the controller it is written for")
+    if "spring-boot/coding-style.md" not in r_svc:
+        sw.append("coding-style was narrowed; its triggers are project-wide")
+    if "spring-boot/patterns.md" not in r_svc:
+        sw.append("patterns lost the service layer it is written for")
+    suite("spring-boot globs match their triggers", not sw, "; ".join(sw))
+
     print("verify:"); print("\n".join(results))
     if bad:
         print(f"verify: {bad} suite(s) failed", file=sys.stderr); return 1
