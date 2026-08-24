@@ -36,17 +36,45 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
+# Identity, matched on the last segment (F-10, F-32).
+#
+# The baseline is written with policy role names; SubagentStop hands
+# back whatever the harness has. Measured in a real session: a bare hex
+# id (`a9ca0309334d10b0e`, via the agent_id fallback because agent_type
+# was absent) and the harness label `general-purpose`. Neither is a
+# policy role, so the lookup returned nothing and the floor exited
+# 0 — silently, for every real subagent, while a synthetic payload
+# carrying `backend-agent` engaged correctly.
+#
+# The baseline now carries qualified names too
+# (`cereblnk:engineering:backend-agent`), so matching happens on the
+# last colon-segment from both directions.
 agent = d.get("agent_type") or d.get("agent_id") or ""
 if not agent:
     sys.exit(0)
+agent_key = agent.rsplit(":", 1)[-1]
 run = pathlib.Path(os.environ["CB_RUN"])
 
 req = {}
 for line in (run / "skills-required.yaml").read_text(encoding="utf-8").splitlines():
-    m = re.match(r"^\s{2}([\w-]+):\s*\[(.*)\]\s*$", line)
+    # `[\w-]+` did not admit the colon, so a qualified key parsed as
+    # nothing at all and the whole map came back empty.
+    m = re.match(r"^\s{2}([\w:-]+):\s*\[(.*)\]\s*$", line)
     if m:
-        req[m.group(1)] = [s.strip() for s in m.group(2).split(",") if s.strip()]
-need = req.get(agent) or []
+        req[m.group(1).rsplit(":", 1)[-1]] = [
+            s.strip() for s in m.group(2).split(",") if s.strip()]
+need = req.get(agent_key) or []
+if not need and req and agent_key not in req:
+    # Neither identity nor baseline is at fault when the harness hands
+    # back an opaque id: the floor simply cannot tell who finished. It
+    # still must not pretend it checked.
+    # WARN: goes to stdout because the wrapper discards this block
+    # stderr; the wrapper routes the prefix to stderr and exits 0. It
+    # must not block — a floor that cannot identify the subagent has no
+    # grounds to fail it, only grounds to say it did not check.
+    print("WARN:cereblnk skill-floor: cannot match subagent %r against "
+          "the baseline (%s). The skill floor did NOT run for this "
+          "subagent." % (agent, ", ".join(sorted(req))))
 if not need:
     sys.exit(0)
 
@@ -79,8 +107,12 @@ print("%s finished without loading its required skills: %s. Load each one "
       % (agent, ", ".join(missing)))
 ' 2>/dev/null || true)"
 
-if [ -n "$REASON" ]; then
-  echo "$REASON" >&2
-  exit 2
-fi
+case "$REASON" in
+  WARN:*)
+    echo "${REASON#WARN:}" >&2
+    exit 0 ;;          # visible, not blocking: it could not check
+  ?*)
+    echo "$REASON" >&2
+    exit 2 ;;
+esac
 exit 0
