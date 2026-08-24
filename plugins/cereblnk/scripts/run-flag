@@ -40,8 +40,19 @@
 # announces a guarantee it does not hold — worse than no protection,
 # because the user then takes more risk.
 #
+# F-17 adds the direction to the same principle. `/cb-careful` rendered
+# its argument into the instruction as `<argument> = on, or empty`, so
+# invoking it with anything but a bare `on`/`off` — "careful mode
+# please", "turn it on for this repo" — left the branch to model
+# judgment. A toggle whose direction is guessed is not a toggle, and
+# this one controls whether irreversible commands are blocked. The flag
+# subcommand therefore accepts `on`/`off` as literal synonyms of
+# arm/disarm and rejects everything else with usage and exit 2. The
+# skill passes the user's argument through verbatim; an argument that is
+# not one of the four accepted words changes nothing and says so.
+#
 # Usage: run-flag arm|disarm|status [cb_dir]
-#        run-flag flag <name> arm|disarm|status [cb_dir] [content]
+#        run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
 #        2 usage
@@ -57,7 +68,19 @@ if [ "$CMD" = "flag" ]; then
   DIR="${4:-${CB_DIR:-}}"
   CONTENT="${5:-}"
   case "$NAME" in
-    "" | */* | .*) echo "usage: run-flag flag <name> arm|disarm|status [cb_dir] [content]" >&2; exit 2 ;;
+    "" | */* | .*) echo "usage: run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]" >&2; exit 2 ;;
+  esac
+  # F-17: the direction is decided here, by exact match, not by the
+  # caller's reading of a sentence.
+  case "$CMD" in
+    on)  CMD="arm" ;;
+    off) CMD="disarm" ;;
+    arm|disarm|status) ;;
+    *)
+      echo "run-flag: '$CMD' is not a direction. Expected exactly one of: on, off, arm, disarm, status." >&2
+      echo "run-flag: nothing was changed — the $NAME flag is still whatever it was. Do not report a toggle." >&2
+      echo "usage: run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]" >&2
+      exit 2 ;;
   esac
 else
   DIR="${2:-${CB_DIR:-}}"

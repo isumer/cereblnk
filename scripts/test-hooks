@@ -408,10 +408,171 @@ def main():
         check("scratch-guard: nudge ceiling releases",
               write_to(str(proj / "debug9.txt")).returncode == 0, "guard never yields")
 
+        # DestructiveCommandHook (F-18, F-19). The hook had no suite at
+        # all, which is how a pattern matching DATA inside the command
+        # string survived: a heredoc that only DOCUMENTED destructive
+        # commands was blocked, and with it every findings file, fixture
+        # and log a security project writes. The two anchors of this
+        # section are the false positive and the true positive — remove
+        # the stripper and the first block fails; loosen it into a
+        # bypass and the second block fails.
+        careful = flags / "careful"
+
+        def dc(cmd):
+            return run("destructive-command.sh", bash(cmd), proj)
+
+        check("destructive: flag absent -> allow",
+              dc("rm -rf /tmp/anything").returncode == 0,
+              "blocked while /cb-careful was off")
+
+        careful.touch()
+
+        heredoc = (
+            "cat >> docs/findings.md <<'EOF'\n"
+            "F-18: the hook blocked `rm -rf build`, `git push --force`\n"
+            "and `DROP TABLE users` when they appeared as prose.\n"
+            "EOF"
+        )
+        check("destructive: heredoc that only MENTIONS destructive commands -> allow",
+              dc(heredoc).returncode == 0,
+              "documentation about destructive commands is still blocked (F-18)")
+        for label, cmd in (
+            ("quoted commit message", 'git commit -m "explain why rm -rf is blocked"'),
+            ("echoed prose", 'echo "never run git reset --hard here" > NOTES'),
+            ("python string literal", "printf '%s' 'drop table t' > fixture.sql"),
+        ):
+            check(f"destructive: {label} -> allow",
+                  dc(cmd).returncode == 0, f"data matched as a command (F-18): {cmd}")
+
+        for label, cmd in (
+            ("bare recursive delete", "rm -rf /var/data"),
+            ("recursive delete of a quoted path", 'rm -rf "$HOME/data"'),
+            ("force push", "git push origin main --force"),
+            ("hard reset", "git reset --hard HEAD~3"),
+            ("SQL through a client -c argument", 'psql -d app -c "DROP TABLE users"'),
+            ("code through sh -c", "sh -c 'rm -rf /var/data'"),
+            ("script body in an interpreted heredoc",
+             "bash <<'EOF'\nrm -rf /var/data\nEOF"),
+            # found while writing this suite: looking only at the text
+            # LEFT of `<<` reads this as a harmless `cat`
+            ("heredoc body piped into a shell",
+             "cat <<EOF | bash\nrm -rf /var/data\nEOF"),
+            ("eval of a quoted command", 'eval "rm -rf /var/data"'),
+            ("xargs delete", "xargs rm -rf < list.txt"),
+            ("remote delete over ssh", 'ssh host "rm -rf /var/data"'),
+            ("find -exec delete", "find . -name x -exec rm -rf {} \\;"),
+            ("SQL through a client -e argument", 'mysql -e "TRUNCATE TABLE users"'),
+            ("delete chained after the disarm",
+             "rm -f .claude/cereblnk/flags/careful && rm -rf /var/data"),
+        ):
+            r = dc(cmd)
+            check(f"destructive: {label} -> block",
+                  r.returncode == 2, f"NOT blocked (bypass): {cmd}")
+
+        # F-19: the escape the block message prescribes must not be
+        # blocked by the same hook. Both halves are asserted: the
+        # message names the working route, and the route works.
+        r = dc("rm -rf /var/data")
+        msg = r.stderr + r.stdout
+        check("destructive: block names /cb-careful off",
+              "/cb-careful off" in msg, msg[:120])
+        check("destructive: block names the disarm mechanism",
+              "flag careful disarm" in msg, msg[:120])
+        for label, cmd in (
+            ("forced delete of the careful flag",
+             "rm -f .claude/cereblnk/flags/careful"),
+            ("recursive delete of the careful flag",
+             'rm -rf "$CB_DIR/flags/careful"'),
+            ("the run-flag mechanism itself",
+             "plugins/cereblnk/scripts/run-flag flag careful disarm"),
+        ):
+            check(f"destructive: {label} -> allow (F-19)",
+                  dc(cmd).returncode == 0, f"the documented escape is blocked: {cmd}")
+        careful.unlink()
+
+        # F-17: /cb-careful's direction is decided by run-flag, by exact
+        # match, not by the model reading a sentence.
+        rf = ROOT / "plugins/cereblnk/scripts/run-flag"
+
+        def flag(arg):
+            return subprocess.run(["bash", str(rf), "flag", "careful", arg,
+                                   str(proj / ".claude/cereblnk")],
+                                  capture_output=True, text=True)
+
+        check("careful: 'on' arms", flag("on").returncode == 0 and careful.exists(),
+              "on did not arm the flag")
+        check("careful: 'off' disarms",
+              flag("off").returncode == 0 and not careful.exists(),
+              "off did not disarm the flag")
+        careful.touch()
+        r = flag("please turn careful mode on for this repo")
+        check("careful: a sentence is refused, not guessed (F-17)",
+              r.returncode == 2, f"rc={r.returncode} — the direction was inferred")
+        check("careful: a refused direction changes nothing",
+              careful.exists(), "the flag state moved on an unparsed argument")
+        check("careful: the refusal says what is accepted",
+              "on, off, arm, disarm, status" in (r.stderr + r.stdout), r.stderr[:120])
+        careful.unlink()
+
+        # ToolFloorHook (F-24). `disallowedTools` closes the tools it
+        # names and not the shell, and the shell reaches the same
+        # files: architect-agent, denied the edit tools, authored four
+        # spec sections through `cat > file <<EOF`. The definition half
+        # of that finding is fixed in the frontmatter (checker:
+        # check-agent-skills A-7); this is the half that remains, the
+        # in-place edit under a tool the denial never named.
+        def floor(cmd, agent=None, tool="Bash"):
+            payload = {"tool_name": tool, "tool_input": {"command": cmd}}
+            if agent:
+                payload["agent_type"] = agent
+            return run("tool-floor.sh", json.dumps(payload), proj)
+
+        ARCH = "architect-agent"
+        r = floor("sed -i s/a/b/ src/F.java", ARCH)
+        check("tool-floor: an in-place edit under a denial is blocked",
+              r.returncode == 2, f"rc={r.returncode}")
+        check("tool-floor: the block names the tool and the file",
+              "disallowedTools" in r.stderr and "src/F.java" in r.stderr,
+              r.stderr[:120])
+        check("tool-floor: the block names the honest route",
+              "Response Block" in r.stderr, r.stderr[:120])
+        check("tool-floor: the qualified spawn name resolves too",
+              floor("patch -p1 < d.diff",
+                    "cereblnk:engineering:architect-agent").returncode == 2,
+              "qualified identity did not resolve to the definition")
+        # A write is not an edit: these agents hold Write, because
+        # run-discipline SS1 makes every one of them write a Response
+        # Block. Blocking `>` would be stricter than the grant, and a
+        # guard that false-blocks is one the model routes around.
+        check("tool-floor: a redirection is Write-shaped, not blocked",
+              floor("cat > spec.md <<EOF\nx\nEOF", ARCH).returncode == 0,
+              "a whole-file write was blocked")
+        check("tool-floor: a read-only command is untouched",
+              floor("grep -rn foo src/", ARCH).returncode == 0, "blocked a read")
+        # Fail-open paths: a floor that cannot read the definition has
+        # no grounds to block, only grounds to stay quiet.
+        check("tool-floor: an unrestricted agent is untouched",
+              floor("sed -i s/a/b/ src/F.java", "backend-agent").returncode == 0,
+              "blocked an agent that denies no edit tool")
+        check("tool-floor: no identity is the conductor, not this hook",
+              floor("sed -i s/a/b/ src/F.java").returncode == 0,
+              "took DelegationGuard's case")
+        check("tool-floor: an opaque agent id cannot be judged",
+              run("tool-floor.sh",
+                  json.dumps({"tool_name": "Bash", "agent_id": "a9ca0309334d",
+                              "tool_input": {"command": "sed -i s/a/b/ f"}}),
+                  proj).returncode == 0,
+              "blocked on an id it cannot resolve")
+        check("tool-floor: a non-Bash payload is not its event",
+              floor("x", ARCH, tool="Write").returncode == 0, "read a Write payload")
+        check("tool-floor: unparseable input is silent",
+              run("tool-floor.sh", "not-json", proj).returncode == 0,
+              "blocked on garbage")
+
     if fails:
         print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
         print(f"test-hooks: {len(fails)}/{ran} failed", file=sys.stderr); return 1
-    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, scratch-guard)")
+    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, scratch-guard, tool-floor, destructive-command)")
     return 0
 
 if __name__ == "__main__":

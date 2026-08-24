@@ -6,13 +6,14 @@ Cereblnk ships exactly four.
 
 | Hook | Event | Enforces | Activation |
 |---|---|---|---|
-| DestructiveCommandHook | PreToolUse:Bash | blocks recursive delete, force-push, hard reset, SQL DROP/TRUNCATE, disk writes; build-artifact cleanups allowlisted | opt-in: `/cb-careful` |
+| DestructiveCommandHook | PreToolUse:Bash | blocks recursive delete, force-push, hard reset, SQL DROP/TRUNCATE, disk writes; matches the command, never text that merely mentions one (heredoc bodies and quoted spans are inert unless a shell, interpreter or DB client re-runs them); build-artifact cleanups and a lone delete of the `careful` flag itself allowlisted | opt-in: `/cb-careful` |
 | EditBoundaryHook | PreToolUse:Write\|Edit | blocks writes outside a declared directory | opt-in: `/cb-boundary <path>`; auto-engaged by /cb-bug fix stage |
 | SecretGuardHook | PreToolUse:Write\|Edit | blocks writes containing likely credentials (fail-closed on detection) | **always on** |
 | PostEditTestHook | PostToolUse:Write\|Edit | runs the configured test subset after edits during gate-level-3 work | policy: `.cereblnk/flags/gate3` + `.cereblnk/config/test-command` |
 | DigestCapHook | SubagentStop | blocks a subagent whose returned message exceeds the computed `digest_lines_max`; names the fields a digest must carry | **always on** (inside a run ledger only) |
 | ContextMonitorHook | UserPromptSubmit | measures real window occupancy from the session transcript; samples every turn to telemetry, injects a short warning past the checkpoint | **always on**, never blocks |
 | ScratchGuardHook | PreToolUse:Write | blocks a new untracked file at the repository root during a run and names the run's scratch directory; releases after two nudges | **always on** (inside an active run only) |
+| ToolFloorHook | PreToolUse:Bash | blocks a shell command that rewrites a file in place when the running agent's own `disallowedTools` forbids the edit tools; redirections are Write-shaped and pass | **always on** (subagents only) |
 
 Opt-in state lives in flag files under `.cereblnk/flags/` in the user's
 project, created/removed by the `/cb-careful` and `/cb-boundary`
