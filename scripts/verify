@@ -29,6 +29,8 @@ unsupported paths where the tool has them):
   check-agent-skills      agent<->skill graph: no dangling, no orphan,
                           preload inside budget (CB-097)
   test-artifact-gate      R-2 loss gate + R-3 history preservation (CB-091)
+  acp-lint domain floor   a security task may not be assigned below
+                          level 3; an unfloored role keeps its own (F-26)
   acp-lint fixtures       canonical block passes; 5-violation block
                           reports all five checklist IDs; task blocks
                           with indexed documents, both ways (CB-112)
@@ -288,6 +290,49 @@ def main():
           and "is not a Cereblnk agent" in t_bad_role.stderr,
           f"fabricated rc={f_bad.returncode}, spelled-out rc={f_ok.returncode}, "
           f"CamelCase rc={f_camel.returncode}, task rc={t_bad_role.returncode}")
+
+    # F-26: two rules collided and nothing stated an order. A Task
+    # Block carried `verification_level: 1` and `risk: low` for a
+    # security task, while security-agent.md and the security-audit
+    # skill both said "always level 3 — no exceptions, no fast path".
+    # The agent chose 3 by judgment. risk-model.md now states the
+    # precedence; T-2 is the mechanical half, checked at the
+    # assignment because that is where the wrong number is written.
+    t2_bad = sh(["bash", str(PS / "acp-lint"),
+                 str(ROOT / "tests/fixtures/acp/security-task-level-1.yaml")])
+    _t2 = _tmp / "security-task-level-3.yaml"
+    _t2.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("verification_level: 1", "verification_level: 3"),
+        encoding="utf-8")
+    t2_ok = sh(["bash", str(PS / "acp-lint"), str(_t2)])
+    # the qualified spelling select-agents now emits must reach the
+    # same floor, or the block that names its agent correctly is the
+    # one that escapes the check
+    _t2q = _tmp / "security-task-qualified.yaml"
+    _t2q.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("role: SecurityAgent",
+                 "role: cereblnk:engineering:security-agent"),
+        encoding="utf-8")
+    t2_q = sh(["bash", str(PS / "acp-lint"), str(_t2q)])
+    # a role WITHOUT an unconditional floor keeps its assigned level:
+    # database and infra floors are conditional, and a checker that
+    # cannot read the objective must not refuse a well-formed block
+    _t2n = _tmp / "backend-task-level-1.yaml"
+    _t2n.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("role: SecurityAgent", "role: BackendAgent"),
+        encoding="utf-8")
+    t2_n = sh(["bash", str(PS / "acp-lint"), str(_t2n)])
+    suite("acp-lint domain floor",
+          t2_bad.returncode == 1 and "T-2" in t2_bad.stderr
+          and "risk-model" in t2_bad.stderr
+          and t2_ok.returncode == 0
+          and t2_q.returncode == 1 and "T-2" in t2_q.stderr
+          and t2_n.returncode == 0,
+          f"level-1 rc={t2_bad.returncode}, level-3 rc={t2_ok.returncode}, "
+          f"qualified rc={t2_q.returncode}, unfloored rc={t2_n.returncode}")
 
     suite("acp-lint fixtures",
           good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids)
