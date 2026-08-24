@@ -177,7 +177,18 @@ def main():
     suite("budget-literals", bl.returncode == 0,
           bl.stdout.strip().splitlines()[-1] if bl.stdout else "")
 
-    ags = sh([sys.executable, str(S / "check-agent-skills")])
+    # F-04: the policy cites this as a live guarantee, but it lived in
+    # the repository scripts/ and the package does not carry those — so
+    # anyone reading the policy from an install held the rule without
+    # the checker. Moved into the plugin rather than copied: two copies
+    # of a checker drift, which is the defect class this release keeps
+    # closing.
+    ags = sh([sys.executable, str(PS / "check-agent-skills")])
+    # F-04: it must be reachable from an install, not just from here.
+    if not (ROOT / "plugins/cereblnk/scripts/check-agent-skills").is_file():
+        suite("check-agent-skills ships", False, "not in the package")
+    else:
+        suite("check-agent-skills ships", True, "")
     suite("check-agent-skills", ags.returncode == 0,
           ags.stdout.strip().splitlines()[-1] if ags.stdout else "")
 

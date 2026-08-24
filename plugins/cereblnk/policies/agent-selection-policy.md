@@ -163,6 +163,11 @@ blocks a SubagentStop whose floor is unmet; **VerifierAgent** compares
 `scripts/check-agent-skills` holds the graph itself: no dangling
 reference, no unreachable skill, no preload above the budget cap.
 
+It ships with the plugin, so an install holds the checker and not just
+the rule. It lived in the repository `scripts/` until a test journal
+observed that the package did not carry it — the rule was there, the
+checker was not, and that is the state this project calls a wish.
+
 **Empty floor is a failure, not a default.** `select-agents` exits 3
 when no signal matches. The conductor supplies `--text` or names the
 surface. A silent single-agent default is how a run gets the wrong
