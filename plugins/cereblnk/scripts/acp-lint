@@ -84,6 +84,41 @@ if role and roster and _norm(role) not in roster:
              f"to it. Known agents: " + ", ".join(sorted(roster.values())))
 
 
+# ---- T-2: a domain floor beats the level the block was assigned (F-26) ----
+# A Task Block carried `verification_level: 1` and `risk: low` for a
+# security task. security-agent.md and skills/security-audit/SKILL.md
+# both say "always verification level 3 — no exceptions, no fast path",
+# citing policies/risk-model.md. Nothing said which of the two wins.
+# The agent chose 3, correctly, and by judgment — which means the next
+# one could as easily have obeyed the block.
+#
+# risk-model.md now states the precedence ("Precedence: the domain
+# floor beats the assigned level"). This is that rule with a checker,
+# applied at the ASSIGNMENT, because that is where the wrong number is
+# written first — the same reason V-1's roster check moved onto Task
+# Blocks in CB-127.
+#
+# Scope is deliberately the UNCONDITIONAL floors only. security-agent's
+# whole domain sits on the always-level-3 list, so every task it is
+# given is a level-3 task. database-agent and infra-agent carry floors
+# too, but conditional ones (migrations; destroy/state operations) — a
+# plain query review is honestly level 1, and a checker that cannot
+# read the objective would refuse a well-formed block. Those stay with
+# the orchestrator's routing step, which can.
+FLOORS = {"securityagent": 3}
+
+if kind == "task":
+    floor = FLOORS.get(_norm(role))
+    if floor:
+        lvl = (top("verification_level") or "").split("#")[0].strip()
+        if lvl.isdigit() and int(lvl) < floor:
+            V.append(f"T-2: role {role!r} carries an unconditional "
+                     f"verification floor of {floor}, but this task is "
+                     f"assigned verification_level: {lvl}. The floor wins "
+                     f"(policies/risk-model.md, 'Precedence: the domain "
+                     f"floor beats the assigned level') — issue the block "
+                     f"at {floor}. A smaller scope does not lower it.")
+
 if kind == "task":
     dm = re.search(r'^documents\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
     if dm:
