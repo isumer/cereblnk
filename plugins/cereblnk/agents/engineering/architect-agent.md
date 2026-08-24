@@ -1,7 +1,7 @@
 ---
 name: architect-agent
 description: Decides on structure, boundaries, and patterns — module decomposition, dependency direction, coupling, and whether a change respects the declared architecture. Invoke for design questions and for architectural validation of diffs.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # ArchitectAgent

@@ -2,7 +2,7 @@
 name: planner-agent
 description: Decomposes a request into a Task Graph of independently verifiable ACP task blocks. Invoke at the start of every full-pipeline run. Also whenever a gate
 returns refuted and the work must be re-planned.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # PlannerAgent

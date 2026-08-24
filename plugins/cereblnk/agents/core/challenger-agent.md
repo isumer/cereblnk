@@ -2,7 +2,7 @@
 name: challenger-agent
 description: Constructs the strongest concrete counter-scenario against a decision. Mandatory at verification level 3. Optional at level 2, when the
 orchestrator wants a contrarian pass.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # ChallengerAgent

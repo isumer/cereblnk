@@ -34,7 +34,7 @@ names the script that detects its violation, or is labeled as unenforced.
 The whole system on one sheet — how a request becomes work, who does
 it, and what refuses to let it finish:
 
-![Cereblnk systems note: the request routing loop, the agent pipeline, the eighteen enforcement hooks across seven events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
+![Cereblnk systems note: the request routing loop, the agent pipeline, the nineteen enforcement hooks across seven events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
 
 There are two ways in, and only one of them is guaranteed.
 
@@ -74,9 +74,9 @@ archiving.
 **Constraints** (`rules/`) — loaded per task by `scripts/select-rules`
 rather than all at once, because context is the expensive resource.
 
-**Hooks** (`hooks/`) — eighteen scripts across seven Claude Code events:
+**Hooks** (`hooks/`) — nineteen scripts across seven Claude Code events:
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`,
-`SubagentStop`, `SessionEnd`. Twelve of them block; six record or
+`SubagentStop`, `SessionEnd`. Thirteen of them block; six record or
 observe.
 
 ### What blocks a tool call
@@ -89,6 +89,7 @@ observe.
 | `secret-guard` | A write whose content looks like a credential |
 | `scratch-guard` | Working notes written to the repository root. A previous run left three debug files behind and they became someone's diff |
 | `doc-floor` | An unbounded read of an indexed document, which spends the window on the way to the one clause that mattered |
+| `tool-floor` | A shell command making an in-place edit the agent's own `disallowedTools` forbids. A denial names tools; the shell reaches the same files |
 | `post-edit-test` | Reports a failing test after an edit, when gate-3 work is flagged and a test command is configured |
 
 ### What blocks a finish
@@ -421,7 +422,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **27 agents · 94 skills (17 of them entry points) ·
-176 constraint files · 18 hooks · 28 verify suites** (count them:
+176 constraint files · 19 hooks · 28 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
