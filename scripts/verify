@@ -340,6 +340,30 @@ def main():
                   encoding="utf-8")
     if sh(["bash", str(PS / "acp-lint"), str(qf)]).returncode != 0:
         qw.append("acp-lint rejects the qualified form it now receives")
+    # F-21: three file kinds resolved to nothing while sql, css and
+    # nginx resolved fine — so the cause was never the stack gate they
+    # share. The routing table simply had no row for shell, YAML or
+    # XML, nor for the AI configuration a request to restructure
+    # `.claude/` names.
+    sw2 = []
+    for path, want in (("deploy.sh", "infra-agent"),
+                       ("Makefile", "infra-agent"),
+                       ("config.yaml", "infra-agent"),
+                       ("pom.xml", "infra-agent"),
+                       ("CLAUDE.md", "technicalwriter-agent"),
+                       (".claude/rules/java.md", "technicalwriter-agent")):
+        r = sh(["bash", str(PS / "select-agents"), path])
+        if r.returncode != 0 or want not in r.stdout:
+            sw2.append(f"{path} -> {want} missing")
+        if "inferred: true" in r.stdout:
+            sw2.append(f"{path} fell through to the inferred default")
+    # the control group the journal used: these already worked
+    for path, want in (("a.sql", "database-agent"), ("a.css", "frontend-agent"),
+                       ("X.java", "backend-agent")):
+        if want not in sh(["bash", str(PS / "select-agents"), path]).stdout:
+            sw2.append(f"{path} regressed")
+    suite("infrastructure and config surfaces route", not sw2, "; ".join(sw2[:3]))
+
     suite("agent names are spawnable", not qw, "; ".join(qw))
 
     suite("select-agents triples", ok, f"mismatch on {why}")
