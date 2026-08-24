@@ -19,6 +19,9 @@ failure is silent or total:
 
   X-1  every command named in `hooks/hooks.json` is executable in the
        index — the twelve whose absence is invisible
+  X-3  every file in `plugins/cereblnk/scripts/` is executable — the
+       skills invoke them by path, and a missing mode bit stops the
+       workflow at its first step (F-22).
   X-2  `scripts/verify` itself is executable — the documented entry
        point, and the thing a contributor runs first
 
@@ -71,10 +74,29 @@ def main():
     hook_count = len(wanted)
     wanted.add("scripts/verify")
 
+    # X-3: every shipped script. The lesson this checker was written for
+    # applied only to hooks, and the gap cost a release: `run-flag`
+    # shipped in 1.3.5 as the sole non-executable file among twenty in
+    # plugins/cereblnk/scripts/, and ten workflows name it as their
+    # first action. `Permission denied`, exit 126, and each of those
+    # skills then says a non-zero exit means the run is not guarded and
+    # must not proceed. The suite stayed green because this set never
+    # looked there.
+    script_paths = set()
+    for f in sorted((ROOT / "plugins/cereblnk/scripts").iterdir()):
+        if f.is_file():
+            script_paths.add(f"plugins/cereblnk/scripts/{f.name}")
+    wanted |= script_paths
+
     bad = 0
     for path in sorted(wanted):
         mode = modes.get(path)
-        rule = "X-2" if path == "scripts/verify" else "X-1"
+        if path == "scripts/verify":
+            rule = "X-2"
+        elif path.startswith("plugins/cereblnk/scripts/"):
+            rule = "X-3"
+        else:
+            rule = "X-1"
         if mode is None:
             print(f"{rule} {path}: named as a command but not tracked")
             bad += 1
@@ -87,7 +109,7 @@ def main():
         print(f"check-exec-bit: {bad} command(s) cannot run. Restore with "
               f"`git update-index --chmod=+x <path>` and commit.", file=sys.stderr)
         return 1
-    print(f"check-exec-bit: {hook_count} hook(s) and the verify entry point are executable")
+    print(f"check-exec-bit: {hook_count} hook(s), {len(script_paths)} script(s) and the verify entry point are executable")
     return 0
 
 
