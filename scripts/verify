@@ -275,31 +275,30 @@ def main():
         if "refactoring-agent" in r.stdout:
             ok = False; why.append(text[:24] + " (refactoring-agent selected)")
 
-    # CB-124: exit 3 is correct here — "review the OrderValidator class"
-    # names a verb and a symbol, not a surface. The advice was not: it
-    # answered a --text call by asking for a --text call, and the run
-    # that got it twice abandoned the selector and chose the specialist
-    # by reading the policy itself. The refusal must name the step that
-    # has not been tried, and the path route must actually resolve.
+    # CB-124 asserted this branch exits 3 and does not repeat the step
+    # just taken. CB-133 keeps the second half and drops the first: the
+    # branch now infers a specialist and exits 0, because refusing
+    # produced improvisation rather than a question. What must not come
+    # back is the loop — advice that asks for the call already made —
+    # and what must never be lost is the mark on the inference.
     r_txt = sh(["bash", str(PS / "select-agents"), "--text",
                 "review the OrderValidator class"])
-    if r_txt.returncode != 3:
-        ok = False; why.append("unresolved --text did not exit 3")
+    if r_txt.returncode != 0:
+        ok = False; why.append("unresolved --text no longer proceeds")
+    if "inferred: true" not in r_txt.stdout:
+        ok = False; why.append("the inference is not marked")
     if "re-run with --text" in r_txt.stderr:
         ok = False; why.append("unresolved --text still asks for --text")
     if "select-agents <path>" not in r_txt.stderr:
         ok = False; why.append("unresolved --text does not name the path route")
-    r_bare = sh(["bash", str(PS / "select-agents"), "nothing.zzz"])
-    if r_bare.returncode != 3 or "re-run with --text" not in r_bare.stderr:
-        ok = False; why.append("unresolved path lost its --text advice")
-    for r_msg in (r_txt, r_bare):
-        if "policy.md 1 " in r_msg.stderr or "§1" not in r_msg.stderr:
-            ok = False; why.append("unresolved message lost its section reference")
-    # the escape the message names has to work
+    if "not the fallback" in r_txt.stderr:
+        ok = False; why.append("the refusal that had no way out is back")
     r_resolved = sh(["bash", str(PS / "select-agents"),
                      "src/main/java/com/x/OrderValidator.java"])
     if r_resolved.returncode != 0 or "backend-agent" not in r_resolved.stdout:
         ok = False; why.append("the path route the message names does not resolve")
+    if "inferred: true" in r_resolved.stdout:
+        ok = False; why.append("a routed choice was marked as inferred")
 
     # CB-132: the routing table must name something the spawn API
     # accepts. It emitted `docs-agent`; the platform wants
