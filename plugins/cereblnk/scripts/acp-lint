@@ -61,7 +61,12 @@ kind = top("kind")
 # every role because it cannot find its own roster is worse than one
 # that checks a field less.
 def _norm(s):
-    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+    # A role may arrive qualified now that select-agents emits the
+    # spawnable form (CB-132): cereblnk:engineering:docs-agent. The
+    # roster is keyed by file stem, so take the last segment before
+    # normalising — otherwise the block that names its agent correctly
+    # is the one the linter rejects.
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower().rsplit(':', 1)[-1])
 
 role = (top("role") or "").split("#")[0].strip()
 agent_dir = os.environ.get("CB_AGENT_DIR") or ""

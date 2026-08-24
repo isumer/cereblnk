@@ -301,6 +301,28 @@ def main():
     if r_resolved.returncode != 0 or "backend-agent" not in r_resolved.stdout:
         ok = False; why.append("the path route the message names does not resolve")
 
+    # CB-132: the routing table must name something the spawn API
+    # accepts. It emitted `docs-agent`; the platform wants
+    # `cereblnk:engineering:docs-agent`, and a run spawned the bare form
+    # four times because that is what the handoff told it to spawn.
+    q = sh(["bash", str(PS / "select-agents"), "README.md"])
+    qw = []
+    if "  - cereblnk:engineering:docs-agent" not in q.stdout:
+        qw.append("specialists are not spawnable names")
+    if "  cereblnk:engineering:docs-agent: [" not in q.stdout:
+        qw.append("skills_required keys drifted from the specialist list")
+    q3 = sh(["bash", str(PS / "select-agents"), "src/main/java/AuthFilter.java"])
+    if "cereblnk:core:challenger-agent" not in q3.stdout:
+        qw.append("the mandatory level-3 specialist is not qualified")
+    # a qualified role must still pass the roster check it feeds
+    qf = _tmp / "qualified-role.yaml"
+    qf.write_text(_acp_good.replace("role: SecurityAgent",
+                                    "role: cereblnk:engineering:security-agent"),
+                  encoding="utf-8")
+    if sh(["bash", str(PS / "acp-lint"), str(qf)]).returncode != 0:
+        qw.append("acp-lint rejects the qualified form it now receives")
+    suite("agent names are spawnable", not qw, "; ".join(qw))
+
     suite("select-agents triples", ok, f"mismatch on {why}")
 
     # CB-128: the rules-side stack gate had never applied. detect-stack
