@@ -94,6 +94,15 @@ try:
     mk = re.search(r"checkpoint_at:\s*(\d+)", out)
     capacity = int(mc.group(1)) if mc else 0
     checkpoint = int(mk.group(1)) if mk else 0
+    # F-13: context-budget labels the window `source: assumed` when
+    # nothing measured it, and this hook printed the derived percentage
+    # with no hedge at all. Observed: a session warned at 101.8% and
+    # 104.7% of a guessed denominator while the real window was several
+    # times larger, and the conductor split work into subagents it did
+    # not need to. A percentage above 100 is the tell that the
+    # denominator was never real; the warning must carry the same label
+    # its own source does.
+    window_assumed = bool(re.search(r"window:.*source: assumed", out))
 except Exception:
     pass
 if not capacity:
@@ -119,10 +128,18 @@ if cb:
 if not checkpoint or occupancy < checkpoint:
     sys.exit(0)
 
-note = ("Context monitor: %d of %d input tokens used (%s%% of capacity), past the "
-        "%d checkpoint. Prefer digests over re-reading files, and finish or "
-        "checkpoint the current task before starting new work." % (
-            occupancy, capacity, pct, checkpoint))
+if window_assumed:
+    note = ("Context monitor: %d input tokens used — about %s%% of an ASSUMED "
+            "capacity of %d, past the %d checkpoint. The window was never "
+            "measured, so treat the percentage as a guess and do not reshape "
+            "the work around it; set CLAUDE_CODE_AUTO_COMPACT_WINDOW to make "
+            "it real. Prefer digests over re-reading files." % (
+                occupancy, pct, capacity, checkpoint))
+else:
+    note = ("Context monitor: %d of %d input tokens used (%s%% of capacity), past the "
+            "%d checkpoint. Prefer digests over re-reading files, and finish or "
+            "checkpoint the current task before starting new work." % (
+                occupancy, capacity, pct, checkpoint))
 print(json.dumps({"hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit", "additionalContext": note}}))
 ' 2>/dev/null || true)"

@@ -69,6 +69,11 @@ def main():
             # decision the conductor had just made.
             ("skills-required.yaml",
              str(cbd / "context/implement-2026-08-03/skills-required.yaml")),
+            # F-06: the block message says the conductor holds verdicts;
+            # the table had no path for one. A run journal is a verdict
+            # and no surface specialist owns it.
+            ("run journal",
+             str(cbd / "context/implement-2026-08-03/FINDINGS.md")),
         ]
         for label, path in owned:
             case(f"delegation: conductor owns {label} -> allow",
@@ -83,6 +88,8 @@ def main():
         # the way. The hatch costs a human act or it is not a hatch.
         for label, path in (
             ("task ledger block", str(cbd / "context/implement-2026-08-03/T-3.yaml")),
+            # still blocked: memory/specs is the technical writer's
+            # surface, and the routing table says so
             ("authored spec", str(cbd / "memory/specs/design.md")),
             ("real source", str(proj / "src/Main.java")),
             ("self-armed override", str(cbd / "flags/conductor-override")),
@@ -241,8 +248,17 @@ def main():
         case("digest-cap: within cap -> allow", "digest-cap.sh", digest_input(short), 0)
         case("digest-cap: over cap -> block", "digest-cap.sh", digest_input(long_), 2,
              "the cap is 10")
-        case("digest-cap: block names what to return", "digest-cap.sh",
-             digest_input(long_, agent="qa-agent"), 2, "one-sentence decision")
+        # F-25: the target path was `{run}<task_id>.yaml` — a literal
+        # placeholder with no separator before it, resolving outside any
+        # run directory. Two specialists received it and both declined
+        # to follow it, which is the right call made for the wrong
+        # reason: the protocol should not need overriding.
+
+        # F-25 rides on this case rather than adding a call: the nudge
+        # counter is stateful, and a fourth invocation exhausts it
+        # before the "nudge 2 still blocks" case runs.
+        case("digest-cap: block names an actionable path", "digest-cap.sh",
+             digest_input(long_, agent="qa-agent"), 2, "/<its task_id>.yaml")
         case("digest-cap: blank lines do not count", "digest-cap.sh",
              digest_input("\n\n".join(f"line {i}" for i in range(1, 10))), 0)
         case("digest-cap: stop_hook_active -> allow", "digest-cap.sh",
@@ -304,6 +320,12 @@ def main():
         check("context-monitor: warns via additionalContext, never blocks",
               r.returncode == 0 and "additionalContext" in r.stdout,
               f"rc={r.returncode} out={r.stdout[:80]!r}")
+        # F-13: context-budget calls this window `source: assumed`; the
+        # warning printed the derived percentage as fact. A session
+        # reshaped its work around 101.8% of a denominator that was
+        # never measured.
+        check("context-monitor: an assumed window says so",
+              "ASSUMED" in r.stdout and "guess" in r.stdout, r.stdout[:160])
 
         for label, arg in (("no usage field", usage_transcript()),
                            ("missing transcript", ""),
