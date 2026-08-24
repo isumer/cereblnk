@@ -121,9 +121,19 @@ except Exception:
 
 # Say what to return, not merely that the return was wrong. A block
 # message that only names the violation makes shortening a guess.
+# F-25: this line printed a path an agent could not act on —
+# `{run}<task_id>.yaml`. `<task_id>` is literal text, not a
+# placeholder, and pathlib had already dropped the trailing separator,
+# so the two ran together into one filename outside any run directory.
+# Both specialists who received it declined to follow it and reported
+# the deviation instead; correct behaviour, but from judgement rather
+# than from the protocol. The block belongs beside the others in the
+# run directory, and the id is the one in the block being returned.
 print(f"{agent} returned {len(lines)} lines; the cap is {cap} "
       f"(run-discipline \u00a71). Write the full Response Block to "
-      f"{run}<task_id>.yaml if it is not there yet, then return only: "
+      f"{run}/<its task_id>.yaml — that directory holds this run, "
+      f"one file per task id — if it is not there yet, "
+      f"then return only: "
       f"task_id, role, status, a one-sentence decision, fact counts per "
       f"label, unknown and risk counts, confidence, and the block path.")
 ' 2>/dev/null || true)"
