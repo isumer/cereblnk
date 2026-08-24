@@ -67,6 +67,26 @@ RULES = [
      ["backend-agent"], 1),   # only if no UI rule matched the same file (handled below)
     ("test surface",          r'(?i)(/tests?/|\.test\.|\.spec\.|_test\.(go|py)$|Test\.java$)',
      ["qa-agent"], 1),
+    # F-21: shell, YAML and XML resolved to nothing. The journal read
+    # this as a regex-compilation fault because skill-selection.yaml
+    # defines a shell rule; it does not. That table attaches SKILLS to
+    # an agent already chosen. This table CHOOSES the agent, and it had
+    # no row for any of the three — so the shell skill could never fire,
+    # because nothing was selected for it to attach to.
+    #
+    # The surfaces that went missing were not arbitrary: infrastructure,
+    # configuration and schema. Cereblnk's own tree is mostly shell.
+    ("shell/automation",      r'(?i)(\.(sh|bash|zsh)$|(^|/)Makefile$|(^|/)Justfile$)',
+     ["infra-agent"], 2),
+    ("config/serialisation",  r'(?i)\.(ya?ml|toml|ini|properties|xml)$',
+     ["infra-agent"], 2),
+    # F-21 second effect, and the gap that started it: a request to
+    # restructure the AI configuration itself resolved to nothing, and
+    # the two failure messages sent the caller back and forth. Agent,
+    # skill and rule files are authored documents about how work is
+    # done — the technical writer's surface, not a code surface.
+    ("ai configuration",      r'(?i)((^|[/\\])\.claude([/\\]|$)|(^|[/\\])CLAUDE\.md$|(^|[/\\])GUIDELINES\.md$|(^|[/\\])(agents|skills)[/\\].*\.md$)',
+     ["technicalwriter-agent"], 1),
     ("documentation",         r'(?i)\.md$',
      ["docs-agent"], 1),
     # Documentation splits by WHO owns the artifact, not by extension.
@@ -78,8 +98,19 @@ RULES = [
     ("authored documentation", r'(?i)(?:^|[/\\])memory[/\\](specs|briefs)[/\\]',
      ["technicalwriter-agent"], 1),
 ]
-UI = re.compile(RULES[5][1])
-AUTHORED = re.compile(RULES[10][1])
+# By name, not by index. These were RULES[5] and RULES[10]; adding three
+# rows above them silently repointed both at the wrong pattern, and the
+# only thing that noticed was a fixture two suites away. A table meant
+# to grow must not be addressed by position.
+def _rx(name):
+    for n, rx, _ag, _gl in RULES:
+        if n == name:
+            return re.compile(rx)
+    raise SystemExit("select-agents: no rule named %r" % name)
+
+
+UI = _rx("ui surface")
+AUTHORED = _rx("authored documentation")
 
 # Signals a path cannot carry. Text RAISES the floor, never lowers it —
 # "just a small expiry bump" is still auth.
