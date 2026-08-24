@@ -105,21 +105,92 @@ cannot see.
   package does not carry. Moved rather than copied: two copies of a
   checker drift.
 
+### The second pass
+
+The first round closed thirteen and deferred the rest with reasons.
+The reasons were then re-examined one at a time, and most of them did
+not survive contact with the measurement.
+
+- **The destructive hook read its own documentation as a threat**
+  (CB-135). The pattern ran over the raw command string, so a heredoc
+  whose body *mentioned* a recursive delete was blocked while writing a
+  file. A project cannot document the operations this hook guards
+  against while the hook is on. The same header this repository already
+  wrote for `delegation-guard.sh` — read the parsed payload, never a
+  substring of it — applies here in mirror image: there the risk was a
+  planted bypass, here it was a false positive. The block message also
+  prescribed an escape the hook itself refused, so a user who turned the
+  protection on could be unable to turn it off; the message now names a
+  command the pattern permits. `/cb-careful` decides its direction by
+  exact match instead of interpolating the argument into a comparison.
+  An adversarial matrix written for the fix found and closed one real
+  bypass (`cat <<EOF | bash`).
+
+- **No role is denied the tool its own workflow requires** (CB-136).
+  Eight agent definitions denied `Write` while the workflows that
+  dispatch them asked for files on disk; one was measured complying
+  through `cat > file <<'EOF'`. The declared restriction decided which
+  tool did the work and nothing else. Half of that lived in the
+  definitions and is fixed there — run-discipline §1 requires every
+  subagent to write its Response Block, so no agent may be denied
+  `Write` (checker: `check-agent-skills` A-7). The other half is the
+  restriction that remains: twelve agents deny `Edit`/`NotebookEdit`
+  because they decide and record rather than modify source, and `sed -i`,
+  `patch` and `ed` do exactly that under a tool the denial never named.
+  `ToolFloorHook` closes that path, with the same declared bound
+  CB-123 wrote for itself: it sees ordinary in-place forms, not a
+  determined bypass.
+
+- **The domain floor beats the level the block was assigned** (CB-137).
+  A Task Block carried `verification_level: 1` into a security task
+  whose own definition says the domain is always level 3. Nothing said
+  which won; the specialist chose correctly by judgment. Precedence is
+  now written where both dispatcher and specialist will find it, and a
+  fixture asserts it.
+
+- **The Boot skill answers the Boot question it was silent on**
+  (CB-138). Searching the Spring Boot skill for validation guidance
+  returned one line. Bean Validation and `@ControllerAdvice` error
+  contracts — the most common Boot design decision — were absent.
+
+- **The `bin/` on PATH is a decision, and the tree records it**
+  (CB-139). The directory named in `PATH` did not exist. Harmless,
+  because every caller uses a full path; recorded rather than left as a
+  discrepancy between the claim and the tree.
+
 ### What this does not claim
 
-Twenty-nine findings were filed and this closes thirteen. Left open:
-the discovery cascade has a parser and no caller, which is a design
-question rather than a defect to patch; seventy-seven skills sit two
-directories deep and the Skill tool only reaches the first level, which
-needs a packaging decision; the DestructiveCommand hook matches
-patterns inside heredoc data and blocks the escape its own message
-recommends, which is its own release; and the `bin/` directory named in
-`PATH` does not exist, which is harmless because every caller uses a
-full path.
+Twenty-nine findings came from the journal and a thirtieth appeared
+while fixing them. This closes nineteen. Six stay open, each as its own
+task rather than a footnote, because each wants a decision this release
+should not make on its own:
 
-Four findings were not defects: one is Claude Code's scope, one was
-resolved by `/reload-plugins` during the test itself, and two were
-dispatch errors the journal records honestly as its own.
+- **CB-141** — seventy-seven of ninety-four skills sit two directories
+  deep and cannot be loaded. A packaging decision that moves every
+  skill file, sized as its own release. Its urgency rose here: once the
+  floors match identity, a Task Block naming a domain skill produces a
+  demand nothing can satisfy.
+- **CB-142** — the discovery cascade has a parser and no caller. Who
+  runs it is a design question.
+- **CB-143** — stack tokens gate the floor but never trigger it, while
+  §3b says the surface specialist is mandatory. One of the two documents
+  is wrong and the fix depends on which.
+- **CB-144** — a continue-nudge fires at a conductor waiting on live
+  specialists, and recommends disarming the flag that guards them.
+- **CB-145** — the context budget models a quantity the host does not
+  compact on.
+- **CB-146** — exporting the two variables the README recommends makes
+  `scripts/verify` fail four cases. CI never sees it, because CI never
+  sets them.
+
+Five findings were closed without a change (CB-140), and the reason is
+recorded rather than assumed: one is Claude Code's scope, not this
+plugin's; one was resolved by `/reload-plugins` during the test itself;
+two were dispatch errors the journal records honestly as its own; and
+one — that an epistemic label certifies an observation was made, not
+that it was correct — is a true statement about the protocol rather
+than a defect in it. The journal itself proved the point twice, once
+against a specialist and once against its own author.
 
 ## [1.3.6] — A name nothing could spawn, and a refusal with no way out
 

@@ -20,6 +20,170 @@
 
 ---
 
+## Open — the outside test journal, second pass
+
+An external operator drove the plugin through a build-shaped run in a
+scratch repository and kept a measurement journal: 29 findings, each
+with the command that produced it. Thirteen closed under CB-134. These
+are the rest. Every one of them was reproduced against 1.4.0 before
+being written here; a finding that stopped reproducing is recorded in
+CB-144 instead of being silently dropped.
+
+The journal's own severity scale is preserved in the finding ids so a
+reader can trace a task back to the measurement that found it.
+
+### CB-141 — The domain-skill layer is inert (F-09)
+
+Seventy-seven of the ninety-four shipped `SKILL.md` files cannot be
+loaded. `skills/<group>/<skill>/SKILL.md` sits two directories deep and
+the host walks only the first level, so the six category trees —
+`practices/`, `frameworks/`, `languages/`, `data/`, `delivery/`,
+`infrastructure/` — are unreachable. Only the seventeen workflow entry
+points are invocable.
+
+Measured three times independently: `Skill(spring-boot)`,
+`Skill(api-design)` and `Skill(cereblnk:owasp-threat-modeling)` each
+return `Unknown skill`, while the files exist on disk. Two specialists
+worked around it by reading `SKILL.md` with `cat`.
+
+This is a packaging decision, not a patch: it wants a flat distribution
+tree, and it moves every skill file. Sized as its own release
+deliberately — folding it into a routing PR would make both
+unreviewable.
+
+**Urgency changed after CB-134.** While the floors were identity-blind
+they never asked for these skills. CB-134 fixed identity matching, so a
+Task Block naming a domain skill now produces a floor demand that
+cannot be satisfied. The nudge cap bounds it, so it is friction rather
+than deadlock — but it is friction this release introduced.
+
+**Acceptance.**
+1. `Skill(spring-boot)` returns the skill body, not `Unknown skill`.
+2. Every file matching `skills/**/SKILL.md` is invocable by its
+   directory name; a checker enumerates the tree and asserts it.
+3. `scripts/check-agent-skills` still passes: no dangling reference, no
+   unreachable skill, preload within budget.
+
+### CB-142 — The cascade has a parser and no executor (F-08)
+
+`policies/skill-selection.yaml` declares `discovery` triggers on most
+rules (`@Entity -> hibernate-jpa`, `spring-boot-starter -> spring-boot`).
+`scripts/lib/cbmap.py` defines `discovery_pairs` to read them. Nothing
+in the tree calls it — grep across 1.3.5 and 1.4.0 returns zero callers.
+
+The cascade is therefore instruction-driven: it happens when a
+specialist reads the map and decides to follow a trigger, and not
+otherwise. `agent-selection-policy.md` §4c presents it as a step that
+occurs.
+
+**The open question is who runs it**, and that is a design decision
+rather than a missing line: the conductor cannot see inside the
+specialist's window, and the specialist does not re-read the map after
+its evidence changes. Route through `/cb-think` or `/cb-frame` before
+implementing.
+
+**Acceptance.**
+1. Either a mechanism resolves declared triggers and records the
+   resolution, or `discovery` is documented as advisory and
+   `agent-selection-policy.md` §4c stops asserting it happens.
+2. Whichever is chosen, a checker fails when the tree and the claim
+   disagree.
+
+### CB-143 — Stack is a gate where the policy says trigger (F-07)
+
+`select-agents --text "add a REST endpoint for user registration"`,
+run in a repository whose stack profile carries four tokens
+(`java`, `maven`, `spring-boot`, `hibernate-jpa`), returns exactly what
+the same command returned in an empty repository: `apidesign-agent`
+alone, with `api-design` as its only skill. No `backend-agent`, no
+`java`, no `spring-boot`.
+
+The map's own schema explains it: `Floor = (path OR topic match) AND
+(stack token present, when declared)`. Stack tokens can only subtract.
+A project being a Spring Boot project never adds anything.
+
+`agent-selection-policy.md` §1/§3b says the opposite for the roles:
+`backend-agent` is mandatory for server-side behavior. On a text signal
+the floor does not produce it.
+
+**Acceptance.**
+1. A text request naming server-side behavior, in a repository whose
+   stack profile carries the tokens, yields a floor containing the
+   surface specialist and its stack skills.
+2. Or §3b is rewritten to match what the mechanism does, and the
+   discrepancy stops being documented as a guarantee.
+3. Either way a test asserts the floor for one fixture request, so the
+   two documents cannot drift apart again.
+
+### CB-144 — A conductor counted idle while its specialists run (F-14)
+
+RunGuard fired a continue-nudge on a turn that ended with two subagents
+still working: *"execute the NEXT unconfirmed task"*. There was no
+ledger to reconcile — the run had written no `plan.md` — and the
+conductor was not idle, it was waiting, which is the normal state of a
+multi-agent run.
+
+The remedy the nudge offers is worse than the nudge: removing
+`flags/run-active` while specialists are running disarms the floors
+that are supposed to judge them.
+
+**Acceptance.**
+1. A turn that ends with live background subagents produces no
+   continue-nudge, or produces one whose text distinguishes waiting
+   from stalling.
+2. The nudge never recommends an action that disarms enforcement while
+   enforcement is still needed.
+
+### CB-145 — The budget models a quantity the host does not compact on (F-15)
+
+`scripts/context-budget` computes `input_capacity = window − output_reserve`
+and ContextMonitor reports occupancy against it. The host triggers
+auto-compaction on `effective_window` minus a summary buffer, where
+`effective_window` resolves env → setting → clientdata → model default
+and is then clamped to the model window.
+
+The two are different quantities. After the window was set explicitly
+the denominator became real, but it still measures something other
+than the thing that compacts.
+
+Low severity — the checkpoint stays conservative — but the two numbers
+are presented as the same and a reader will treat them as one.
+
+**Acceptance.**
+1. Either the budget derives the host's trigger, or the documentation
+   states plainly that the checkpoint is a Cereblnk policy threshold
+   and not the host's compaction point.
+2. Sourced from the host's published behavior, not inferred from a
+   binary; if it can only be inferred, it is labeled inferred.
+
+### CB-146 — The documented setup breaks the suite that guards it (F-30)
+
+`plugins/cereblnk/README.md` instructs the operator to export
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_CODE_MAX_OUTPUT_TOKENS`,
+so that `context-budget` reports a measured window instead of an
+assumed one. Doing exactly that makes `scripts/verify` fail:
+`test-hooks` drops four context-monitor cases.
+
+Measured on four conditions. Variables unset, this branch: no failures.
+Variables set, this branch: `test-hooks 4/129`. Variables set,
+unmodified branch head: `test-hooks 4/89`. So the failure is inherited
+from the environment, not introduced by any change here.
+
+CI cannot see it — GitHub Actions has neither variable set, so the
+deterministic layer is always green there. The failure appears only on
+the machine of someone who both uses the plugin and contributes to it,
+which is the one reader the suite most needs to serve. Found because a
+specialist qualified its own green with the condition that produced it.
+
+**Acceptance.**
+1. `scripts/verify` passes with both variables exported at any value the
+   README suggests.
+2. The context-monitor cases construct the environment they test rather
+   than inheriting it, so no suite result depends on the shell that
+   started it.
+
+---
+
 ## Closed
 
 One line each. The full record of what shipped and why lives in
@@ -154,3 +318,9 @@ read.
 - [x] **CB-132** — A name nothing could spawn, and a refusal with no way out
 - [x] **CB-133** — Unresolved infers a specialist, and says so
 - [x] **CB-134** — Thirteen findings from an outside test journal
+- [x] **CB-135** — The destructive hook read its own documentation as a threat
+- [x] **CB-136** — No role is denied the tool its own workflow requires
+- [x] **CB-137** — The domain floor beats the level the block was assigned
+- [x] **CB-138** — The Boot skill answers the Boot question it was silent on
+- [x] **CB-139** — The `bin/` on PATH is a decision, and the tree records it
+- [x] **CB-140** — Five findings closed without a change, and why
