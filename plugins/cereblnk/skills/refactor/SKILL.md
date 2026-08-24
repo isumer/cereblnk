@@ -33,7 +33,7 @@ place is the cardinal sin. Handing over is not.
 ## Boundary auto-engagement
 
 Before any edit, run
-`mkdir -p .claude/cereblnk/flags && echo "<target path>" > .claude/cereblnk/flags/boundary`.
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag flag boundary arm "" "<target path>"`.
 The EditBoundaryHook now blocks writes
 outside the declared directory for the session (hooks/README.md; note
 honestly: blocks tools, not shell side-effects). On completion, remove
