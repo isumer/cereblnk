@@ -156,8 +156,10 @@ def main():
                 json.dumps({"tool_input": {"file_path": "svc/Payment.java"}}), proj)
         ran += 1
         msg = r.stderr + r.stdout
-        if "NEXT ACTION: spawn backend-agent" not in msg:
-            fails.append("delegation: block does not name the specialist")
+        # CB-132: the handoff must name what the spawn API accepts. The
+        # bare form was followed literally and rejected four times.
+        if "NEXT ACTION: spawn cereblnk:engineering:backend-agent" not in msg:
+            fails.append("delegation: block does not name a spawnable specialist")
         ran += 1
         if "Remove" in msg or "run-active" in msg.split("NEXT ACTION")[0]:
             fails.append("delegation: block still advertises its own bypass")

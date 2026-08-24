@@ -197,27 +197,37 @@ for r in rules:
 if not agents:
     print("# select-agents — UNRESOLVED", file=sys.stderr)
     print("unresolved: true", file=sys.stderr)
-    # The advice has to differ by what was already tried. Observed live:
-    # a request naming a class and a verb ("review the OrderValidator
-    # class") carries no surface noun, so no text rule matches — which
-    # is correct, because "review" does not say whose work it is. But
-    # the message answered a --text call by asking for a --text call.
-    # The run made that call twice, got the same sentence twice, then
-    # abandoned the selector and chose the specialist by reading the
-    # policy itself: routing decided by a model instead of by the
-    # table, which is the failure exit 3 exists to prevent. A refusal
-    # that repeats the step just taken is not a refusal, it is a loop.
+    # The advice differs by what was already tried (CB-124): answering a
+    # --text call by asking for a --text call is a loop, and a run that
+    # got that sentence twice abandoned the selector.
+    #
+    # CB-132 removes the second half of that fix. The message also said
+    # reading the policy by hand "is not the fallback", which closed the
+    # only route a caller had left. The route it offered instead — pass
+    # a repository path — does not exist for every surface: a request to
+    # restructure `.claude/` or CLAUDE.md names configuration, and the
+    # rule table has no configuration surface, so no path resolves. A
+    # refusal that forbids the remaining option without opening another
+    # is worse than the loop it replaced. Observed as minutes of a run
+    # cycling through candidate agents and reaching none.
+    #
+    # So: say what does not match, name the path route as the better
+    # one, and stop forbidding the fallback. Choosing by hand stays
+    # visibly worse without being blocked, which is the honest state —
+    # a wrong specialist chosen out loud is correctable, a run that
+    # cannot proceed at all is not.
     if text:
         print("reason: --text was supplied and no rule matched it — the "
               "request names no surface", file=sys.stderr)
-        print("next: resolve the symbol, class or file the request names "
-              "to a repository path and pass that path "
-              "(`select-agents <path>`); a path carries the surface a "
-              "verb cannot. Reading agent-selection-policy.md and "
-              "choosing by hand is not the fallback — §1 stays "
-              "authoritative precisely because a specialist chosen "
-              "silently is how a run gets the wrong one.",
-              file=sys.stderr)
+        print("next: if the request names a symbol, class or file, "
+              "resolve it to a repository path and pass that path "
+              "(`select-agents <path>`) — a path carries the surface a "
+              "verb cannot. If it names no code surface at all "
+              "(configuration, tooling, project setup), no rule covers "
+              "it: choose the specialist yourself from "
+              "agent-selection-policy.md §1 and say in the plan that "
+              "the choice was made by hand, so a wrong one is visible "
+              "rather than silent.", file=sys.stderr)
     else:
         print("reason: no path rule matched", file=sys.stderr)
         print("next: re-run with --text \"<the request>\" or name the "
@@ -227,20 +237,54 @@ if not agents:
     raise SystemExit(3)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
+# ---- spawnable names (CB-132) ----
+# The platform addresses an agent as plugin:directory:file —
+# `cereblnk:engineering:docs-agent`. This script owns the roster and
+# knows where each file lives, so it is the one place that can say the
+# spawnable name. It did not: it emitted `docs-agent`, DelegationGuard
+# copied that into `NEXT ACTION: spawn docs-agent`, and a run followed
+# the instruction exactly. Four spawns failed with `Agent type
+# 'docs-agent' not found`, each answering with the full 27-agent
+# roster, until the model worked out the shape from the error text.
+#
+# Nothing in the tree carried the qualified form — not the agent
+# frontmatter, not TOPOLOGY, not the policies. It existed only as a
+# directory path nobody surfaced. A routing table whose output cannot
+# be handed to the spawn API is not routing, it is a suggestion.
+#
+# Unknown names fall through unchanged rather than being guessed at:
+# `challenger-agent` is printed by this script as a literal, and an
+# agent added outside agents/ should read as itself, not as a fiction.
+# __file__ is unusable here: the body runs from a heredoc, so it
+# resolves against the caller's directory and the map came back
+# empty in silence. CB_LIB is exported by the wrapper above and
+# points at scripts/lib, so the plugin root is two levels up.
+AGENT_DIR = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
+_QUALIFIED = {}
+if AGENT_DIR.is_dir():
+    for _f in AGENT_DIR.rglob("*-agent.md"):
+        _QUALIFIED[_f.stem] = "cereblnk:%s:%s" % (_f.parent.name, _f.stem)
+
+
+def qualify(name):
+    """docs-agent -> cereblnk:engineering:docs-agent, or unchanged."""
+    return _QUALIFIED.get(name, name)
+
+
 print("specialists:")
 for a in agents:
-    print("  - %s" % a)
+    print("  - %s" % qualify(a))
 if level == 3:
-    print("  - challenger-agent   # mandatory at gate level 3")
+    print("  - %s   # mandatory at gate level 3" % qualify("challenger-agent"))
 print("gate_level: %d" % level)
 print("stack_source: %s" % stack_note)
 print("skills_required:")
 for role in agents:
     got = skills.get(role) or []
     if got:
-        print("  %s: [%s]" % (role, ", ".join(got)))
+        print("  %s: [%s]" % (qualify(role), ", ".join(got)))
     else:
-        print("  %s: []   # no skill signal for this role" % role)
+        print("  %s: []   # no skill signal for this role" % qualify(role))
 print("signals:")
 for s in signals:
     print("  - \"%s\"" % s)

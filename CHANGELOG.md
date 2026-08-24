@@ -7,6 +7,63 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.3.6] — A name nothing could spawn, and a refusal with no way out
+
+Two corrections to routing, both to things this project shipped and one
+of them added a release ago.
+
+**The name.** The platform addresses an agent as
+`cereblnk:engineering:docs-agent`. `select-agents` emitted `docs-agent`,
+DelegationGuard copied that into `NEXT ACTION: spawn docs-agent`, and a
+run did exactly what it was told — four times, each rejected with
+`Agent type 'docs-agent' not found` and answered with the full 27-agent
+roster, until the model reverse-engineered the shape from the error.
+
+Nothing in the tree carried the qualified form. Not the agent
+frontmatter, not TOPOLOGY, not the policies. It existed only as a
+directory path nobody surfaced, while the one component that owns the
+roster and knows where every file lives printed a name the spawn API
+does not accept. A routing table whose output cannot be handed to the
+API it routes for is a suggestion, not a mechanism.
+
+**The refusal.** 1.3.1 fixed a real loop: the unresolved message
+answered a `--text` call by asking for a `--text` call. The fix went
+further than the loop and added that reading the policy by hand "is not
+the fallback." That closed the only route a caller had left, and the
+route offered instead — resolve the request to a repository path — does
+not exist for every surface. A request to restructure `.claude/` or
+`CLAUDE.md` names configuration, the rule table has no configuration
+surface, and so no path resolves. Observed as a run cycling through
+candidate agents for minutes and reaching none.
+
+Forbidding the remaining option without opening another is worse than
+the loop it replaced. A wrong specialist chosen out loud is visible and
+correctable; a run that cannot proceed at all is neither.
+
+### Fixed
+
+- **`select-agents` emits spawnable names.** `specialists:` and the
+  `skills_required` keys both carry `cereblnk:<dir>:<name>`, derived
+  from where the agent file actually lives. A name with no agent file
+  passes through unchanged rather than being invented. DelegationGuard's
+  handoff carries the same form, and `acp-lint` takes the last segment
+  before checking the roster, so a block naming its agent correctly is
+  not the one the linter rejects.
+
+### Changed
+
+- **The unresolved message stops forbidding the fallback.** It still
+  names the path route as the better one, and now says plainly that a
+  request naming no code surface is not covered by any rule: choose from
+  §1 and record in the plan that the choice was made by hand. The loop
+  fix stays; the prohibition goes.
+
+### What this does not claim
+
+The rule table still has no configuration surface — `.claude/`,
+`CLAUDE.md`, agent and skill files route nowhere. This release stops
+that gap from stalling a run; it does not close it.
+
 ## [1.3.5] — The arm that failed, and the boundary that went with it
 
 Eleven files told the conductor to arm a run by hand:
