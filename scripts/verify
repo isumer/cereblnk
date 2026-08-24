@@ -48,7 +48,7 @@ unsupported paths where the tool has them):
 
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
-import pathlib, re, subprocess, sys, tempfile
+import os, pathlib, re, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
@@ -163,6 +163,33 @@ def main():
         t = f.read_text(encoding="utf-8", errors="replace")
         if ".claude/cereblnk/flags" in t:
             fw.append(f"{f.parent.name} still writes a flag by relative path")
+    # F-01: CLAUDE_PROJECT_DIR won unconditionally and only hooks get
+    # it, so in a session opened above the project the hooks and the
+    # scripts resolved different trees. The baseline was written under
+    # one and looked for under the other, and every floor exited 0.
+    env_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-root-"))
+    (env_root / "proj/.git").mkdir(parents=True)
+    (env_root / "proj/sub").mkdir(parents=True)
+    (env_root / ".claude").mkdir(parents=True)
+    cbenv = PS / "lib/cbenv.sh"
+    def root_of(cwd, project_dir=None):
+        env = dict(os.environ)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        if project_dir:
+            env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+        r = subprocess.run(["bash", "-c", f'. "{cbenv}"; printf "%s" "$CB_DIR"'],
+                           cwd=str(cwd), env=env, capture_output=True, text=True)
+        return r.stdout.strip()
+    as_script = root_of(env_root / "proj/sub")
+    as_hook = root_of(env_root / "proj/sub", env_root)
+    if as_script != as_hook:
+        fw.append(f"root still splits: script={as_script} hook={as_hook}")
+    if "proj" not in as_hook:
+        fw.append("the nested project lost to the session directory")
+    # a marker OUTSIDE the session root must not win
+    outside = root_of(env_root / "proj/sub", env_root / "proj/sub")
+    if str(env_root / "proj/sub") not in outside:
+        fw.append("an explicit project dir was overridden from below")
     suite("run flag is armed by a mechanism", not fw, "; ".join(fw[:3]))
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])

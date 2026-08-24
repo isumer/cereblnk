@@ -153,3 +153,4 @@ read.
 - [x] **CB-131** — The arm that failed, and the boundary that went with it
 - [x] **CB-132** — A name nothing could spawn, and a refusal with no way out
 - [x] **CB-133** — Unresolved infers a specialist, and says so
+- [x] **CB-134** — Thirteen findings from an outside test journal

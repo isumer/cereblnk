@@ -7,6 +7,120 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.0] — What an outside test found, and what it cost to look
+
+An external test journal ran 1.3.5 against a real Spring Boot fixture
+and filed twenty-nine findings. Several describe mechanisms this
+project advertises as enforcement that were, in an ordinary setup,
+doing nothing at all — and saying nothing about it.
+
+Minor rather than patch: `select-agents` gains surfaces, the flag
+mechanism gains a subcommand, and root resolution changes for anyone
+who opens a session above their project. Behaviour that was silently
+absent becomes present, which is a change even when it is the change
+that was always intended.
+
+### The root was split, so the floors were not floors
+
+`CLAUDE_PROJECT_DIR` won unconditionally, and only hooks receive it. A
+script run by an agent walked up from `$PWD` instead. In a session
+opened above the project — one workspace, several repositories, a
+common arrangement — the two resolved different trees:
+
+```
+scripts (cwd inside the project)  -> <workspace>/cb-testbed/.claude/cereblnk
+hooks   (CLAUDE_PROJECT_DIR)      -> <workspace>/.claude/cereblnk
+```
+
+`select-agents` writes the skill baseline under one; `skill-floor`
+looks for it under the other, does not find it, and exits 0. Every
+floor reads the run directory the same way. The enforcement layer was
+not weakened, it was absent, and the only thing that would have said so
+was the thing that was absent.
+
+The same split disabled `/cb-careful` and `/cb-boundary`: both wrote
+their flag with a relative path while the hooks read `$CB_DIR`. A
+controlled experiment ran the same recursive delete twice — it
+executed when the flag sat where the skill wrote it, and was blocked
+when it sat where the hook looks. Both skills report the protection as
+enabled either way. A system announcing a guarantee it does not hold is
+worse than one with no guarantee, because the user then takes more
+risk.
+
+Resolution now prefers the nearest project marker at or below
+`CLAUDE_PROJECT_DIR`. A marker outside it is ignored — the session
+boundary is still a boundary. This does not converge every case: a hook
+whose cwd is the session root and a script whose cwd is the nested
+project still disagree, and `CB_ROOT_HINT` records the other candidate
+so `run-flag` can say so rather than reporting a success the hooks
+cannot see.
+
+### Fixed
+
+- **Subagent floors match identity on the last segment.** The baseline
+  is keyed by policy role names; SubagentStop hands back whatever the
+  harness has — measured as a bare hex id and as `general-purpose`.
+  Neither matched, so the floor exited 0 for every real subagent while
+  a synthetic payload engaged correctly. When the identity cannot be
+  matched at all the floor now says so on stderr and still allows: it
+  has no grounds to fail a subagent it cannot name, only grounds to
+  admit it did not check.
+- **Every shipped script is executable, and `check-exec-bit` looks.**
+  `run-flag` shipped in 1.3.5 as the only non-executable file among
+  twenty, and ten workflows name it as their first action —
+  `Permission denied`, exit 126, and each of those skills then says a
+  non-zero exit means the run is not guarded. The checker's rule set
+  covered hooks and `scripts/verify`; X-3 now covers the package
+  scripts too.
+- **`careful`, `boundary` and `refactor` arm through `run-flag`**,
+  which grows a `flag <name> arm|disarm` subcommand with optional
+  content. One mechanism, verified after writing, for every flag rather
+  than for one.
+- **Shell, configuration and AI-configuration surfaces route.** `.sh`,
+  `Makefile`, `.yaml`, `.xml`, `.toml` and the `.claude/` tree matched
+  no rule, so a request about any of them fell through — while `.sql`,
+  `.css` and `nginx.conf` resolved fine, which is why the stack gate
+  they share was never the cause. Cereblnk's own tree is mostly shell.
+- **Rules are addressed by name, not by index.** `RULES[5]` and
+  `RULES[10]` were compiled into `UI` and `AUTHORED`; adding three rows
+  above them repointed both at the wrong pattern, and the only thing
+  that noticed was a fixture two suites away.
+- **`digest-cap` prints a path an agent can act on.** It printed
+  `{run}<task_id>.yaml` — a literal placeholder with no separator
+  before it, resolving outside any run directory. Two specialists
+  received it and both declined to follow it, which is the right
+  outcome reached without the protocol's help.
+- **The conductor may write its own run journal.** The block message
+  counts verdicts among what the conductor holds and the ownership
+  table had no path for one. Scoped to `context/<run>/*.md`:
+  `memory/specs` remains the technical writer's surface, as the routing
+  table says.
+- **An assumed context window says so.** `context-budget` labels the
+  window `source: assumed`; the monitor printed the derived percentage
+  as fact. A session warned at 101.8% and 104.7% of a guessed
+  denominator — a figure above 100 is the tell — and reshaped its work
+  around it.
+- **`check-agent-skills` ships with the plugin.** The policy cites it
+  as a live guarantee; it lived in the repository `scripts/`, which the
+  package does not carry. Moved rather than copied: two copies of a
+  checker drift.
+
+### What this does not claim
+
+Twenty-nine findings were filed and this closes thirteen. Left open:
+the discovery cascade has a parser and no caller, which is a design
+question rather than a defect to patch; seventy-seven skills sit two
+directories deep and the Skill tool only reaches the first level, which
+needs a packaging decision; the DestructiveCommand hook matches
+patterns inside heredoc data and blocks the escape its own message
+recommends, which is its own release; and the `bin/` directory named in
+`PATH` does not exist, which is harmless because every caller uses a
+full path.
+
+Four findings were not defects: one is Claude Code's scope, one was
+resolved by `/reload-plugins` during the test itself, and two were
+dispatch errors the journal records honestly as its own.
+
 ## [1.3.6] — A name nothing could spawn, and a refusal with no way out
 
 Two corrections to routing, both to things this project shipped and one

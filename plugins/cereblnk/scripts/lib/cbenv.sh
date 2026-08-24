@@ -74,8 +74,41 @@ _cb_find_root() {
   done
   return 1
 }
+# F-01: CLAUDE_PROJECT_DIR won unconditionally, and only hooks receive
+# it. A script run by an agent walked up from $PWD instead, so in a
+# session opened ABOVE the project the two answers differed:
+#
+#   scripts (cwd inside the project)  -> <workspace>/cb-testbed/.claude/cereblnk
+#   hooks   (CLAUDE_PROJECT_DIR)      -> <workspace>/.claude/cereblnk
+#
+# select-agents writes the skill baseline under one; skill-floor looks
+# for it under the other, does not find it, and exits 0. Every floor
+# reads the run directory the same way, so the whole enforcement layer
+# went quiet — not weakened, absent, with nothing saying so. The same
+# split disabled /cb-careful and /cb-boundary, which reported
+# themselves as enabled while writing to a tree no hook reads.
+#
+# Resolution: prefer the nearest project marker at or below
+# CLAUDE_PROJECT_DIR. A nested project is more specific than the
+# session directory and is what both sides mean by "this project";
+# when the walk finds nothing under it, CLAUDE_PROJECT_DIR stands. A
+# marker OUTSIDE it is ignored — the session boundary is still a
+# boundary.
+#
+# It cannot converge every case: a hook whose cwd is the session root
+# and a script whose cwd is the nested project will still disagree.
+# CB_ROOT_HINT records the other candidate so callers can say so
+# instead of failing open in silence.
+CB_ROOT_HINT=""
 if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
   CB_ROOT="$CLAUDE_PROJECT_DIR"
+  _cb_nested="$(_cb_find_root || true)"
+  if [ -n "$_cb_nested" ] && [ "$_cb_nested" != "$CLAUDE_PROJECT_DIR" ] \
+     && _cb_under "$_cb_nested" "${CLAUDE_PROJECT_DIR%/}"; then
+    CB_ROOT="$_cb_nested"
+    CB_ROOT_HINT="$CLAUDE_PROJECT_DIR"
+  fi
+  unset _cb_nested
 else
   CB_ROOT="$(_cb_find_root || true)"
   if [ -z "$CB_ROOT" ] && ! _cb_is_forbidden_root "$PWD"; then
@@ -103,4 +136,4 @@ CB_DIR="${CB_ROOT:+$CB_ROOT/.claude/cereblnk}"
 if [ -n "${CB_DIR:-}" ] && [ -d "$CB_DIR" ] && [ ! -f "$CB_DIR/.gitignore" ]; then
   printf '*\n' > "$CB_DIR/.gitignore" 2>/dev/null || true
 fi
-export PYBIN CB_ROOT CB_DIR
+export PYBIN CB_ROOT CB_DIR CB_ROOT_HINT

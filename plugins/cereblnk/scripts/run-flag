@@ -94,6 +94,14 @@ case "$CMD" in
       exit 1
     fi
     echo "run-flag: armed ($FLAG)"
+    # F-23: stat answers "is the file there", not "is it in the tree the
+    # hooks read". Under a split root the arm reported success while the
+    # hooks saw nothing — the same silent-unguarded outcome this script
+    # was written to end, reached from the other side.
+    if [ -n "${CB_ROOT_HINT:-}" ]; then
+      echo "run-flag: note — the session root is $CB_ROOT_HINT and this armed under $DIR." >&2
+      echo "run-flag: hooks resolving to the session root will not see this flag." >&2
+    fi
     ;;
   disarm)
     rm -f "$FLAG" 2>/dev/null || true
