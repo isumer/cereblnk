@@ -30,7 +30,18 @@
 #      permission decision remembers it per command; eleven improvised
 #      spellings meant the decision never matched the next run.
 #
+# CB-134 generalises it. `careful` and `boundary` — the two protections
+# a user turns on by hand — were armed by the skills with a RELATIVE
+# path, `.claude/cereblnk/flags/...`, which lands wherever the shell
+# happens to be. The hooks read $CB_DIR. Measured in a controlled
+# experiment: the same recursive delete ran when the flag sat where the
+# skill wrote it and was blocked when it sat where the hook looks. Both
+# skills report the protection as enabled either way, so the system
+# announces a guarantee it does not hold — worse than no protection,
+# because the user then takes more risk.
+#
 # Usage: run-flag arm|disarm|status [cb_dir]
+#        run-flag flag <name> arm|disarm|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
 #        2 usage
@@ -38,11 +49,23 @@ set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
 
 CMD="${1:-}"
-DIR="${2:-${CB_DIR:-}}"
+NAME="run-active"
+CONTENT=""
+if [ "$CMD" = "flag" ]; then
+  NAME="${2:-}"
+  CMD="${3:-}"
+  DIR="${4:-${CB_DIR:-}}"
+  CONTENT="${5:-}"
+  case "$NAME" in
+    "" | */* | .*) echo "usage: run-flag flag <name> arm|disarm|status [cb_dir] [content]" >&2; exit 2 ;;
+  esac
+else
+  DIR="${2:-${CB_DIR:-}}"
+fi
 
 case "$CMD" in
   arm|disarm|status) ;;
-  *) echo "usage: run-flag arm|disarm|status [cb_dir]" >&2; exit 2 ;;
+  *) echo "usage: run-flag [flag <name>] arm|disarm|status [cb_dir]" >&2; exit 2 ;;
 esac
 
 if [ -z "$DIR" ]; then
@@ -51,7 +74,7 @@ if [ -z "$DIR" ]; then
   exit 1
 fi
 
-FLAG="$DIR/flags/run-active"
+FLAG="$DIR/flags/$NAME"
 
 case "$CMD" in
   status)
@@ -60,10 +83,14 @@ case "$CMD" in
     ;;
   arm)
     mkdir -p "$DIR/flags" 2>/dev/null || true
-    touch "$FLAG" 2>/dev/null || true
+    if [ -n "$CONTENT" ]; then
+      printf '%s\n' "$CONTENT" > "$FLAG" 2>/dev/null || true
+    else
+      touch "$FLAG" 2>/dev/null || true
+    fi
     if [ ! -f "$FLAG" ]; then
-      echo "run-flag: could not arm $FLAG — the run is NOT guarded." >&2
-      echo "run-flag: DelegationGuard and RunGuard read this file; without it they pass everything through. Do not proceed as though a run is active." >&2
+      echo "run-flag: could not arm $FLAG — this protection is NOT active." >&2
+      echo "run-flag: the hook that reads this file will find nothing and pass everything through. Do not report the protection as enabled." >&2
       exit 1
     fi
     echo "run-flag: armed ($FLAG)"

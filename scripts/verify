@@ -136,13 +136,33 @@ def main():
     u = sh(["bash", str(rf), "arm", "/proc/cb-nonexistent/cereblnk"])
     if u.returncode == 0:
         fw.append("an unwritable target armed silently")
-    if "NOT guarded" not in u.stderr:
-        fw.append("the failure does not say the run is unguarded")
+    if "NOT active" not in u.stderr:
+        fw.append("the failure does not say the protection is inactive")
     # and the prose must call the script, or the script is never run
     raw = 'touch "$CB_DIR/flags/run-active"'
     for f in sorted((ROOT / "plugins/cereblnk").rglob("*.md")):
         if raw in f.read_text(encoding="utf-8", errors="replace"):
             fw.append(f"{f.relative_to(ROOT)} still arms by hand")
+    # F-16/F-20: careful and boundary were armed with a relative path,
+    # so they landed next to the shell rather than under $CB_DIR. A
+    # controlled experiment showed the same delete running when the flag
+    # sat where the skill wrote it and blocked when it sat where the
+    # hook reads. Both skills reported the protection as enabled either
+    # way.
+    for nm, extra in (("careful", []), ("boundary", ["src"])):
+        a = sh(["bash", str(rf), "flag", nm, "arm", str(rf_root)] + extra)
+        if a.returncode != 0 or not (rf_root / f"flags/{nm}").is_file():
+            fw.append(f"{nm} did not land (rc={a.returncode})")
+    if (rf_root / "flags/boundary").read_text().strip() != "src":
+        fw.append("boundary lost its content")
+    u2 = sh(["bash", str(rf), "flag", "careful", "arm",
+             "/proc/cb-nonexistent/cereblnk"])
+    if u2.returncode == 0 or "NOT active" not in u2.stderr:
+        fw.append("an unwritable protection armed silently")
+    for f in sorted((ROOT / "plugins/cereblnk/skills").rglob("SKILL.md")):
+        t = f.read_text(encoding="utf-8", errors="replace")
+        if ".claude/cereblnk/flags" in t:
+            fw.append(f"{f.parent.name} still writes a flag by relative path")
     suite("run flag is armed by a mechanism", not fw, "; ".join(fw[:3]))
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])
