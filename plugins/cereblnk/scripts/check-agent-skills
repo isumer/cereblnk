@@ -17,6 +17,14 @@ Rules enforced:
   A-4  every map rule names an existing skill and existing roles
   A-5  every discovery target resolves to an existing skill
   A-6  entry-point skills (cb- prefixed) are neither preloaded nor mapped
+  A-7  no agent is denied a tool its own workflow requires. Concretely:
+       `disallowedTools` may not name `Write`, because run-discipline
+       §1 binds EVERY subagent to write its Response Block to
+       `$CB_DIR/context/<run_id>/<task_id>.yaml`, and /cb-design makes
+       architect-agent and qa-agent author spec sections to disk on top
+       of that (F-24). A denial the workflow contradicts is not a
+       restriction — it is a detour: the measured run wrote the files
+       through `cat > file <<'EOF'` and the work happened anyway.
 
 Usage: check-agent-skills [plugin_root]
 Exit:  0 clean · 1 violations found
@@ -82,6 +90,7 @@ def main(argv):
             entry_points.add(sk.parent.name)
 
     agents = {}          # agent name -> (path, [preloaded skills])
+    denied = {}          # agent name -> [tools its frontmatter forbids]
     for ag in sorted(agents_root.glob("*/*.md")):
         if ag.name == "README.md":
             continue
@@ -89,6 +98,7 @@ def main(argv):
         name = fm.get("name") or ag.stem
         pre = parse_list(fm.get("skills", ""))
         agents[name] = (ag, pre)
+        denied[name] = parse_list(fm.get("disallowedTools", ""))
 
     # A-1 / A-2
     preloaded = set()
@@ -139,6 +149,28 @@ def main(argv):
         if name not in preloaded and name not in mapped:
             bad.append("A-3 %s: unreachable — no agent preloads it and no "
                        "rule in skill-selection.yaml selects it" % name)
+
+    # A-7: the definition may not forbid what the workflow commands.
+    #
+    # Eight agents shipped `disallowedTools: Write, Edit, NotebookEdit`
+    # while run-discipline §1 required each of them to write a Response
+    # Block to the run ledger, planner-agent to write `plan.md`, and
+    # architect-agent and qa-agent to author spec sections for
+    # /cb-design. None of that is optional, so the restriction did not
+    # stop the work — it only decided which tool did it. Measured: the
+    # architect authored four sections through a Bash heredoc.
+    #
+    # `Edit` and `NotebookEdit` stay denied and are not checked here:
+    # those roles decide and record, they never modify existing source.
+    # That is the shape the context agents already shipped with.
+    for name, tools in sorted(denied.items()):
+        if "Write" not in tools:
+            continue
+        rel = agents[name][0].relative_to(plugin)
+        bad.append("A-7 %s: disallowedTools names Write, but run-discipline "
+                   "§1 requires this agent to write its Response Block to "
+                   "the run ledger. Deny Edit/NotebookEdit if the intent is "
+                   "that it must not modify existing files." % rel)
 
     # A-6
     for name in sorted(entry_points):

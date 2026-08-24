@@ -1,7 +1,7 @@
 ---
 name: consistency-agent
 description: Mechanically compares fact IDs, claims, and epistemic labels across all Response Blocks in a run to detect contradictions. Invoke as a gate at verification levels 2 and 3, after evidence merge and before synthesis.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # ConsistencyAgent

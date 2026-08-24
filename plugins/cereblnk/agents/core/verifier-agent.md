@@ -2,7 +2,7 @@
 name: verifier-agent
 description: Independently re-derives another agent's decision from its evidence bundle, without reading the original reasoning. Mandatory at verification levels 2 and 3. Also on any load-bearing
 claim the orchestrator doubts.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # VerifierAgent

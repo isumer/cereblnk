@@ -2,7 +2,7 @@
 name: qa-agent
 description: Decides on test coverage, test correctness, and regression design — whether the tests would actually fail on the real failure mode. Invoke for test review, test planning, and regression generation.
 skills: test-strategy
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # QAAgent
