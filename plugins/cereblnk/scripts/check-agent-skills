@@ -18,7 +18,7 @@ Rules enforced:
   A-5  every discovery target resolves to an existing skill
   A-6  entry-point skills (cb- prefixed) are neither preloaded nor mapped
 
-Usage: scripts/check-agent-skills [repo_root]
+Usage: check-agent-skills [plugin_root]
 Exit:  0 clean · 1 violations found
 """
 import pathlib
@@ -29,10 +29,10 @@ MAX_PRELOAD = 2
 MAX_PRELOAD_TOKENS = 3000
 
 
-def load_cbmap(root):
-    sys.path.insert(0, str(root / "plugins/cereblnk/scripts/lib"))
+def load_cbmap(plugin):
+    sys.path.insert(0, str(plugin / "scripts/lib"))
     import cbmap
-    return cbmap, cbmap.load(root / "plugins/cereblnk/policies/skill-selection.yaml")
+    return cbmap, cbmap.load(plugin / "policies/skill-selection.yaml")
 
 
 def frontmatter(path):
@@ -57,9 +57,12 @@ def parse_list(raw):
 
 
 def main(argv):
-    root = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
+    # Anchored to the plugin it checks, not to a repository layout —
+    # it now ships inside that plugin, and an install has no
+    # `plugins/cereblnk/` above it. An explicit argument still wins so
+    # the repo can point it anywhere.
+    plugin = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
         pathlib.Path(__file__).resolve().parent.parent
-    plugin = root / "plugins/cereblnk"
     skills_root = plugin / "skills"
     agents_root = plugin / "agents"
     bad = []
@@ -90,7 +93,7 @@ def main(argv):
     # A-1 / A-2
     preloaded = set()
     for name, (path, pre) in sorted(agents.items()):
-        rel = path.relative_to(root)
+        rel = path.relative_to(plugin)
         for s in pre:
             if s not in skills:
                 bad.append("A-1 %s: preloads unknown skill %r" % (rel, s))
@@ -108,7 +111,7 @@ def main(argv):
                        "against this agent's budget on every spawn"
                        % (rel, tokens, MAX_PRELOAD_TOKENS))
 
-    cbmap, (rules, errors) = load_cbmap(root)
+    cbmap, (rules, errors) = load_cbmap(plugin)
     for e in errors:
         bad.append("A-4 skill-selection.yaml: %s" % e)
 
