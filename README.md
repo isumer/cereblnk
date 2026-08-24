@@ -324,6 +324,8 @@ cereblnk/                        # repo root = marketplace
 ├── .claude-plugin/marketplace.json
 ├── plugins/cereblnk/            # the Cereblnk plugin
 │   ├── .claude-plugin/plugin.json
+│   ├── bin/                     # on PATH when installed; deliberately
+│   │                            #   carries no executables — see its README
 │   ├── agents/                  # core / engineering / lifecycle / context
 │   ├── skills/                  # entry points at the top level,
 │   │                            #   domain skills grouped below
