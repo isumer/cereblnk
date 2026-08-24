@@ -63,12 +63,26 @@ def main():
          r.returncode == 0 and "java" in r.stdout and "spring-boot" in r.stdout,
          r.stdout[-200:])
 
-    # ---- 3. unresolved is an exit, not a default -----------------------
+    # ---- 3. unresolved is a default, and never a silent one ------------
+    # CB-133 reverses the exit. Refusing produced neither a stopped run
+    # nor a question to the user; twice it produced improvisation. The
+    # table is permanently incomplete, so the run proceeds — but the
+    # inference is on the record, which is the half that mattered.
     r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"])
-    case("unresolved: exit 3, no silent single-agent default",
-         r.returncode == 3 and "unresolved: true" in r.stderr
-         and "backend-agent" not in r.stdout,
+    case("unresolved: proceeds with an inferred specialist",
+         r.returncode == 0 and "architect-agent" in r.stdout,
          "rc=%d" % r.returncode)
+    case("unresolved: the inference is marked in stdout",
+         "inferred: true" in r.stdout, r.stdout[:80])
+    case("unresolved: the inference reaches the signals",
+         "inferred, not routed" in r.stdout, r.stdout[-120:])
+    case("unresolved: stderr still says no rule matched",
+         "unresolved: true" in r.stderr, r.stderr[:80])
+    # the gap the risk gate would have existed for, closed at the rule
+    r = sh(["bash", str(PS / "select-agents"), "--text", "rotate the secret"])
+    case("secret rotation routes to security, not to the fallback",
+         "security-agent" in r.stdout and "inferred: true" not in r.stdout,
+         r.stdout[:100])
 
     # ---- 4. stack gate -------------------------------------------------
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-skill-"))

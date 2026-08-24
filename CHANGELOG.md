@@ -52,6 +52,31 @@ correctable; a run that cannot proceed at all is neither.
 
 ### Changed
 
+- **Unresolved now infers a specialist instead of refusing.** The
+  refusal was built to force a human choice. It never produced one:
+  twice it produced improvisation — a specialist invented out of a
+  project's skills directory, and minutes of cycling through
+  candidates. The rule table is permanently incomplete, so the branch
+  this fires on is not an edge case to be closed but a standing
+  condition, and an unrecorded guess is precisely what refusing was
+  meant to prevent.
+
+  So the run proceeds with `architect-agent` — by elimination, a
+  request naming no code surface is about structure, boundaries or
+  setup, and an agent that decides rather than implements does the
+  least damage when the inference is wrong. What survives from the old
+  behaviour is the half that mattered: `inferred: true` in stdout, a
+  `signals:` line saying the choice was inferred and not routed, and
+  the stderr note unchanged. A wrong default is visible and
+  correctable; a model choosing quietly never was.
+
+  A risk gate was designed and dropped as dead code. Payment, auth,
+  migration and deploy all resolve through the text rules already, so a
+  high-risk request never reaches this branch. The one that did —
+  secret rotation — turned out to be a missing word in the auth rule,
+  which the path rule had all along. That is fixed at the rule rather
+  than guarded by a second mechanism.
+
 - **The unresolved message stops forbidding the fallback.** It still
   names the path route as the better one, and now says plainly that a
   request naming no code surface is not covered by any rule: choose from
