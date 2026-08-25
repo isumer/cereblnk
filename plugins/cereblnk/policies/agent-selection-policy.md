@@ -87,6 +87,41 @@ during gate review that every mandatory specialist for the task's
 signals was actually spawned; this section extends "task" to
 design/spec stages explicitly.
 
+**How the floor is computed (CB-143, finding F-07).** This mandate was
+prose only. `scripts/select-agents` fired a rule on a path match or a
+topic match and then used the stack token as a veto, so a token could
+only ever subtract: a project *being* a Spring Boot project added
+nothing. All twenty map rules carrying backend-agent were language or
+framework rules whose topics are technology names, so
+`--text "add a REST endpoint for user registration"` in a four-token
+Spring repository returned what an empty repository returned —
+apidesign-agent alone. The surface's designer was mandatory in
+mechanism; its implementer was mandatory only on this page. Two
+changes close that, and neither relaxes the mandate:
+
+1. A TEXT rule names **server-side behaviour** (endpoint, handler,
+   controller, service, persistence, worker, webhook) and routes
+   backend-agent at level 2, per the server-side row of §1. It pairs
+   with the API-contract row under §2.1 union rather than replacing
+   it — a request for an endpoint asks for a contract *and* the
+   behaviour behind it, so a new endpoint makes backend-agent
+   **mandatory via the server-side row**, not merely advisory via the
+   contract row.
+2. **Bounded stack completion:** a role already in the floor receives
+   the skills its own map rules declare for stack tokens the profile
+   carries, even when the request text never named the technology. The
+   bound is what makes it safe — completion attaches a skill, never a
+   role; it requires a declared token the profile confirms; and it does
+   not run for the inferred fallback, so an unroutable request still
+   reads `inferred: true` with an empty floor rather than a
+   confident-looking wrong one.
+
+Neither makes the floor a ceiling: both are additive, and the policy
+above stays authoritative for signals no path or verb carries. The
+fixture in `scripts/test-skill-selection` asserts the floor for the
+measured request, so this section and the mechanism cannot drift apart
+again silently.
+
 **Exclusion is also selection (/cb-rewrite).** Two agents are absent
 from a rewrite's design stage by rule. RefactoringAgent, because its
 domain is behavior-preserving transformation and a rewrite preserves

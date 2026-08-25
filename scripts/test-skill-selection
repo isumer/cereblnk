@@ -158,6 +158,64 @@ def main():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    # ---- 7. CB-143 / F-07: the surface specialist and its stack skills --
+    # The measured failure: in a repository whose profile carries the
+    # four Spring tokens, a request naming server-side behaviour
+    # returned exactly what an empty repository returned —
+    # apidesign-agent alone, api-design alone. The contract designer
+    # was selected and the implementer was not, because no TEXT rule
+    # carried request semantics for the server surface and because a
+    # stack token could only ever subtract.
+    #
+    # This fixture pins both halves of the floor and the bound that
+    # keeps the fix from becoming "any Java repository loads java":
+    # the docs-only request in the SAME repository must stay clean.
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-f07-"))
+    try:
+        ctx = tmp / ".claude/cereblnk/context"
+        ctx.mkdir(parents=True)
+        (ctx / "stack-profile.yaml").write_text(
+            "tokens:\n  - java\n  - maven\n  - spring-boot\n"
+            "  - hibernate-jpa\nmanifests:\n  - pom.xml\n",
+            encoding="utf-8")
+        env = {"CLAUDE_PROJECT_DIR": str(tmp)}
+
+        r = sh(["bash", str(PS / "select-agents"), "--text",
+                "add a REST endpoint for user registration"], env=env)
+        out = r.stdout
+        case("F-07: server-side behaviour selects the implementer",
+             r.returncode == 0 and "backend-agent" in out, out[:300])
+        case("F-07: the contract designer is still selected",
+             "apidesign-agent" in out and "api-design" in out, out[:300])
+        backend_line = next((l for l in out.splitlines()
+                             if l.strip().startswith("cereblnk:engineering:backend-agent:")), "")
+        case("F-07: the implementer arrives with its stack skills",
+             all(k in backend_line for k in ("java", "spring-boot", "hibernate-jpa")),
+             "skills_required line was %r" % backend_line)
+        case("F-07: a routed floor is never marked inferred",
+             "inferred: true" not in out, out[:120])
+
+        # the bound: stack completion adds skills to a routed role, it
+        # never routes a role. A docs request in a Spring repository
+        # gets neither backend-agent nor the java skill.
+        r = sh(["bash", str(PS / "select-agents"), "--text",
+                "update the README and the contributing guide"], env=env)
+        case("F-07 bound: a docs request pulls no backend-agent",
+             "backend-agent" not in r.stdout, r.stdout[:200])
+        case("F-07 bound: a docs request pulls no stack skill",
+             "java" not in r.stdout and "spring-boot" not in r.stdout,
+             r.stdout[:200])
+
+        # the other bound: an unroutable request stays inferred with an
+        # empty floor — completion must not resurrect a silent default.
+        r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"],
+               env=env)
+        case("F-07 bound: the inferred fallback gains no stack skills",
+             "inferred: true" in r.stdout and "java" not in r.stdout,
+             r.stdout[:200])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
     print("test-skill-selection:")
     print("\n".join(results))
     if bad:
