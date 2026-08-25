@@ -13,7 +13,7 @@ set -uo pipefail
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
-RUN="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
+RUN="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 [ -n "$RUN" ] || exit 0
 
 INPUT="$(cat 2>/dev/null || true)"

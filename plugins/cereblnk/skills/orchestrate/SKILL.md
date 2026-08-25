@@ -86,7 +86,11 @@ agents than one wave allows are split across waves, and the next wave
 starts only once the previous one's digests are in the ledger.
 Synchronously: never background a gate-bearing run. A backgrounded agent's completion does not wake this
    conversation, its result waits for the user's next message and the
-   run stalls. On execution start run `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm`. That arms
+   run stalls. On execution start run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`,
+   with this run's id — that is what the run-reading hooks resolve
+   against, and without it they guess the newest context directory
+   (CB-147, F-31). That arms
 RunGuardHook's single continue-nudge. Remove it before asking the
 user anything and at synthesis — a question asked while
    armed turns the nudge into noise. Specialist choice and skill sets follow

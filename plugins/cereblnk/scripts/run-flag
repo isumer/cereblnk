@@ -51,7 +51,7 @@
 # skill passes the user's argument through verbatim; an argument that is
 # not one of the four accepted words changes nothing and says so.
 #
-# Usage: run-flag arm|disarm|status [cb_dir]
+# Usage: run-flag arm|disarm|status [cb_dir] [run_id]
 #        run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
@@ -84,11 +84,31 @@ if [ "$CMD" = "flag" ]; then
   esac
 else
   DIR="${2:-${CB_DIR:-}}"
+  # CB-147 / F-31: the run flag now carries the run's identity, so the
+  # hooks stop inferring it from directory mtimes. `arm` takes the run
+  # id as its third positional (the second stays the cb_dir override,
+  # passed as "" when only the id is being set — the shape
+  # `flag boundary arm "" <path>` already uses).
+  #
+  # Validated here as well as in cb_run_dir. The resolver is what makes
+  # a bad value harmless; this is what makes it visible. A caller that
+  # passes something that is not a run id gets exit 2 and an unchanged
+  # flag, rather than an arm that silently pins nothing.
+  CONTENT="${3:-}"
+  if [ -n "$CONTENT" ]; then
+    case "$CONTENT" in
+      .* | *[!A-Za-z0-9._-]*)
+        echo "run-flag: '$CONTENT' is not a run id. Expected a bare directory name under context/, e.g. R-2026-08-25-001." >&2
+        echo "run-flag: nothing was changed — the run-active flag is still whatever it was." >&2
+        echo "usage: run-flag arm|disarm|status [cb_dir] [run_id]" >&2
+        exit 2 ;;
+    esac
+  fi
 fi
 
 case "$CMD" in
   arm|disarm|status) ;;
-  *) echo "usage: run-flag [flag <name>] arm|disarm|status [cb_dir]" >&2; exit 2 ;;
+  *) echo "usage: run-flag [flag <name>] arm|disarm|status [cb_dir] [run_id]" >&2; exit 2 ;;
 esac
 
 if [ -z "$DIR" ]; then
