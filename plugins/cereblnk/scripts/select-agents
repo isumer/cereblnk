@@ -131,9 +131,9 @@ TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
      ["backend-agent", "security-agent"], 3),
     # F-39: the list named every way of SAYING "auth" and none of the
-    # things auth actually handles. Measured: "kayıt akışında parola düz
-    # metin saklanıyor" — plaintext password storage, the textbook
-    # always-level-3 case — matched nothing and routed at gate 1.
+    # things auth actually handles. Measured: "the password is stored in
+    # plaintext" — the textbook always-level-3 case — matched nothing
+    # and routed at gate 1.
     # Bare `hash` and `salt` were tried first and measured as a
     # regression: "basalt tiles" and "hash browns" both took a mandatory
     # gate-3 security review, and both were correctly unresolved before.
@@ -142,7 +142,7 @@ TEXT_RULES = [
     # caught by `password`. So the weak tokens are admitted only where
     # they cannot mean anything else.
     ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt'
-                       r'|password|passwd|parola|plaintext'
+                       r'|password|passwd|plaintext'
                        r'|\bhashed\b|\bhashing\b|\bsalted\b)',
      ["security-agent"], 3),
     ("deletion/retention", r'(?i)(delete|purge|retention|drop table)',
@@ -192,7 +192,7 @@ TEXT_RULES = [
     # its own trigger sentence. Path signals reached it; a request with
     # no diff yet did not (dispatch §8 routes those through --text).
     ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
-                       r'|\bguide\b|tutorial|dokümantasyon|belge)',
+                       r'|\bguide\b|tutorial)',
      ["docs-agent"], 1),
     # A rewrite reads the old code before anything is designed, so the
     # analyst is selected from the request rather than from a diff --

@@ -46,7 +46,7 @@ could — which inverts what a routing layer is for.
   `ts` and recruited the typescript rule's roles; `stored` contains
   `store` and recruited redux's.
 - **`auth/session` admits what auth actually handles.** `password`,
-  `passwd`, `parola`, `plaintext`, `hashed`, `hashing`, `salted`. A
+  `passwd`, `plaintext`, `hashed`, `hashing`, `salted`. A
   plaintext-password report — the textbook always-level-3 case — matched
   nothing before and routed at gate 1.
 - **`tests` admits its own plural.** `\btest\b` took the bare singular
