@@ -36,31 +36,13 @@ kind = (top("kind") or "").split("#")[0].strip() or None
 # ---- T-1: Task Block documents: field (ACP A1) ----
 # A task may hand over indexed sections; it may never hand over a bare
 # path, which is an instruction to read the whole file.
-# ---- V-1: the role has to be an agent that exists (CB-125, CB-127) ----
-# Checked on every kind, Task Blocks included. The Task Block is where
-# an invented role is written FIRST — the conductor assigning the work —
-# and the Response Block is only where the fabricated answer lands,
-# twenty-seven minutes later. ACP §4.2 closes the vocabulary; catching
-# it at the assignment is the difference between a refused block and a
-# wasted run.
+# ---- V-1: the role has to be an agent that exists ----
+# Checked on every kind, Task Blocks included: the assignment is where
+# an invented role is written first. The message names the likely
+# category error — a skill is a capability an agent loads, not an agent.
 #
-# A run asked for a specialist that was never shipped. The Task returned
-# "Done" with zero tool uses and no Response Block — a silent no-op the
-# conductor read as a finished task. It then re-ran the work on a
-# general-purpose agent under a domain-expertise prompt and wrote the
-# block itself, so a fabricated specialist's verdict reached the gate
-# and the gate believed it.
-#
-# The name came from the project's own skills directory. That is the
-# category error worth naming in the message: a skill is a capability an
-# agent loads, not an agent. Nothing here scans for skills or assumes
-# any project layout — the check needs only the roster Cereblnk ships,
-# which it knows by definition.
-#
-# Fails open when agents/ cannot be resolved: acp-lint is also run
-# against blocks outside the plugin tree, and a linter that rejects
-# every role because it cannot find its own roster is worse than one
-# that checks a field less.
+# Fails open when agents/ cannot be resolved: acp-lint also runs against
+# blocks outside the plugin tree.
 def _norm(s):
     # A role may arrive qualified now that select-agents emits the
     # spawnable form (CB-132): cereblnk:engineering:docs-agent. The
@@ -86,18 +68,9 @@ if role and roster and _norm(role) not in roster:
 
 
 # ---- T-2: a domain floor beats the level the block was assigned (F-26) ----
-# A Task Block carried `verification_level: 1` and `risk: low` for a
-# security task. security-agent.md and skills/security-audit/SKILL.md
-# both say "always verification level 3 — no exceptions, no fast path",
-# citing policies/risk-model.md. Nothing said which of the two wins.
-# The agent chose 3, correctly, and by judgment — which means the next
-# one could as easily have obeyed the block.
-#
-# risk-model.md now states the precedence ("Precedence: the domain
-# floor beats the assigned level"). This is that rule with a checker,
-# applied at the ASSIGNMENT, because that is where the wrong number is
-# written first — the same reason V-1's roster check moved onto Task
-# Blocks in CB-127.
+# risk-model.md: the domain floor beats the assigned level. Applied at
+# the ASSIGNMENT, because that is where the wrong number is written
+# first.
 #
 # Scope is deliberately the UNCONDITIONAL floors only. security-agent's
 # whole domain sits on the always-level-3 list, so every task it is

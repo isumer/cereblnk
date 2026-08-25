@@ -179,3 +179,4 @@ read.
 - [x] **CB-155** — The intake surface had a reader and no writer
 - [x] **CB-156** — A wave could pair a gate with an edit to its target
 - [x] **CB-157** — Three checkers that misread their own inputs
+- [x] **CB-158** — Comments that told the changelog's story
