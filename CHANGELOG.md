@@ -80,6 +80,47 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Added — RouteHintHook (CB-149, F-57)
+
+`TOPOLOGY.md` says cb-dispatch "routes engineering work to the right
+Cereblnk workflow automatically" whenever a request touches a codebase
+without naming a `/cb-` command. Measured across a full session of
+codebase work — branch edits, a release, a PR:
+
+```
+skills-loaded.log, whole session:
+  1787657616  main  dispatch      <- typed by the user
+  1787667468  main  orchestrate   <- typed by the user
+```
+
+Zero automatic invocations. Description matching is the host model's
+discretion, not a mechanism, and nothing else pushed: the only
+UserPromptSubmit hook was ContextMonitorHook, which injects a token
+warning and says nothing about routing. The platform's own entry point
+was REGISTERED and never ENGAGED.
+
+The new hook supplies the push and only the push. It runs the same
+`select-agents` every workflow already runs and injects one line naming
+the resolved specialists and gate level. It does **not** name a
+workflow: that table lives in `skills/dispatch` Step 3, and a second
+copy would diverge from the first — which is the defect CB-148 closed
+one layer down.
+
+Silence is the larger half of the design, since a hook that speaks every
+turn spends the budget it exists to protect:
+
+| condition | why |
+|---|---|
+| prompt names a `/cb-` command | the explicit command wins, and always has |
+| `flags/run-active` is armed | a workflow already owns this turn |
+| selector returns `inferred: true` | unresolved is silence, never a guess |
+| `flags/no-route-hint` | opt-out, same shape as careful/boundary |
+
+Measured after CB-148 landed, because it depends on it: before the
+word-boundary fix, `"the tests are failing"` resolved to three
+specialists and this hook would have injected two wrong ones on every
+such prompt.
+
 ### Known residual
 
 A generic path rule still fires alongside a specific one on the same

@@ -170,3 +170,4 @@ read.
 - [x] **CB-146** — A suite that reads its own shell is not a suite
 - [x] **CB-147** — Eight hooks guessed which run they were in
 - [x] **CB-148** — The routing map's `roles:` field could not route
+- [x] **CB-149** — Automatic routing was a description, not a mechanism
