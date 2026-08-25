@@ -211,6 +211,22 @@ not survive contact with the measurement.
   something in the host too. Recorded as `inferred` — the host's side
   was read from the shipped binary, not from published documentation.
 
+- **A conductor counted idle while its specialists run** (CB-144). The
+  continue-nudge named one case — waiting on the user — and prescribed
+  disarming for it. Measured against a real run it was wrong twice: the
+  conductor was waiting on two live specialists, which is the normal
+  state of a multi-agent run, and there was no ledger to reconcile
+  because the run had written no `plan.md`. Its remedy was worse than
+  the nudge, since disarming while specialists are out removes the
+  floors that judge them when they return.
+
+  No host signal reports a live subagent, and inferring one from
+  undocumented task files would make a hook depend on an F-class
+  mechanism, which tasks may not do. So the fix is not detection: the
+  message now names three cases and attaches the disarm advice to the
+  one where disarming is correct. `test-hooks` fails if any case goes
+  unnamed, or if disarm is offered before the case that justifies it.
+
 - **A suite that reads its own shell is not a suite** (CB-146). The
   README tells the operator to export the two budget variables so the
   context budget reports a measured window; doing so made four
@@ -240,19 +256,37 @@ not survive contact with the measurement.
 ### What this does not claim
 
 Twenty-nine findings came from the journal and a thirtieth appeared
-while fixing them. This closes twenty-five. One stays open, as its own
-task rather than a footnote:
+while fixing them. This closes all of them.
 
-- **CB-144** — a continue-nudge fires at a conductor waiting on live
-  specialists, and recommends disarming the flag that guards them.
 Five findings were closed without a change (CB-140), and the reason is
 recorded rather than assumed: one is Claude Code's scope, not this
 plugin's; one was resolved by `/reload-plugins` during the test itself;
 two were dispatch errors the journal records honestly as its own; and
 one — that an epistemic label certifies an observation was made, not
 that it was correct — is a true statement about the protocol rather
-than a defect in it. The journal itself proved the point twice, once
-against a specialist and once against its own author.
+than a defect in it. The journal proved that point three times: once
+against a specialist that labelled a false fact `known`, once against
+its own author drawing a wrong inference from a right measurement, and
+once against the same author making the measurement itself incomplete —
+`discovery_pairs` was reported as having no callers when it has two,
+both validators. Each correction is recorded where the claim was made
+rather than edited away.
+
+Closing every finding is not the same as being correct, and this
+section is titled for the difference. One test journal found thirty
+defects in one pass, several of them mechanisms this project advertised
+as enforcement while they did nothing. The reasonable inference is not
+that the list is now empty — it is that a second reader would find a
+second list. What changed is that the mechanisms named here now have
+checkers, and a checker fails where a paragraph would have kept
+agreeing with itself.
+
+The deterministic layer is green. It covers scripts, hooks, linters and
+the skill graph; it does not cover whether the agents reason well, and
+it never will. Nothing in this release establishes that. It establishes
+that what was silently absent is now present, and that the next time
+one of these goes missing, something other than a human running an
+experiment will say so.
 
 ## [1.3.6] — A name nothing could spawn, and a refusal with no way out
 

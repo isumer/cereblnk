@@ -15,6 +15,23 @@
 #   - no growth, or cap reached -> disarm (rename to .nudged) and allow
 #     the stop: stagnation is a question for the user, not a loop
 #
+# The message names three cases, and the reason is CB-144 (F-14). It
+# used to name one: "if you are intentionally waiting for the user,
+# remove flags/run-active first and ask." Measured against a real run,
+# that was wrong twice over. The conductor was not idle, it was waiting
+# on two live specialists — the normal state of a multi-agent run — and
+# there was no ledger to reconcile because the run had written no
+# plan.md. The remedy it offered was worse than the nudge: disarming
+# while specialists are out removes the floors that judge them when
+# they return.
+#
+# No host signal reports a live subagent, and inferring one from
+# undocumented task files would make this hook depend on an F-class
+# mechanism, which tasks may not do (BACKLOG rules, 05). So the fix is
+# not detection — it is that the message stops assuming which case it
+# is in, and attaches the disarm advice to the ONE case where disarming
+# is correct. Checker: scripts/test-hooks, run-guard message cases.
+#
 # Loop safety, in order:
 #   1. stop_hook_active true in stdin -> always allow the stop.
 #   2. State is keyed to the run dir: a stale state file from an older
@@ -61,5 +78,5 @@ fi
 
 COUNT=$((COUNT+1))
 printf '%s %s %s\n' "$COUNT" "$BLOCKS" "$RUNKEY" > "$STATE" 2>/dev/null || true
-printf '{"decision":"block","reason":"A Cereblnk run is still active%s — continue nudge %s/%s. Reconcile the run ledger (plan.md vs Response Blocks), execute the NEXT unconfirmed task, then gates and synthesis. Nudges continue only while the ledger grows; if you are intentionally waiting for the user, remove flags/run-active first and ask."}\n' "$PENDING" "$COUNT" "$MAX_NUDGES"
+printf '{"decision":"block","reason":"A Cereblnk run is still active%s — continue nudge %s/%s. Three cases, and they are not the same. SPECIALISTS STILL OUT: this nudge is informational — do NOT disarm, the flag is what judges them when they return, and waiting is the normal state of a multi-agent run. WAITING ON THE USER: disarm first (scripts/run-flag disarm), then ask. NEITHER: reconcile the run ledger (plan.md vs Response Blocks), execute the NEXT unconfirmed task, then gates and synthesis. Nudges continue only while the ledger grows."}\n' "$PENDING" "$COUNT" "$MAX_NUDGES"
 exit 0
