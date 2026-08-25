@@ -43,7 +43,9 @@ path in their Task Blocks.
 ## 5. Run flag lifecycle (RunGuardHook, DelegationGuardHook)
 Arm with `scripts/run-flag arm "" <run_id>` at execution start; disarm
 with `scripts/run-flag disarm` before ANY turn that ends awaiting the
-user, and at final synthesis. While armed, a premature stop gets exactly
+user; and at final synthesis use `scripts/run-flag complete`, which
+performs the handoff described below. The two verbs are not synonyms —
+`disarm` is a pause the run may return from, `complete` ends it. While armed, a premature stop gets exactly
 one continue-nudge.
 
 The flag also carries the run's identity, and that is not bookkeeping.

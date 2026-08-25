@@ -172,3 +172,4 @@ read.
 - [x] **CB-148** — The routing map's `roles:` field could not route
 - [x] **CB-149** — Automatic routing was a description, not a mechanism
 - [x] **CB-150** — The monitor was worst exactly after a compaction
+- [x] **CB-151** — A finished run had no way to say so

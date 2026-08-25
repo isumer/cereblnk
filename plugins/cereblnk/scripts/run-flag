@@ -51,7 +51,9 @@
 # skill passes the user's argument through verbatim; an argument that is
 # not one of the four accepted words changes nothing and says so.
 #
-# Usage: run-flag arm|disarm|status [cb_dir] [run_id]
+# Usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]
+#   disarm   = pause; the run may resume
+#   complete = final synthesis; hands off to run-completed (§5)
 #        run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
@@ -100,15 +102,15 @@ else
       .* | *[!A-Za-z0-9._-]*)
         echo "run-flag: '$CONTENT' is not a run id. Expected a bare directory name under context/, e.g. R-2026-08-25-001." >&2
         echo "run-flag: nothing was changed — the run-active flag is still whatever it was." >&2
-        echo "usage: run-flag arm|disarm|status [cb_dir] [run_id]" >&2
+        echo "usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]" >&2
         exit 2 ;;
     esac
   fi
 fi
 
 case "$CMD" in
-  arm|disarm|status) ;;
-  *) echo "usage: run-flag [flag <name>] arm|disarm|status [cb_dir] [run_id]" >&2; exit 2 ;;
+  arm|disarm|complete|status) ;;
+  *) echo "usage: run-flag [flag <name>] arm|disarm|complete|status [cb_dir] [run_id]" >&2; exit 2 ;;
 esac
 
 if [ -z "$DIR" ]; then
@@ -152,6 +154,58 @@ case "$CMD" in
       echo "run-flag: could not remove $FLAG — the guards still consider this run active." >&2
       exit 1
     fi
+    # F-43: the nudge counter belongs to an uninterrupted armed period,
+    # not to a run id. It used to survive here, and since every workflow
+    # disarms before any turn that ends awaiting the user, a run that
+    # paused came back with its budget already spent: measured, the
+    # first Stop after re-arming skipped the nudge entirely and
+    # disarmed while a specialist was still out — the one thing the
+    # nudge message tells the reader never to do.
+    if [ "$NAME" = "run-active" ]; then
+      rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
+    fi
     echo "run-flag: disarmed"
+    # F-56: this used to be the whole story, and the word "disarmed"
+    # reads like "the run is over". It is not. run-discipline §5 says a
+    # finished run is HANDED OFF, not removed — and DelegationGuard
+    # enforces exactly that: no run-active, no run-completed, a fresh
+    # witness and a warm ledger is its "disarm-and-continue" violation.
+    # Measured live: a conductor followed the skills' own final line,
+    # ran disarm, and its next edit was blocked with a message about a
+    # run it had just correctly finished.
+    if [ "$NAME" = "run-active" ] && [ ! -f "$DIR/flags/run-completed" ]; then
+      echo "run-flag: note — this is a PAUSE, not a completion. If the run" >&2
+      echo "run-flag: is finished, use 'run-flag complete' instead: it hands off" >&2
+      echo "run-flag: to run-completed, which is what DelegationGuard reads as a" >&2
+      echo "run-flag: run that ENDED rather than one whose guard was removed." >&2
+    fi
+    ;;
+  complete)
+    # The final-synthesis counterpart of disarm. run-discipline §5 has
+    # described this handoff since the follow-up window existed; what
+    # was missing was any way to perform it. Eleven workflow skills say
+    # "Remove it at final synthesis" and defer to §5 without restating
+    # it, and `run-flag` had no verb for it — leaving a hand-written
+    # touch as the only route, which is the failure mode this script
+    # exists to remove.
+    rm -f "$FLAG" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.nudged" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.witness" 2>/dev/null || true
+    mkdir -p "$DIR/flags" 2>/dev/null || true
+    : > "$DIR/flags/run-completed" 2>/dev/null || true
+    if [ ! -f "$DIR/flags/run-completed" ]; then
+      echo "run-flag: could not write $DIR/flags/run-completed — the follow-up" >&2
+      echo "run-flag: window is NOT armed. Do not report the run as handed off." >&2
+      exit 1
+    fi
+    for _stale in run-active run-active.nudged run-active.witness; do
+      if [ -f "$DIR/flags/$_stale" ]; then
+        echo "run-flag: could not remove $DIR/flags/$_stale — the guards may still" >&2
+        echo "run-flag: read this run as live." >&2
+        exit 1
+      fi
+    done
+    echo "run-flag: completed (handed off to run-completed)"
     ;;
 esac
