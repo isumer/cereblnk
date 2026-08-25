@@ -225,32 +225,24 @@ not survive contact with the measurement.
   must go, because a warning that cries `ASSUMED` at a figure the
   operator supplied teaches the reader to ignore the word.
 
-- **The seventy-seven skills the host could not see** (CB-141, partial).
+- **The seventy-seven skills the host could not see** (CB-141).
   Discovery walks one level under a skills root; seventy-seven of
   ninety-four sit a level deeper. First sized as a migration of every
   skill file — then the published plugin reference supplied a `skills`
   field in `plugin.json` that declares extra scan roots, so the files
   stay where they are and the grouping survives. `check-agent-skills`
   A-8 fails when a group directory is not declared, verified against a
-  constructed failure. Recorded as partial deliberately: the
-  deterministic layer proves manifest and tree agree, and cannot prove
-  the host loads them. The task stays open until a live session answers
-  `Skill(spring-boot)` with a body.
+  constructed failure. Confirmed live rather than assumed: after a
+  reload, `Skill(cereblnk:spring-boot)` returned the skill body from
+  `skills/frameworks/spring-boot` — the nested path that answered
+  `Unknown skill` three times during the test.
 
 ### What this does not claim
 
 Twenty-nine findings came from the journal and a thirtieth appeared
-while fixing them. This closes twenty-four. Two stay open, each as its
-own task rather than a footnote:
+while fixing them. This closes twenty-five. One stays open, as its own
+task rather than a footnote:
 
-- **CB-141** — seventy-seven of ninety-four skills sit two directories
-  deep and cannot be loaded. Sized first as a release that moves every
-  skill file; the published plugin reference then supplied a `skills`
-  field in `plugin.json` that declares extra scan roots, so the fix is a
-  manifest change and the grouping survives. `check-agent-skills` A-8
-  keeps manifest and tree in step. The deterministic layer confirms they
-  agree; it cannot confirm the host loads them, so the task stays open
-  until a live session answers `Skill(spring-boot)` with a body.
 - **CB-144** — a continue-nudge fires at a conductor waiting on live
   specialists, and recommends disarming the flag that guards them.
 Five findings were closed without a change (CB-140), and the reason is
