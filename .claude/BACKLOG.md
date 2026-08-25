@@ -168,3 +168,4 @@ read.
 - [x] **CB-144** — A conductor counted idle while its specialists run
 - [x] **CB-145** — The checkpoint is this project's threshold, not the host's
 - [x] **CB-146** — A suite that reads its own shell is not a suite
+- [x] **CB-147** — Eight hooks guessed which run they were in
