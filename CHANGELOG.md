@@ -158,6 +158,25 @@ not survive contact with the measurement.
   because every caller uses a full path; recorded rather than left as a
   discrepancy between the claim and the tree.
 
+- **The cascade is advisory, and the policy now says so** (CB-142).
+  `skill-selection.yaml` declares ninety-four `discovery` triggers and
+  §4c read as though something resolved them. Nothing did. The obvious
+  fix — a `PostToolUse` hook scanning tool responses for trigger tokens —
+  was rejected on measurement rather than taste: a scan sees text, and
+  cannot separate a stack from a mention of one. All ninety-four triggers
+  occur inside `skill-selection.yaml` itself and all ninety-four inside
+  the discovery fixtures, so a single Read of the map would have demanded
+  all thirty-seven targets at once. Every one of those targets is a
+  group-nested skill, which is the exact set CB-141 addresses, so each
+  demand would have been one the Skill tool may not satisfy.
+
+  §4c now says the specialist SHOULD follow a fired trigger, and records
+  the rejected design so the next reader does not re-derive it.
+  `check-discovery-claim` binds both halves: no consumer outside the
+  declared validators, and both documents stating the advisory status.
+  Build the executor and C-1 fails by name, which forces §4c to be
+  revisited rather than quietly outgrown.
+
 - **The floor routed the contract and forgot the implementer**
   (CB-143). `select-agents --text "add a REST endpoint for user
   registration"`, in a repository whose stack profile carried `java`,
@@ -221,8 +240,8 @@ not survive contact with the measurement.
 ### What this does not claim
 
 Twenty-nine findings came from the journal and a thirtieth appeared
-while fixing them. This closes twenty-three. Three stay open, each as
-its own task rather than a footnote:
+while fixing them. This closes twenty-four. Two stay open, each as its
+own task rather than a footnote:
 
 - **CB-141** — seventy-seven of ninety-four skills sit two directories
   deep and cannot be loaded. Sized first as a release that moves every
@@ -232,8 +251,6 @@ its own task rather than a footnote:
   keeps manifest and tree in step. The deterministic layer confirms they
   agree; it cannot confirm the host loads them, so the task stays open
   until a live session answers `Skill(spring-boot)` with a body.
-- **CB-142** — the discovery cascade has a parser and no caller. Who
-  runs it is a design question.
 - **CB-144** — a continue-nudge fires at a conductor waiting on live
   specialists, and recommends disarming the flag that guards them.
 Five findings were closed without a change (CB-140), and the reason is
