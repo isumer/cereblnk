@@ -14,8 +14,26 @@ import json, os, pathlib, shutil, subprocess, sys, tempfile, time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 H = ROOT / "plugins/cereblnk/hooks/scripts"
 
-def run(script, stdin, proj):
+# The budget variables decide what context-monitor reports. Inheriting
+# them made four cases pass or fail according to the shell that started
+# the suite: `plugins/cereblnk/README.md` tells an operator to export
+# them, so a contributor who follows the setup instructions could not
+# run the suite that guards the code they were contributing to, and CI
+# never saw it because Actions sets neither (F-30).
+#
+# A test constructs the environment it tests. These are stripped here and
+# handed back explicitly by the cases that care which path they exercise.
+BUDGET_VARS = ("CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+               "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+               "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
+
+
+def run(script, stdin, proj, extra_env=None):
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+    for var in BUDGET_VARS:
+        env.pop(var, None)
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(["bash", str(H / script)], input=stdin,
                           capture_output=True, text=True, env=env, cwd=str(proj))
 
@@ -292,11 +310,12 @@ def main():
                                                  "usage": usage}}) + "\n")
             return str(t)
 
-        def mon(path, session="S-1"):
+        def mon(path, session="S-1", extra_env=None):
             return run("context-monitor.sh",
                        json.dumps({"session_id": session,
                                    "hook_event_name": "UserPromptSubmit",
-                                   "transcript_path": path}), proj)
+                                   "transcript_path": path}), proj,
+                       extra_env=extra_env)
 
         # capacity 168000, checkpoint 117600 per scripts/context-budget
         r = mon(usage_transcript(input_tokens=5000))
@@ -326,6 +345,21 @@ def main():
         # never measured.
         check("context-monitor: an assumed window says so",
               "ASSUMED" in r.stdout and "guess" in r.stdout, r.stdout[:160])
+        # The other half of F-13: once the window IS measured, the hedge
+        # must go. A warning that cries `ASSUMED` at a figure the operator
+        # supplied teaches the reader to ignore the word — which is how the
+        # unmeasured case stops being heard.
+        r_measured = mon(usage_transcript(input_tokens=1200,
+                                          cache_read_input_tokens=130000),
+                         session="S-2",
+        # Window chosen so the same 131200-token turn sits ABOVE the
+        # checkpoint: 180000 - 32000 = 148000 capacity, 70% = 103600.
+        # A warning that never fires cannot be inspected for its hedge.
+                         extra_env={"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "180000",
+                                    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"})
+        check("context-monitor: a measured window drops the hedge",
+              "ASSUMED" not in r_measured.stdout and "148000" in r_measured.stdout,
+              r_measured.stdout[:160])
 
         for label, arg in (("no usage field", usage_transcript()),
                            ("missing transcript", ""),
