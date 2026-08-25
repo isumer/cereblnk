@@ -70,6 +70,37 @@ Never background a gate-bearing stage: a backgrounded agent's
 completion does not wake the conversation; its result waits for the
 user's next message and the run stalls. Foreground, always.
 
+## 3b. What "independent" means in a wave
+
+A wave runs independent tasks in parallel up to `wave_size`. Two tasks
+are independent when neither reads a file the other writes — and that is
+wider than the plan graph's `depends_on`, because the plan graph is
+written before the run and the collisions that matter appear during it.
+
+The case that has bitten: a gate task and an edit to that gate's target
+are NOT independent. Measured — a verifier re-issued to correct one
+claim, and the owner of the block it gates re-issued to fix another,
+were dispatched in the same wave. The target's new revision landed 112
+seconds before the gate's final write, so the gate read one text and
+reported on another, and stated in good faith that it had read the
+current one. Its currency claim was false, and nothing in the block
+could show that: a version pin proves which text was read, never that
+the text held still between the read and the write.
+
+Two rules follow, and they are the conductor's to apply — no hook can
+see a collision that lives in two subagents at once:
+
+- **Never wave a gate with an edit to its target.** Sequence them: the
+  edit lands, then the gate reads. A gate re-issued to correct itself is
+  still a gate.
+- **§3 re-verification rounds are outside the plan graph.** They are
+  created after planning, so they carry no `depends_on` and inherit
+  none. Their dependencies have to be read off the targets named in
+  their Task Blocks, every time.
+
+A gate may also protect itself: re-check the target revisions
+immediately before its final write, and say so if they moved.
+
 ## 4. Path anchoring
 Every `.claude/cereblnk/...` write resolves against the PROJECT ROOT —
 never `$HOME` as a project, never a mid-run `cd` location, never temp
