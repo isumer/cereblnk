@@ -158,6 +158,40 @@ not survive contact with the measurement.
   because every caller uses a full path; recorded rather than left as a
   discrepancy between the claim and the tree.
 
+- **The floor routed the contract and forgot the implementer**
+  (CB-143). `select-agents --text "add a REST endpoint for user
+  registration"`, in a repository whose stack profile carried `java`,
+  `maven`, `spring-boot` and `hibernate-jpa`, returned exactly what the
+  same command returned in an empty repository: the contract designer,
+  alone. Two causes, and neither closes without the other. No map rule
+  connected request *semantics* to `backend-agent` — all twenty rules
+  carrying that role are technology-name rules, matching `java` or
+  `spring`, never `endpoint`. And a declared stack token was applied
+  only as a veto, so even a correctly routed implementer would have
+  arrived with an empty skill floor.
+
+  §3b was fixed by honouring it, not by rewriting it: it names
+  VerifierAgent as its checker and is the only statement making a
+  missing implementer a selection violation. Demoting it to a
+  description of current behaviour would have removed a guarantee and
+  put nothing in its place. A text rule now routes server-side
+  behaviour, and stack completion attaches profile-confirmed skills to
+  a role **already** in the floor — completion adds a skill, never a
+  role, so a documentation request in a Java repository still resolves
+  to nothing and says so. The measured request now yields
+  `[apidesign-agent, backend-agent]` with
+  `backend-agent: [java, spring-boot, hibernate-jpa]`, and each signal
+  states why it fired.
+
+- **The checkpoint is this project's threshold, not the host's**
+  (CB-145). `input_capacity = window − output_reserve` with a percentage
+  taken off it is not what the host compacts on; the host uses its own
+  effective window less a summary buffer. The sharp edge is the third
+  variable: the host also reads `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, and
+  not in these units, so tuning the Cereblnk checkpoint with it moves
+  something in the host too. Recorded as `inferred` — the host's side
+  was read from the shipped binary, not from published documentation.
+
 - **A suite that reads its own shell is not a suite** (CB-146). The
   README tells the operator to export the two budget variables so the
   context budget reports a measured window; doing so made four
@@ -187,9 +221,8 @@ not survive contact with the measurement.
 ### What this does not claim
 
 Twenty-nine findings came from the journal and a thirtieth appeared
-while fixing them. This closes twenty-one. Five stay open, each as its
-own task rather than a footnote, because each wants a decision or a
-measurement this release should not fake:
+while fixing them. This closes twenty-three. Three stay open, each as
+its own task rather than a footnote:
 
 - **CB-141** — seventy-seven of ninety-four skills sit two directories
   deep and cannot be loaded. Sized first as a release that moves every
@@ -201,13 +234,8 @@ measurement this release should not fake:
   until a live session answers `Skill(spring-boot)` with a body.
 - **CB-142** — the discovery cascade has a parser and no caller. Who
   runs it is a design question.
-- **CB-143** — stack tokens gate the floor but never trigger it, while
-  §3b says the surface specialist is mandatory. One of the two documents
-  is wrong and the fix depends on which.
 - **CB-144** — a continue-nudge fires at a conductor waiting on live
   specialists, and recommends disarming the flag that guards them.
-- **CB-145** — the context budget models a quantity the host does not
-  compact on.
 Five findings were closed without a change (CB-140), and the reason is
 recorded rather than assumed: one is Claude Code's scope, not this
 plugin's; one was resolved by `/reload-plugins` during the test itself;

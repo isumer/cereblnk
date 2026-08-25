@@ -25,8 +25,10 @@
 An external operator drove the plugin through a build-shaped run in a
 scratch repository and kept a measurement journal: 29 findings, each
 with the command that produced it, and a 30th that appeared while the
-first batch was being fixed. Thirteen closed under CB-134 and seven
-more under CB-135..CB-140 and CB-146. These are what is left.
+first batch was being fixed. Thirteen closed under CB-134 and nine more
+under CB-135..CB-140 and CB-143, CB-145, CB-146. These are what is left:
+one waiting on a live check, two waiting on a decision this release
+should not fake.
 
 Every one was reproduced against this branch before being written here.
 A finding that stopped reproducing is recorded in CB-140 with the reason
@@ -105,32 +107,6 @@ implementing.
 2. Whichever is chosen, a checker fails when the tree and the claim
    disagree.
 
-### CB-143 — Stack is a gate where the policy says trigger (F-07)
-
-`select-agents --text "add a REST endpoint for user registration"`,
-run in a repository whose stack profile carries four tokens
-(`java`, `maven`, `spring-boot`, `hibernate-jpa`), returns exactly what
-the same command returned in an empty repository: `apidesign-agent`
-alone, with `api-design` as its only skill. No `backend-agent`, no
-`java`, no `spring-boot`.
-
-The map's own schema explains it: `Floor = (path OR topic match) AND
-(stack token present, when declared)`. Stack tokens can only subtract.
-A project being a Spring Boot project never adds anything.
-
-`agent-selection-policy.md` §1/§3b says the opposite for the roles:
-`backend-agent` is mandatory for server-side behavior. On a text signal
-the floor does not produce it.
-
-**Acceptance.**
-1. A text request naming server-side behavior, in a repository whose
-   stack profile carries the tokens, yields a floor containing the
-   surface specialist and its stack skills.
-2. Or §3b is rewritten to match what the mechanism does, and the
-   discrepancy stops being documented as a guarantee.
-3. Either way a test asserts the floor for one fixture request, so the
-   two documents cannot drift apart again.
-
 ### CB-144 — A conductor counted idle while its specialists run (F-14)
 
 RunGuard fired a continue-nudge on a turn that ended with two subagents
@@ -149,28 +125,6 @@ that are supposed to judge them.
    from stalling.
 2. The nudge never recommends an action that disarms enforcement while
    enforcement is still needed.
-
-### CB-145 — The budget models a quantity the host does not compact on (F-15)
-
-`scripts/context-budget` computes `input_capacity = window − output_reserve`
-and ContextMonitor reports occupancy against it. The host triggers
-auto-compaction on `effective_window` minus a summary buffer, where
-`effective_window` resolves env → setting → clientdata → model default
-and is then clamped to the model window.
-
-The two are different quantities. After the window was set explicitly
-the denominator became real, but it still measures something other
-than the thing that compacts.
-
-Low severity — the checkpoint stays conservative — but the two numbers
-are presented as the same and a reader will treat them as one.
-
-**Acceptance.**
-1. Either the budget derives the host's trigger, or the documentation
-   states plainly that the checkpoint is a Cereblnk policy threshold
-   and not the host's compaction point.
-2. Sourced from the host's published behavior, not inferred from a
-   binary; if it can only be inferred, it is labeled inferred.
 
 ---
 
@@ -314,4 +268,6 @@ read.
 - [x] **CB-138** — The Boot skill answers the Boot question it was silent on
 - [x] **CB-139** — The `bin/` on PATH is a decision, and the tree records it
 - [x] **CB-140** — Five findings closed without a change, and why
+- [x] **CB-143** — The floor routed the contract and forgot the implementer
+- [x] **CB-145** — The checkpoint is this project's threshold, not the host's
 - [x] **CB-146** — A suite that reads its own shell is not a suite
