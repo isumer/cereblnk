@@ -30,7 +30,12 @@ def top(key):
     m = re.search(rf'^{key}\s*:\s*(.*)$', text, re.M)
     return m.group(1).strip() if m else None
 
-kind = top("kind")
+# A trailing comment is legal YAML on a scalar, and the shipped template
+# uses one — `kind: verification          # or: challenge`. The linter
+# read the comment as part of the value and rejected the very file it
+# distributes as the example to copy. Found while adding T-3; the
+# template has never passed its own checker.
+kind = (top("kind") or "").split("#")[0].strip() or None
 
 # ---- T-1: Task Block documents: field (ACP A1) ----
 # A task may hand over indexed sections; it may never hand over a bare
@@ -118,6 +123,36 @@ if kind == "task":
                      f"(policies/risk-model.md, 'Precedence: the domain "
                      f"floor beats the assigned level') — issue the block "
                      f"at {floor}. A smaller scope does not lower it.")
+
+# ---- T-3: a gate verdict names the text it was derived from (F-53) ----
+# A gate block outlives the block it gates. The target is re-issued,
+# rewrites the reasoning the verdict rested on, and the verdict keeps
+# standing over text that no longer exists — in the present tense, with
+# citations that resolve to nothing.
+#
+# Measured on a real run: a verification block written EIGHT MINUTES
+# after its target was rewritten still carried `plan_version: 2`, and
+# its `weakened` verdict named as its only break a causal chain the
+# target had withdrawn itself. Two further rounds passed before a
+# consistency gate compared timestamps and found it. Correcting it
+# flipped the verdict to `confirmed` — so for two rounds the label
+# described the gate's stale copy rather than the work.
+#
+# There is no version arithmetic here on purpose: the checker cannot
+# know which revision is current, and guessing would put an F-class
+# mechanism in a gate. It requires only that the claim be checkable at
+# all, which is what was missing. Whether the named revision is the
+# current one is the consistency gate's job, and it can do it in one
+# comparison once the field exists.
+if kind in ("verification", "challenge"):
+    if not top("target_revision"):
+        V.append("T-3: a gate block must carry target_revision — the "
+                 "revision of the block this verdict was derived from "
+                 "(e.g. 'plan_version: 3', 'revision: REV-06'; a map when "
+                 "several targets were read). A verdict that does not name "
+                 "its target's version cannot be checked for staleness, and "
+                 "a gate that has gone stale states a verdict over text "
+                 "that no longer exists (F-53).")
 
 if kind == "task":
     dm = re.search(r'^documents\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
