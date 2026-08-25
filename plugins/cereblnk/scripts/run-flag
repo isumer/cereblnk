@@ -139,19 +139,8 @@ case "$CMD" in
       exit 1
     fi
     echo "run-flag: armed ($FLAG)"
-    # F-50: input-policy §3 routes every mid-run user message through
-    # `scripts/run-status`, which reads $CB_DIR/state.md and the inbox it
-    # points at. Measured: state.md did not exist, and nothing in the
-    # plugin ever created it — the reader was shipped, the writer was
-    # not, so `run-status` answered "no active run state" for every run
-    # and the intake surface was unreachable. Only /cb-implement even
-    # calls it, and it too expects the file to already be there.
-    #
-    # Scaffolded here because arm is the one command every workflow runs
-    # at execution start, and it is already holding the two facts the
-    # file needs. Created only when absent: the conductor owns the
-    # contents afterwards, and a run that resumes must not have its
-    # stage reset by re-arming.
+    # Scaffold what run-status reads. Created only when absent; the
+    # conductor owns the contents afterwards.
     if [ "$NAME" = "run-active" ] && [ -n "$CONTENT" ]; then
       _state="$DIR/state.md"
       if [ ! -f "$_state" ]; then
@@ -166,8 +155,7 @@ case "$CMD" in
           printf 'current; it is the only line that says where the run is.\n'
         } > "$_state" 2>/dev/null || true
       elif ! grep -q "^run_id: $CONTENT\$" "$_state" 2>/dev/null; then
-        # A stale run_id points run-status at another run's inbox, so the
-        # count it reports would be somebody else's.
+        # A stale run_id would point run-status at another run.
         _tmp="$_state.$$"
         if sed "s|^run_id: .*|run_id: $CONTENT|" "$_state" > "$_tmp" 2>/dev/null; then
           mv -f "$_tmp" "$_state" 2>/dev/null || rm -f "$_tmp" 2>/dev/null
@@ -204,25 +192,11 @@ case "$CMD" in
       echo "run-flag: could not remove $FLAG — the guards still consider this run active." >&2
       exit 1
     fi
-    # F-43: the nudge counter belongs to an uninterrupted armed period,
-    # not to a run id. It used to survive here, and since every workflow
-    # disarms before any turn that ends awaiting the user, a run that
-    # paused came back with its budget already spent: measured, the
-    # first Stop after re-arming skipped the nudge entirely and
-    # disarmed while a specialist was still out — the one thing the
-    # nudge message tells the reader never to do.
+    # The nudge counter covers one uninterrupted armed period.
     if [ "$NAME" = "run-active" ]; then
       rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
     fi
     echo "run-flag: disarmed"
-    # F-56: this used to be the whole story, and the word "disarmed"
-    # reads like "the run is over". It is not. run-discipline §5 says a
-    # finished run is HANDED OFF, not removed — and DelegationGuard
-    # enforces exactly that: no run-active, no run-completed, a fresh
-    # witness and a warm ledger is its "disarm-and-continue" violation.
-    # Measured live: a conductor followed the skills' own final line,
-    # ran disarm, and its next edit was blocked with a message about a
-    # run it had just correctly finished.
     if [ "$NAME" = "run-active" ] && [ ! -f "$DIR/flags/run-completed" ]; then
       echo "run-flag: note — this is a PAUSE, not a completion. If the run" >&2
       echo "run-flag: is finished, use 'run-flag complete' instead: it hands off" >&2
@@ -231,13 +205,8 @@ case "$CMD" in
     fi
     ;;
   complete)
-    # The final-synthesis counterpart of disarm. run-discipline §5 has
-    # described this handoff since the follow-up window existed; what
-    # was missing was any way to perform it. Eleven workflow skills say
-    # "Remove it at final synthesis" and defer to §5 without restating
-    # it, and `run-flag` had no verb for it — leaving a hand-written
-    # touch as the only route, which is the failure mode this script
-    # exists to remove.
+    # Final-synthesis handoff (run-discipline §5): clears the run
+    # flag and its siblings, then writes run-completed.
     rm -f "$FLAG" 2>/dev/null || true
     rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
     rm -f "$DIR/flags/run-active.nudged" 2>/dev/null || true

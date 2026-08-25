@@ -55,15 +55,7 @@ case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 NEWEST="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 BLOCKS=0; TASKS=0; PENDING=""
 if [ -n "$NEWEST" ]; then
-  # F-49: this counted every *.yaml in the run directory, and the
-  # conductor writes skills-required.yaml there at run start — before
-  # any specialist has returned anything. Two consequences, both
-  # measured. The count shown to the reader was wrong: "2/1 task blocks
-  # on disk" reads as more blocks than planned, i.e. finished. And the
-  # progress metric could be advanced by the conductor's own
-  # bookkeeping, buying a nudge that no specialist earned. Response
-  # Blocks are named for their task; the run's own inputs are not
-  # progress.
+  # Response Blocks only; the run's own inputs are not progress.
   BLOCKS=$(ls -1 "$NEWEST"*.yaml 2>/dev/null \
     | grep -Ev '/(skills-required|stack-profile|plan)\.yaml$' \
     | wc -l | tr -cd '0-9'); BLOCKS=${BLOCKS:-0}

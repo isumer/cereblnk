@@ -167,17 +167,31 @@ def main(argv):
         return 3
     root = pathlib.Path(argv[1]).resolve()
     if not root.is_dir():
+        print("SKIP %s is not a directory — nothing to check against."
+              % root, file=sys.stderr)
         return 3
     wanted = [c.strip() for c in argv[2:] if c.strip()]
 
     cdir = root / ".claude/cereblnk/memory/contracts"
     if not cdir.is_dir():
+        print("SKIP no %s — no behavior contract exists for this project, "
+              "so there are no ruled rows to check. /cb-rewrite writes one "
+              "at its ruling stage; design does not start before it."
+              % cdir, file=sys.stderr)
         return 3
 
     contracts = [c for c in (parse_behavior(p) for p in sorted(cdir.glob("*.md"))) if c]
     if wanted:
         contracts = [c for c in contracts if c["name"] in wanted]
     if not contracts:
+        if wanted:
+            print("SKIP no contract named %s under %s — check the name, or "
+                  "run without arguments to check every contract."
+                  % (", ".join(wanted), cdir), file=sys.stderr)
+        else:
+            print("SKIP %s holds no parseable contract — the directory "
+                  "exists but nothing in it declares behavior rows."
+                  % cdir, file=sys.stderr)
         return 3
 
     findings = []

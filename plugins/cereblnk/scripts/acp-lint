@@ -30,11 +30,7 @@ def top(key):
     m = re.search(rf'^{key}\s*:\s*(.*)$', text, re.M)
     return m.group(1).strip() if m else None
 
-# A trailing comment is legal YAML on a scalar, and the shipped template
-# uses one — `kind: verification          # or: challenge`. The linter
-# read the comment as part of the value and rejected the very file it
-# distributes as the example to copy. Found while adding T-3; the
-# template has never passed its own checker.
+# Strip a trailing YAML comment from the scalar.
 kind = (top("kind") or "").split("#")[0].strip() or None
 
 # ---- T-1: Task Block documents: field (ACP A1) ----
@@ -125,18 +121,8 @@ if kind == "task":
                      f"at {floor}. A smaller scope does not lower it.")
 
 # ---- T-4: revisions are appended, and each one pays for itself (F-54) ----
-# A revision that rewrites the block destroys the record of what the
-# previous pass cost — measured, a run summary could only report each
-# block's last pass because every rewrite replaced the budget_report
-# before it. So each appended revision carries its own, and the reason
-# it was appended is part of the block rather than of some conductor's
-# memory.
-#
-# The check is deliberately shallow. It does not try to resolve
-# `supersedes` paths against the block above: those name fields the
-# linter does not model, and a checker that half-resolves them would
-# fail honest blocks. It requires only that a revision be attributable
-# and priced.
+# `supersedes` paths are not resolved; only that a revision is
+# attributable and priced.
 rev_m = re.search(r'^revisions\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
 if rev_m:
     body = rev_m.group(1)
@@ -163,25 +149,8 @@ if rev_m:
                  "marker so the order on disk is the order they happened.")
 
 # ---- T-3: a gate verdict names the text it was derived from (F-53) ----
-# A gate block outlives the block it gates. The target is re-issued,
-# rewrites the reasoning the verdict rested on, and the verdict keeps
-# standing over text that no longer exists — in the present tense, with
-# citations that resolve to nothing.
-#
-# Measured on a real run: a verification block written EIGHT MINUTES
-# after its target was rewritten still carried `plan_version: 2`, and
-# its `weakened` verdict named as its only break a causal chain the
-# target had withdrawn itself. Two further rounds passed before a
-# consistency gate compared timestamps and found it. Correcting it
-# flipped the verdict to `confirmed` — so for two rounds the label
-# described the gate's stale copy rather than the work.
-#
-# There is no version arithmetic here on purpose: the checker cannot
-# know which revision is current, and guessing would put an F-class
-# mechanism in a gate. It requires only that the claim be checkable at
-# all, which is what was missing. Whether the named revision is the
-# current one is the consistency gate's job, and it can do it in one
-# comparison once the field exists.
+# Presence only: whether the named revision is the current one is the
+# consistency gate's question, not this one.
 if kind in ("verification", "challenge"):
     if not top("target_revision"):
         V.append("T-3: a gate block must carry target_revision — the "

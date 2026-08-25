@@ -27,7 +27,13 @@ ORDER = ["architecture", "data-flow", "state-transitions", "failure-modes",
          "trust-boundaries", "diagrams", "test-matrix"]
 TITLES = ["Architecture", "Data flow", "State transitions", "Failure modes",
           "Trust boundaries", "Diagrams", "Test matrix"]
-LABEL = re.compile(r"\b(Known|Derived|Estimated|Assumed|Speculative)\b")
+# The capitalised prose form, or the lowercase form where it is a label
+# rather than a word — case-insensitive would admit "it is known that".
+LABEL = re.compile(
+    r"""\b(Known|Derived|Estimated|Assumed|Speculative)\b   # prose form
+      | ^\s*-?\s*(known|derived|estimated|assumed|speculative)\s*:   # key
+      | \blabel\s*:\s*(known|derived|estimated|assumed|speculative)\b
+    """, re.M | re.X)
 
 sections_dir = pathlib.Path(os.environ["SECTIONS"])
 out = pathlib.Path(os.environ["OUT"])

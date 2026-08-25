@@ -1,31 +1,17 @@
 #!/usr/bin/env bash
 # RouteHintHook (UserPromptSubmit) — CB-149, F-57.
 #
-# TOPOLOGY.md says cb-dispatch "routes engineering work to the right
-# Cereblnk workflow automatically", triggered by its own frontmatter
-# description when a request touches a codebase without naming a /cb-
-# command. Measured across a full session of codebase work — branch
-# edits, a release, a PR — that never happened once:
+# TOPOLOGY.md says cb-dispatch routes automatically when a request
+# touches a codebase without naming a /cb- command. Measured over a
+# whole session of codebase work: zero automatic invocations —
+# description matching is the host model's discretion, not a
+# mechanism, and nothing else pushed.
 #
-#   skills-loaded.log, whole session:
-#     1787657616  main  dispatch      <- typed by the user
-#     1787667468  main  orchestrate   <- typed by the user
+# Supplies the push and only the push. It does NOT decide the workflow:
+# that table lives in skills/dispatch, and a second copy would diverge.
 #
-# Zero automatic invocations. The reason is that description matching is
-# the host model's discretion, not a mechanism, and nothing else pushed.
-# The plugin's only UserPromptSubmit hook was context-monitor, which
-# injects a token warning and says nothing about routing. So the
-# platform's own entry point was REGISTERED and never ENGAGED — the same
-# distinction the rest of this codebase is built to respect.
-#
-# This hook supplies the missing push, and only the push. It does NOT
-# decide the workflow. That table lives in skills/dispatch (Step 3) and
-# a second copy of it would diverge from the first — which is exactly
-# the defect CB-148 just closed one layer down. The hint carries
-# signals; dispatch carries the decision.
-#
-# Never blocks. UserPromptSubmit CAN block a prompt; a routing hint that
-# can stop a user's turn is worse than the problem it solves.
+# Never blocks — a routing hint that can stop a turn is worse than the
+# problem it solves.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -40,21 +26,17 @@ try:
 except Exception:
     sys.exit(0)
 p = d.get("prompt") or ""
-# One line, bounded. A prompt that pastes a file is not a routing signal
-# and running the selector over it would price this hook at the cost of
-# the thing it is trying to save.
+# One line, bounded: a pasted file is not a routing signal.
 sys.stdout.write(" ".join(p.split())[:600])
 ' 2>/dev/null || true)"
 
 [ -n "$PROMPT" ] || exit 0
 
 # ---- silence conditions, in order of authority --------------------------
-# 1. An explicit command wins and always has (dispatch rule 4). Saying
-#    anything here would be arguing with the user's own choice.
+# 1. An explicit command wins (dispatch rule 4).
 case "$PROMPT" in *"/cb-"*) exit 0 ;; esac
 
-# 2. A run is already armed: a workflow owns this turn, the conductor is
-#    mid-flight, and a routing hint is noise in the middle of routing.
+# 2. A run is armed: a workflow already owns this turn.
 [ -f "$CB_DIR/flags/run-active" ] && exit 0
 
 # 3. Opt-out, same shape as the careful/boundary flags.
@@ -63,18 +45,13 @@ case "$PROMPT" in *"/cb-"*) exit 0 ;; esac
 SEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/select-agents"
 [ -x "$SEL" ] || exit 0
 
-# The selector is the single source of routing signal — the same script
-# dispatch and every workflow already run, so a hint can never disagree
-# with the routing it is pointing at. Timeout: this runs on the user's
-# keystroke path and must never be felt.
+# The same selector every workflow runs, so a hint cannot disagree with
+# the routing it points at. Timeout: this is the keystroke path.
 OUT="$(timeout 10 "$SEL" --text "$PROMPT" 2>/dev/null || true)"
 [ -n "$OUT" ] || exit 0
 
-# 4. Unresolved is silence, not a guess. `inferred: true` means no rule
-#    matched and the selector fell back to architect-agent; routing on
-#    that would be the "never route on a silent default" violation the
-#    selector's own output warns about. Measured: "make it nicer" lands
-#    here, and should.
+# 4. Unresolved is silence, never a guess: `inferred: true` means no
+#    rule matched and the selector fell back.
 case "$OUT" in *"inferred: true"*) exit 0 ;; esac
 
 # Heredoc, not -c: the parser below needs single quotes of its own, and

@@ -178,3 +178,4 @@ read.
 - [x] **CB-154** — Revising a block cost more than being wrong
 - [x] **CB-155** — The intake surface had a reader and no writer
 - [x] **CB-156** — A wave could pair a gate with an edit to its target
+- [x] **CB-157** — Three checkers that misread their own inputs
