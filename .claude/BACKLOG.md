@@ -175,3 +175,4 @@ read.
 - [x] **CB-151** — A finished run had no way to say so
 - [x] **CB-152** — The skill floor judged the run, not the pass
 - [x] **CB-153** — A gate verdict could not be checked for staleness
+- [x] **CB-154** — Revising a block cost more than being wrong
