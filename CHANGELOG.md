@@ -80,6 +80,25 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Changed — comments describe the code, not its history (CB-158)
+
+Several scripts had grown a second changelog inside their comments:
+the run that failed, the timestamps that proved it, what the previous
+version got wrong. `run-guard.sh` was 52% comment, `cbenv.sh` 50%,
+`delegation-guard.sh` 42%.
+
+That history belongs here, where it is indexed and dated. A comment is
+for the reader of the code, and it earns its place by explaining what
+the code does or why it is shaped that way.
+
+Kept: decision tables, fail-open semantics, resolution orders, usage
+blocks, and the reasons behind non-obvious structure — why identity is
+parsed rather than substring-matched, why the mtime scan is a floor and
+not an error path, why Store aliases are skipped without running them.
+
+Removed: the measurement narratives. Across the files touched by
+CB-148…CB-157 and the five densest hooks, roughly 300 lines.
+
 ### Fixed — three checkers that misread their own inputs (CB-157)
 
 **F-51** — `shellwrite.py` listed `open(` as a write hint, and Python's
