@@ -80,6 +80,53 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — context measurement (CB-150; F-45, F-46, F-47)
+
+**The monitor was maximally wrong at the moment its reading mattered
+most.** `UserPromptSubmit` fires before the next assistant turn is
+written, so on the first prompt after a `/compact` the newest `usage`
+record in the tail still describes the pre-compaction turn:
+
+```
+telemetry/context.log, compaction at 15:52
+  15:21:26  occupancy=702145  pct=77.8   <- before
+  15:58:43  occupancy=706493  pct=78.2   <- FIRST PROMPT AFTER
+  16:05:48  occupancy=103817  pct=11.5   <- next prompt, self-corrects
+```
+
+The true figure sat in the same tail the hook already read:
+`compactMetadata.postTokens: 31272`. It reported 22x that. Structural,
+not a fluke — it happens on every compaction. Observed harm: the reader
+throttled its own work and deferred a task on that number.
+
+A compaction record carries no `usage` of its own, so it is tracked
+separately and preferred only when it comes *after* the last `usage`
+record. The second prompt after a compaction still reads its own turn.
+
+**The hedge escaped through the reserve.** `input_capacity = window −
+output_reserve`, resolved independently, but the hedge test only looked
+at `window:`. A `settings.json` naming the window while the reserve fell
+back printed a confident percentage over a partly guessed denominator —
+the exact failure F-13's fix existed to prevent, through the door beside
+it. It now matches `context-budget`'s own aggregate `labelled: assumed`
+line rather than re-deriving that logic.
+
+The warning text broadened with its condition. It used to say "the
+window was never measured", which is wrong in precisely the case this
+change added, and sent the reader to set a variable that was already set.
+
+**The telemetry could not diagnose its own worst error.** F-45 was
+invisible in the log; finding it took hand-reading `compactMetadata` out
+of the raw transcript. The line now carries `compacted=` and
+`capacity_source=`, appended at the end so `occupancy=`/`capacity=`/`pct=`
+still parse unchanged.
+
+Measured on transcript fixtures, including the ordering case that decides
+the fix: compaction record *after* the last usage → `occupancy=31272
+compacted=yes`; compaction record *before* a newer usage → falls back to
+the usage sum, `compacted=no`. No-usage, malformed-JSON and
+`postTokens: 0` transcripts all stay silent at exit 0.
+
 ### Added — RouteHintHook (CB-149, F-57)
 
 `TOPOLOGY.md` says cb-dispatch "routes engineering work to the right
