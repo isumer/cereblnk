@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""test-run-identity — the run directory is carried, not guessed (CB-147).
+
+F-31: eight hooks each derived the run directory with `ls -1dt
+context/*/ | head -1` — newest by mtime, re-evaluated per invocation. An
+agent that edits source and only then writes its Response Block creates
+a NEWER run directory than the one its edits were recorded in, so at
+SubagentStop the floor read an empty directory, found no exec.log, and
+exited 0. The edits were on disk the whole time, in the run the agent
+actually belonged to.
+
+The fix carries the identity on flags/run-active and resolves it through
+one validated cb_run_dir() in lib/cbenv.sh. This suite is that
+resolver's acceptance run, plus the F-31 regression through a real hook.
+
+The ordering of the F-31 case is the whole test: record the edits, THEN
+create the newer directory, THEN invoke the floor. Any other ordering
+passes against the old code and proves nothing.
+
+Requires bash + python3 on PATH (the hooks' own runtime contract).
+
+Usage: scripts/test-run-identity   Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+H = ROOT / "plugins/cereblnk/hooks/scripts"
+CBENV = ROOT / "plugins/cereblnk/scripts/lib/cbenv.sh"
+
+# Every hook that resolves a run directory, with a payload it accepts.
+# The list is the scope of the change: if a ninth hook starts resolving
+# a run, it belongs here.
+HOOKS = ("skill-floor.sh", "exec-floor.sh", "reach-floor.sh",
+         "contract-floor.sh", "exec-ledger.sh", "skill-ledger.sh",
+         "digest-cap.sh", "run-guard.sh")
+
+
+def hook(script, stdin, proj):
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+    return subprocess.run(["bash", str(H / script)], input=stdin,
+                          capture_output=True, text=True, env=env,
+                          cwd=str(proj))
+
+
+def resolve(proj):
+    """What cb_run_dir() prints, verbatim, plus its exit status."""
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+    r = subprocess.run(
+        ["bash", "-c", '. "%s" 2>/dev/null; cb_run_dir' % CBENV],
+        capture_output=True, text=True, env=env, cwd=str(proj))
+    return r.stdout.strip(), r.returncode
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-run-identity: bash not on PATH — skipping")
+        return 0
+
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    def project(td, name):
+        proj = pathlib.Path(td) / name
+        (proj / ".claude/cereblnk/config").mkdir(parents=True)
+        (proj / ".claude/cereblnk/flags").mkdir(parents=True)
+        (proj / ".claude/cereblnk/context").mkdir(parents=True)
+        return proj
+
+    def ctx(proj, run_id, mtime=None):
+        d = proj / ".claude/cereblnk/context" / run_id
+        d.mkdir(parents=True, exist_ok=True)
+        if mtime is not None:
+            age(d, mtime)
+        return d
+
+    def age(d, mtime):
+        # Writing a file inside a directory bumps that directory's mtime.
+        # The age must therefore be stamped AFTER the contents exist, or
+        # the fixture quietly stops reproducing the mtime race it is for.
+        os.utime(d, (mtime, mtime))
+        return d
+
+    def arm(proj, content=None):
+        f = proj / ".claude/cereblnk/flags/run-active"
+        f.write_text((content + "\n") if content is not None else "",
+                     encoding="utf-8")
+
+    def stop_in(agent="backend-agent"):
+        return json.dumps({"agent_type": agent})
+
+    with tempfile.TemporaryDirectory() as td:
+
+        # ---- 1. F-31: the pinned run survives a newer directory --------
+        # This is the measured defect, in its measured order.
+        proj = project(td, "f31")
+        old = ctx(proj, "R-2026-08-24-002")
+        (old / "exec.log").write_text(
+            "1787653044\tbackend-agent\tedit\tapi\n"
+            "1787653047\tbackend-agent\tedit\tapi\n"
+            "1787653050\tbackend-agent\tedit\tapi\n", encoding="utf-8")
+        age(old, 1787653050)
+        (proj / ".claude/cereblnk/config/check-command.api").write_text(
+            "mvn -q test\n", encoding="utf-8")
+        arm(proj, "R-2026-08-24-002")
+        # ...and only NOW the Response Block creates the newer directory.
+        new = ctx(proj, "R-2026-08-25-001")
+        (new / "T-011.yaml").write_text("kind: response\n", encoding="utf-8")
+        age(new, 1787653090)
+        # the race the defect rides on, asserted rather than assumed
+        case("F-31: the fixture reproduces the mtime race",
+             new.stat().st_mtime > old.stat().st_mtime,
+             "old=%s new=%s" % (old.stat().st_mtime, new.stat().st_mtime))
+        r = hook("exec-floor.sh", stop_in(), proj)
+        case("F-31: floor reads the pinned run, not the newest directory",
+             r.returncode == 2, "rc=%d stderr=%r" % (r.returncode, r.stderr[:120]))
+        case("F-31: the block names the unrun surface",
+             "api" in r.stderr, r.stderr.strip()[:100])
+        got, _ = resolve(proj)
+        case("F-31: resolver returns the pinned run",
+             got.rstrip("/").endswith("R-2026-08-24-002"), "got %r" % got)
+
+        # ---- 3. a dead pin falls back to the scan (HIGH) ---------------
+        # An unvalidated pin sends ledger writes into a removed directory
+        # silently, which is worse than the guess it replaced.
+        proj = project(td, "dead")
+        live = ctx(proj, "R-2026-08-24-002")
+        (live / "exec.log").write_text(
+            "1787653044\tbackend-agent\tedit\tapi\n", encoding="utf-8")
+        age(live, 1787653050)
+        (proj / ".claude/cereblnk/config/check-command.api").write_text(
+            "mvn -q test\n", encoding="utf-8")
+        gone = ctx(proj, "R-2026-08-25-999")
+        shutil.rmtree(gone)
+        arm(proj, "R-2026-08-25-999")
+        got, rc = resolve(proj)
+        case("dead pin: resolver falls back to the scan",
+             got.rstrip("/").endswith("R-2026-08-24-002"), "got %r" % got)
+        case("dead pin: resolver still exits 0", rc == 0, "rc=%d" % rc)
+        r = hook("exec-floor.sh", stop_in(), proj)
+        case("dead pin: the floor still enforces against the live run",
+             r.returncode == 2, "rc=%d" % r.returncode)
+
+        # ---- 4. traversal is rejected (MEDIUM) ------------------------
+        # flags/run-active is written by more than one path and is read
+        # as a path component.
+        proj = project(td, "traverse")
+        ctx(proj, "R-2026-08-24-002", mtime=1787653000)
+        for hostile in ("../../etc", "..", "../R-2026-08-25-001",
+                        "/etc", "R-1/../../etc", "a b"):
+            arm(proj, hostile)
+            got, rc = resolve(proj)
+            case("traversal rejected: %r" % hostile,
+                 got.rstrip("/").endswith("R-2026-08-24-002")
+                 and "etc" not in got and ".." not in got,
+                 "got %r" % got)
+            case("traversal rejected: %r exits 0" % hostile, rc == 0, "rc=%d" % rc)
+
+        # an empty flag pins nothing and must not break the scan
+        proj = project(td, "emptyflag")
+        ctx(proj, "R-2026-08-24-002", mtime=1787653000)
+        arm(proj, None)
+        got, _ = resolve(proj)
+        case("empty flag falls back to the scan",
+             got.rstrip("/").endswith("R-2026-08-24-002"), "got %r" % got)
+
+        # no flag at all is the pre-CB-147 world and still resolves
+        proj = project(td, "noflag")
+        ctx(proj, "R-2026-08-24-002", mtime=1787653000)
+        ctx(proj, "R-2026-08-25-001", mtime=1787653090)
+        got, _ = resolve(proj)
+        case("no flag falls back to the newest directory",
+             got.rstrip("/").endswith("R-2026-08-25-001"), "got %r" % got)
+
+        # ---- 5. fail-open is preserved in all eight hooks (MEDIUM) ----
+        # One shared resolver widens the blast radius of any error in it
+        # from one hook to the whole record layer. Empty result, exit 0.
+        proj = project(td, "failopen")
+        arm(proj, "R-does-not-exist")     # pin dead AND no directory to scan
+        got, rc = resolve(proj)
+        case("fail-open: resolver returns empty", got == "", "got %r" % got)
+        case("fail-open: resolver exits 0", rc == 0, "rc=%d" % rc)
+        for script in HOOKS:
+            r = hook(script, stop_in(), proj)
+            case("fail-open: %s exits 0 on an empty resolver result" % script,
+                 r.returncode == 0,
+                 "rc=%d stderr=%r" % (r.returncode, r.stderr[:80]))
+        case("fail-open: all eight resolving hooks are covered",
+             len(HOOKS) == 8, "%d listed" % len(HOOKS))
+
+        # ---- run-flag records the identity ----------------------------
+        proj = project(td, "armflag")
+        cbdir = proj / ".claude/cereblnk"
+        ctx(proj, "R-2026-08-25-001", mtime=1787653090)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir), "R-2026-08-25-001"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        flag = cbdir / "flags/run-active"
+        case("run-flag arm writes the run id into the flag",
+             rf.returncode == 0 and flag.is_file()
+             and flag.read_text(encoding="utf-8").strip() == "R-2026-08-25-001",
+             "rc=%d content=%r" % (rf.returncode,
+                                   flag.read_text(encoding="utf-8") if flag.is_file() else None))
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir), "../../etc"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag arm rejects a run id that is not one",
+             rf.returncode == 2, "rc=%d" % rf.returncode)
+        case("run-flag arm leaves the previous identity intact on rejection",
+             flag.read_text(encoding="utf-8").strip() == "R-2026-08-25-001",
+             "content=%r" % flag.read_text(encoding="utf-8"))
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir)],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag arm without an id still arms (unpinned)",
+             rf.returncode == 0 and flag.is_file(), "rc=%d" % rf.returncode)
+
+    if fails:
+        print("test-run-identity: %d/%d FAILED" % (len(fails), ran))
+        for f in fails:
+            print("  FAIL  %s" % f)
+        return 1
+    print("test-run-identity: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

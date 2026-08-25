@@ -30,7 +30,7 @@ set -uo pipefail
 [ -n "${PYBIN:-}" ] || exit 0
 [ -n "${CB_ROOT:-}" ] || exit 0
 
-RUN="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
+RUN="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 [ -n "$RUN" ] || exit 0
 [ -f "$RUN/edited-files.log" ] || exit 0
 
