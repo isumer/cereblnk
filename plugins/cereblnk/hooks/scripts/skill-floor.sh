@@ -78,18 +78,51 @@ if not need and req and agent_key not in req:
 if not need:
     sys.exit(0)
 
-loaded = set()
+# F-52: the ledger is append-only for the whole run, so reading all of
+# it answered "has any pass of this role loaded this skill in this run",
+# when the question the floor is asking is "did THIS subagent load it in
+# its own context". Measured: a docs-agent re-issued for a §3
+# re-verification loaded nothing at all and the floor passed it, because
+# a line from the first pass of that role was still in the log. A re-issued
+# pass is a fresh context that has to reason again, which is exactly
+# where the floor matters most.
+#
+# The watermark is the fix: each stop is judged against the lines
+# written since the previous stop of the same agent. The block-then-load
+# cycle still works, because the loads the agent performs after being
+# blocked land after the mark and count for the retry.
 log = run / "skills-loaded.log"
-if log.exists():
-    for line in log.read_text(encoding="utf-8").splitlines():
-        parts = line.split("\t")
-        if len(parts) == 3 and parts[1] == agent:
-            loaded.add(parts[2])
+lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+mark_f = run / ("skill-floor.%s.mark" % agent)
+start = 0
+if mark_f.exists():
+    try:
+        start = int(mark_f.read_text(encoding="utf-8").strip() or 0)
+    except ValueError:
+        start = 0
+if start > len(lines):        # log rotated or truncated: judge all of it
+    start = 0
+
+loaded = set()
+for line in lines[start:]:
+    parts = line.split("\t")
+    if len(parts) == 3 and parts[1] == agent:
+        loaded.add(parts[2])
 missing = [s for s in need if s not in loaded]
-if not missing:
-    sys.exit(0)
 
 state = run / ("skill-floor.%s.state" % agent)
+if not missing:
+    # A clean stop ends this pass. The mark moves so the next pass is
+    # judged on its own loads, and the nudge counter resets with it —
+    # the counter belongs to an uninterrupted period, the same rule the
+    # run flag follows (F-43).
+    try:
+        mark_f.write_text(str(len(lines)), encoding="utf-8")
+        state.unlink()
+    except OSError:
+        pass
+    sys.exit(0)
+
 count = 0
 if state.exists():
     try:
