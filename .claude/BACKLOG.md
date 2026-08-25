@@ -20,41 +20,6 @@
 
 ---
 
-## Open — the outside test journal, second pass
-
-An external operator drove the plugin through a build-shaped run in a
-scratch repository and kept a measurement journal: 29 findings, each
-with the command that produced it, and a 30th that appeared while the
-first batch was being fixed. Thirteen closed under CB-134 and eleven
-more under CB-135..CB-143, CB-145 and CB-146. One is left, and it waits
-on a platform signal this release cannot invent.
-
-Every one was reproduced against this branch before being written here.
-A finding that stopped reproducing is recorded in CB-140 with the reason
-rather than silently dropped.
-
-The journal's own severity scale is preserved in the finding ids so a
-reader can trace a task back to the measurement that found it.
-
-### CB-144 — A conductor counted idle while its specialists run (F-14)
-
-RunGuard fired a continue-nudge on a turn that ended with two subagents
-still working: *"execute the NEXT unconfirmed task"*. There was no
-ledger to reconcile — the run had written no `plan.md` — and the
-conductor was not idle, it was waiting, which is the normal state of a
-multi-agent run.
-
-The remedy the nudge offers is worse than the nudge: removing
-`flags/run-active` while specialists are running disarms the floors
-that are supposed to judge them.
-
-**Acceptance.**
-1. A turn that ends with live background subagents produces no
-   continue-nudge, or produces one whose text distinguishes waiting
-   from stalling.
-2. The nudge never recommends an action that disarms enforcement while
-   enforcement is still needed.
-
 ---
 
 ## Closed
@@ -200,5 +165,6 @@ read.
 - [x] **CB-141** — The seventy-seven skills the host could not see
 - [x] **CB-142** — The cascade is advisory, and the policy now says so
 - [x] **CB-143** — The floor routed the contract and forgot the implementer
+- [x] **CB-144** — A conductor counted idle while its specialists run
 - [x] **CB-145** — The checkpoint is this project's threshold, not the host's
 - [x] **CB-146** — A suite that reads its own shell is not a suite
