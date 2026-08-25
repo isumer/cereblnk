@@ -51,6 +51,20 @@ cb_is_conductor_owned() {
     */cereblnk/context/*/[Pp]lan.md)      return 0 ;;
     */cereblnk/context/*/skills-required.yaml) return 0 ;;
     */cereblnk/state.md)                  return 0 ;;
+    # F-06: the block message counts verdicts among what the conductor
+    # holds — "the conductor holds intent, plan, digests, verdicts" —
+    # and the table had no path for one. A run journal is a verdict: no
+    # surface specialist owns it, so "delegate this edit" names nobody.
+    # The three ways out all cost something: the override (a human act
+    # with a TTL), disarming the run (protection gone), or spawning a
+    # specialist for a document outside its domain (a wasted subagent
+    # in the wrong role). The runtime tree is gitignored and holds no
+    # source; source is what the guard is for.
+    # Scoped to the run directory only. memory/specs and memory/briefs
+    # ARE a specialist's surface — the authored-documentation rule
+    # routes them to technicalwriter-agent — so the journal opens the
+    # run ledger and nothing else.
+    */cereblnk/context/*/*.md)            return 0 ;;
     */cereblnk/flags/*)                   return 0 ;;
     */cereblnk/telemetry/*)               return 0 ;;
   esac

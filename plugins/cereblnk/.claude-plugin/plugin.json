@@ -2,10 +2,18 @@
   "name": "cereblnk",
   "displayName": "Cereblnk",
   "description": "Adaptive multi-agent engineering platform: runtime-orchestrated specialist agents, evidence-driven verification, and context budgeting.",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "author": {
     "name": "isumer"
   },
   "homepage": "https://github.com/isumer/cereblnk",
-  "repository": "https://github.com/isumer/cereblnk"
+  "repository": "https://github.com/isumer/cereblnk",
+  "skills": [
+    "./skills/data/",
+    "./skills/delivery/",
+    "./skills/frameworks/",
+    "./skills/infrastructure/",
+    "./skills/languages/",
+    "./skills/practices/"
+  ]
 }

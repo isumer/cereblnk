@@ -16,6 +16,12 @@
 #           by the stack profile. The agent loads these at run start;
 #           SubagentStop blocks the run if it did not.
 #
+# CB-143 adds the missing direction. A stack token was a veto only, so
+# a project being a Spring Boot project never PUT a skill on a role. A
+# role already routed now also receives the stack-declared skills its
+# own map rules own (bounded stack completion, below), and a TEXT rule
+# names server-side behaviour so the implementer is routed at all.
+#
 # Usage: select-agents <file>...
 #        git diff --name-only main... | select-agents
 #        select-agents --text "add idempotency to the payment service"
@@ -67,6 +73,26 @@ RULES = [
      ["backend-agent"], 1),   # only if no UI rule matched the same file (handled below)
     ("test surface",          r'(?i)(/tests?/|\.test\.|\.spec\.|_test\.(go|py)$|Test\.java$)',
      ["qa-agent"], 1),
+    # F-21: shell, YAML and XML resolved to nothing. The journal read
+    # this as a regex-compilation fault because skill-selection.yaml
+    # defines a shell rule; it does not. That table attaches SKILLS to
+    # an agent already chosen. This table CHOOSES the agent, and it had
+    # no row for any of the three — so the shell skill could never fire,
+    # because nothing was selected for it to attach to.
+    #
+    # The surfaces that went missing were not arbitrary: infrastructure,
+    # configuration and schema. Cereblnk's own tree is mostly shell.
+    ("shell/automation",      r'(?i)(\.(sh|bash|zsh)$|(^|/)Makefile$|(^|/)Justfile$)',
+     ["infra-agent"], 2),
+    ("config/serialisation",  r'(?i)\.(ya?ml|toml|ini|properties|xml)$',
+     ["infra-agent"], 2),
+    # F-21 second effect, and the gap that started it: a request to
+    # restructure the AI configuration itself resolved to nothing, and
+    # the two failure messages sent the caller back and forth. Agent,
+    # skill and rule files are authored documents about how work is
+    # done — the technical writer's surface, not a code surface.
+    ("ai configuration",      r'(?i)((^|[/\\])\.claude([/\\]|$)|(^|[/\\])CLAUDE\.md$|(^|[/\\])GUIDELINES\.md$|(^|[/\\])(agents|skills)[/\\].*\.md$)',
+     ["technicalwriter-agent"], 1),
     ("documentation",         r'(?i)\.md$',
      ["docs-agent"], 1),
     # Documentation splits by WHO owns the artifact, not by extension.
@@ -78,15 +104,33 @@ RULES = [
     ("authored documentation", r'(?i)(?:^|[/\\])memory[/\\](specs|briefs)[/\\]',
      ["technicalwriter-agent"], 1),
 ]
-UI = re.compile(RULES[5][1])
-AUTHORED = re.compile(RULES[10][1])
+# By name, not by index. These were RULES[5] and RULES[10]; adding three
+# rows above them silently repointed both at the wrong pattern, and the
+# only thing that noticed was a fixture two suites away. A table meant
+# to grow must not be addressed by position.
+def _rx(name):
+    for n, rx, _ag, _gl in RULES:
+        if n == name:
+            return re.compile(rx)
+    raise SystemExit("select-agents: no rule named %r" % name)
+
+
+UI = _rx("ui surface")
+AUTHORED = _rx("authored documentation")
 
 # Signals a path cannot carry. Text RAISES the floor, never lowers it —
 # "just a small expiry bump" is still auth.
+# When nothing matches, this is the specialist the run gets. architect
+# because a request that names no code surface is, by elimination,
+# about structure, boundaries or setup — the architect's declared
+# domain — and because it decides rather than implements, so an
+# inferred choice does the least damage if it is wrong.
+FALLBACK_AGENT = "architect-agent"
+
 TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
      ["backend-agent", "security-agent"], 3),
-    ("auth/session",   r'(?i)(auth|login|token|session|permission)',
+    ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt)',
      ["security-agent"], 3),
     ("deletion/retention", r'(?i)(delete|purge|retention|drop table)',
      ["database-agent", "security-agent"], 3),
@@ -96,6 +140,27 @@ TEXT_RULES = [
      ["frontend-agent"], 1),
     ("api contract",   r'(?i)(\bapi\b|endpoint|contract|versioning)',
      ["apidesign-agent"], 2),
+    # CB-143 / F-07. Twenty map rules carry backend-agent and every one
+    # of them is a LANGUAGE or FRAMEWORK rule whose topics are
+    # technology names -- java, spring boot, jpa. None carries request
+    # semantics. So "add a REST endpoint for user registration" matched
+    # the contract row and nothing else: the surface's designer was
+    # selected and its implementer never was, which §1 (server-side
+    # logic -> backend-agent, mandatory) and §3b (the owner of a surface
+    # is in every stage that shapes it) both forbid.
+    #
+    # This row names the WORK, not the stack. It pairs with the contract
+    # row rather than replacing it -- union, never max-only (§2.1): the
+    # designer owns the contract, the implementer owns the behaviour
+    # behind it, and a request for an endpoint asks for both. Level 2 is
+    # §1's floor for server-side logic.
+    #
+    # Deliberately excluded: bare "repository". A request to restructure
+    # the repository is configuration, not persistence, and CB-132
+    # already paid for routing that case wrongly.
+    ("server-side behavior",
+     r'(?i)(endpoint|\bhandler\b|controller|\bservice\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
+     ["backend-agent"], 2),
     ("infrastructure", r'(?i)(deploy|cluster|container|pipeline|terraform|helm|kubernetes)',
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
@@ -194,53 +259,156 @@ for r in rules:
     if placed:
         skill_why.append("%s <- %s" % (r["skill"], hit))
 
+# ---- bounded stack completion (CB-143 / F-07) -------------------------
+# In the loop above a declared stack token is a veto: it can only ever
+# subtract. A project BEING a Spring Boot project therefore added
+# nothing, and a routed backend-agent arrived with an empty skill floor
+# unless the request text happened to name the technology. Nobody
+# writing "add a REST endpoint for user registration" writes
+# "hibernate"; the pom.xml says it instead.
+#
+# Completion is the narrow inverse: a role the rules ALREADY routed
+# gains the skills whose declared stack token the profile confirms.
+# Three bounds keep it from becoming "a stack token triggers", the
+# version that would load java for a typo fix in a README:
+#
+#   1. it never adds a ROLE. Only roles already in `agents` gain
+#      skills, so the floor's membership is still decided by path and
+#      topic rules alone. docs-agent is in no stack rule's roles, so a
+#      docs-only change in a Java repository is untouched.
+#   2. it fires only for rules that DECLARE a stack token AND only when
+#      the profile confirms that token. A rule with no token is
+#      unaffected; an absent profile (stack is None) disables it
+#      entirely, so the "no stack gate, never a wrong guess" rule above
+#      still holds.
+#   3. it runs BEFORE the unresolved branch fills `agents` with the
+#      inferred fallback, so an unroutable request still gets an empty
+#      floor and stays visibly `inferred: true`. Completion must not
+#      dress a guess up as a routed answer.
+#
+# What this buys is the §3b guarantee in mechanism rather than in prose:
+# the specialist that owns the surface is selected, and it is selected
+# WITH the skill closure that surface needs in this repository.
+if stack:
+    for r in rules:
+        if not r["stack"] or r["stack"] not in stack:
+            continue
+        for role in r["roles"]:
+            if role not in agents:
+                continue
+            skills.setdefault(role, [])
+            if r["skill"] not in skills[role]:
+                skills[role].append(r["skill"])
+                skill_why.append("%s <- stack token '%s' in profile, for %s"
+                                 % (r["skill"], r["stack"], role))
+
+inferred = False
 if not agents:
-    print("# select-agents — UNRESOLVED", file=sys.stderr)
-    print("unresolved: true", file=sys.stderr)
-    # The advice has to differ by what was already tried. Observed live:
-    # a request naming a class and a verb ("review the OrderValidator
-    # class") carries no surface noun, so no text rule matches — which
-    # is correct, because "review" does not say whose work it is. But
-    # the message answered a --text call by asking for a --text call.
-    # The run made that call twice, got the same sentence twice, then
-    # abandoned the selector and chose the specialist by reading the
-    # policy itself: routing decided by a model instead of by the
-    # table, which is the failure exit 3 exists to prevent. A refusal
-    # that repeats the step just taken is not a refusal, it is a loop.
+    print("# select-agents — UNRESOLVED (inferred)", file=sys.stderr)
+    # The advice differs by what was already tried (CB-124): answering a
+    # --text call by asking for a --text call is a loop, and a run that
+    # got that sentence twice abandoned the selector.
+    #
+    # CB-132 removes the second half of that fix. The message also said
+    # reading the policy by hand "is not the fallback", which closed the
+    # only route a caller had left. The route it offered instead — pass
+    # a repository path — does not exist for every surface: a request to
+    # restructure `.claude/` or CLAUDE.md names configuration, and the
+    # rule table has no configuration surface, so no path resolves. A
+    # refusal that forbids the remaining option without opening another
+    # is worse than the loop it replaced. Observed as minutes of a run
+    # cycling through candidate agents and reaching none.
+    #
+    # So: say what does not match, name the path route as the better
+    # one, and stop forbidding the fallback. Choosing by hand stays
+    # visibly worse without being blocked, which is the honest state —
+    # a wrong specialist chosen out loud is correctable, a run that
+    # cannot proceed at all is not.
+    # CB-133: a default, recorded. Refusing produced neither a stopped
+    # run nor a question to the user — twice it produced improvisation:
+    # once a specialist invented out of a project's skills directory,
+    # once minutes of cycling through candidates. The table will always
+    # be incomplete, so the case this refusal fires on is permanent, and
+    # an unrecorded guess is what the refusal was meant to prevent.
+    #
+    # A risk gate was considered and dropped as dead code: payment,
+    # auth, migration and deploy all resolve through TEXT_RULES already,
+    # so a high-risk request never reaches this branch. The one that did
+    # — secret rotation — was a missing word in the auth rule, fixed
+    # above rather than caught by a second mechanism.
+    #
+    # What survives is the part that mattered: the choice is not silent.
+    # `inferred: true` reaches the Response Block, the Verifier and the
+    # ledger, so a wrong default is visible and correctable — which a
+    # model choosing quietly never was.
+    print("unresolved: true   # no rule matched; the specialist below is inferred",
+          file=sys.stderr)
     if text:
         print("reason: --text was supplied and no rule matched it — the "
               "request names no surface", file=sys.stderr)
-        print("next: resolve the symbol, class or file the request names "
-              "to a repository path and pass that path "
-              "(`select-agents <path>`); a path carries the surface a "
-              "verb cannot. Reading agent-selection-policy.md and "
-              "choosing by hand is not the fallback — §1 stays "
-              "authoritative precisely because a specialist chosen "
-              "silently is how a run gets the wrong one.",
-              file=sys.stderr)
     else:
         print("reason: no path rule matched", file=sys.stderr)
-        print("next: re-run with --text \"<the request>\" or name the "
-              "surface; agent-selection-policy.md §1 stays authoritative. "
-              "A silent single-agent default is how a run gets the wrong "
-              "specialist.", file=sys.stderr)
-    raise SystemExit(3)
+    print("next: if the request names a symbol, class or file, resolve it "
+          "to a repository path and re-run (`select-agents <path>`) — a "
+          "path carries the surface a verb cannot, and a routed choice "
+          "beats an inferred one. Otherwise proceed with the inferred "
+          "specialist and leave `inferred: true` in the plan.",
+          file=sys.stderr)
+    agents = [FALLBACK_AGENT]
+    inferred = True
+    signals.append("no rule matched — %s inferred, not routed" % FALLBACK_AGENT)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
+# ---- spawnable names (CB-132) ----
+# The platform addresses an agent as plugin:directory:file —
+# `cereblnk:engineering:docs-agent`. This script owns the roster and
+# knows where each file lives, so it is the one place that can say the
+# spawnable name. It did not: it emitted `docs-agent`, DelegationGuard
+# copied that into `NEXT ACTION: spawn docs-agent`, and a run followed
+# the instruction exactly. Four spawns failed with `Agent type
+# 'docs-agent' not found`, each answering with the full 27-agent
+# roster, until the model worked out the shape from the error text.
+#
+# Nothing in the tree carried the qualified form — not the agent
+# frontmatter, not TOPOLOGY, not the policies. It existed only as a
+# directory path nobody surfaced. A routing table whose output cannot
+# be handed to the spawn API is not routing, it is a suggestion.
+#
+# Unknown names fall through unchanged rather than being guessed at:
+# `challenger-agent` is printed by this script as a literal, and an
+# agent added outside agents/ should read as itself, not as a fiction.
+# __file__ is unusable here: the body runs from a heredoc, so it
+# resolves against the caller's directory and the map came back
+# empty in silence. CB_LIB is exported by the wrapper above and
+# points at scripts/lib, so the plugin root is two levels up.
+AGENT_DIR = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
+_QUALIFIED = {}
+if AGENT_DIR.is_dir():
+    for _f in AGENT_DIR.rglob("*-agent.md"):
+        _QUALIFIED[_f.stem] = "cereblnk:%s:%s" % (_f.parent.name, _f.stem)
+
+
+def qualify(name):
+    """docs-agent -> cereblnk:engineering:docs-agent, or unchanged."""
+    return _QUALIFIED.get(name, name)
+
+
+if inferred:
+    print("inferred: true")
 print("specialists:")
 for a in agents:
-    print("  - %s" % a)
+    print("  - %s" % qualify(a))
 if level == 3:
-    print("  - challenger-agent   # mandatory at gate level 3")
+    print("  - %s   # mandatory at gate level 3" % qualify("challenger-agent"))
 print("gate_level: %d" % level)
 print("stack_source: %s" % stack_note)
 print("skills_required:")
 for role in agents:
     got = skills.get(role) or []
     if got:
-        print("  %s: [%s]" % (role, ", ".join(got)))
+        print("  %s: [%s]" % (qualify(role), ", ".join(got)))
     else:
-        print("  %s: []   # no skill signal for this role" % role)
+        print("  %s: []   # no skill signal for this role" % qualify(role))
 print("signals:")
 for s in signals:
     print("  - \"%s\"" % s)

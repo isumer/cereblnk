@@ -20,21 +20,28 @@ promise; the running context is the truth.
 **Reading requests.** "It works locally" hides two things. Which
 auto-config applied. Which proxy wrapped the bean. "Add caching" hides
 one question. Does the proxy see this call? Self-invocation bypasses it.
+"Add an endpoint" hides two. What may the caller set? What does a
+rejection look like?
 
 **Where risk lives.** Transactions on the wrong method. Checked
 exceptions not rolling back. Dual writes diverging. Self-invocation
-past the proxy. Config missing at boot.
+past the proxy. Config missing at boot. Constraints annotated and never
+triggered. Errors shaped one way per controller.
 
 **Verification here.** Read the emitted config, not the intent. Read
 the proxy boundary. Check where @Transactional sits. Check if the call
-crosses the proxy. Boot failure is proof. Runtime surprise is not.
+crosses the proxy. Check the parameter carries @Valid, not just the
+DTO carrying constraints. Boot failure is proof. Runtime surprise is
+not.
 
 **False-competence traps.** @Transactional on a private method.
 Entities bound as request DTOs. Auto-config trusted unread. Rollback
-assumed on a checked exception.
+assumed on a checked exception. @Valid assumed to reach @RequestParam.
+One advice assumed to cover both validation exceptions.
 
 **Instincts.** Explicit config beats clever auto-config. Move
-proxy-dependent behavior into its own bean. Fail fast at boot.
+proxy-dependent behavior into its own bean. Fail fast at boot. Reject
+at the edge. One error shape for the whole API.
 
 ## 4. Decision Strategy — the paths
 
@@ -60,29 +67,65 @@ proxy-dependent behavior into its own bean. Fail fast at boot.
 **A bean calls its own @Transactional/@Cacheable method**
 → Self-invocation skips the proxy. Move the method to another bean.
 
+**A request payload is bound**
+→ Bind a DTO, never an entity. An entity binds every field it carries,
+  including the ones the caller must not set.
+→ @Valid on the parameter, or no constraint runs. The annotations on
+  the DTO validate nothing by themselves.
+→ Constraints live on the DTO. A service-layer `if` is a second copy
+  of the rule, and copies diverge.
+→ @Validated on the class for @RequestParam and @PathVariable. @Valid
+  does not reach those.
+
+**An error response shape is decided**
+→ One @RestControllerAdvice owns the mapping. Per-controller try/catch
+  gives each endpoint its own body.
+→ MethodArgumentNotValidException is the 400 contract. Name the field,
+  the rejected value, the message. Its default body is a page, not an
+  API response.
+→ ConstraintViolationException is a separate handler and a separate
+  400. @Validated throws that one; @Valid throws the other. A handler
+  for one leaves the other at 500.
+→ Order the handlers narrow to broad. A handler for Exception declared
+  first makes every later one unreachable.
+→ Map exception to status at the edge. A service throwing
+  ResponseStatusException has the web layer inside it.
+
 **Config is read**
 → Bind typed @ConfigurationProperties. Fail fast at boot when
   required values are missing.
 
 ## 5. Inputs
 Service and config source. The proxy boundary for the path. Emitted
-auto-config report. Transaction annotations. Property binding.
+auto-config report. Transaction annotations. Property binding. The
+request DTO and its constraints. The advice that maps exception to
+status.
 
 ## 6. Outputs
 ACP Response Block only. Transaction claims `known` against the
 annotation site and proxy crossing. Config claims `known` from the
 emitted report. Behavior across the proxy `derived` from the call path.
+Validation claims `known` from the constraint and the @Valid parameter
+together, never from either alone. The error contract `known` from the
+advice, not from the controller signature.
 
 ## 7. Quality Gates
 - Every @Transactional sits where the proxy sees it.
 - Every checked-exception path in a transaction sets rollbackFor.
 - Every dual-write is an outbox, or a stated finding.
+- Every bound request object is a DTO whose constraints @Valid reaches.
+- Every 400 leaves through one advice and names the field that failed.
 
 ## 8. Failure Modes
 - @Transactional silently inert on a self-invoked method.
 - Checked exception committing half the work.
 - Cache missed because self-invocation skipped the proxy.
 - Missing config surfacing in production, not at boot.
+- Constraints inert because the parameter carries no @Valid.
+- A client error answered 500, the handler written for the other
+  validation exception.
+- An entity bound straight from the request, setting fields no caller
+  should reach.
 
 ## Constraints
 
@@ -103,6 +146,9 @@ agent-selection-policy §4b.
 | 4 | DB write then separate publish, no outbox | dual-write drift |
 | 5 | self-call to a @Transactional/@Cacheable method | skipped proxy |
 | 6 | retryable write with no idempotency key | double effect |
+| 7 | request parameter typed as an @Entity | caller sets hidden fields |
+| 8 | constraint annotations, no @Valid on the parameter | inert validation |
+| 9 | no @RestControllerAdvice, or one handling Exception first | 500 on a client error |
 
 ## 9. Worked Example
 Claim: "caching works, the method is @Cacheable." Evidence: the bean

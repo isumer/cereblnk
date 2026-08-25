@@ -77,7 +77,11 @@ cb_handoff() {
     _out="$(bash "$_sel" "$_p" 2>/dev/null || true)"
   fi
   if [ -n "$_out" ]; then
-    _role="$(printf '%s' "$_out" | sed -n 's/^  - \([a-z-]*-agent\).*/\1/p' | head -1)"
+    # CB-132: the name must be the one the spawn API accepts —
+    # cereblnk:engineering:docs-agent, not docs-agent. This handoff
+    # printed the bare form and a run spawned exactly what it was told
+    # to, four times, against an API that does not know that name.
+    _role="$(printf '%s' "$_out" | sed -n 's/^  - \([a-z:-]*-agent\).*/\1/p' | head -1)"
     _skills="$(printf '%s' "$_out" | sed -n "s/^  ${_role}: \[\(.*\)\].*/\1/p" | head -1)"
   fi
   [ -n "${_role:-}" ] || _role="the surface specialist for this file"

@@ -145,6 +145,7 @@ def main() -> int:
   output_reserve: {reserve}   # source: {reserve_src}
   input_capacity: {capacity}
   checkpoint_at: {checkpoint}   # {pct}% of capacity, source: {pct_src}
+  # checkpoint_at is Cereblnk's threshold, not the host's compaction point
   wave_size: {wave_size}        # agents that may run in one wave
   digest_lines_max: {MAX_DIGEST_LINES}""")
     if requested:

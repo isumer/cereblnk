@@ -95,19 +95,41 @@ settings-file `env` block, then the shell:
 |---|---|
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | the context capacity in tokens |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | the output reservation |
-| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | the compaction trigger percent |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | the percent at which Cereblnk checkpoints |
 
 An unset window or reservation is reported as `assumed`, naming the
 variable to set, so a default is never mistaken for a measurement.
 Set them once in the project's `.claude/settings.json` and every run
 computes from a fact rather than a guess.
 
+**This budget is not the host's compaction trigger, and the two must
+not be read as one figure.** Cereblnk computes
+`input_capacity = window − output_reserve` and checkpoints at a percent
+of it. The host decides compaction on its own effective window less a
+summary buffer, resolved through its own precedence chain and clamped
+to the model window — a different quantity, arrived at differently.
+
+The third variable is the sharp edge: the host also reads
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, and not in these units. Setting it
+to tune Cereblnk's checkpoint moves something in the host as well.
+Leave it unset unless you have measured both effects. (`inferred` —
+the host's side was read from the shipped binary, not from published
+documentation; if a source appears, this paragraph should cite it
+instead.)
+
+`checkpoint_at` is therefore a **Cereblnk policy threshold**: the point
+at which a run should checkpoint and resume from the ledger, chosen to
+sit well below any host-side ceiling. It is deliberately conservative.
+It does not predict when the host will compact, and a run that reaches
+it has not been compacted — it has reached the point where this project
+stops trusting a single window to hold the rest of the work.
+
 What it returns and what each figure binds:
 
 | Figure | Binds |
 |---|---|
 | `input_capacity` | window minus the output reservation |
-| `checkpoint_at` | compact here and resume from the ledger, before the ceiling |
+| `checkpoint_at` | this project's threshold: checkpoint and resume from the ledger here — not the host's compaction point |
 | `wave_size` | agents that may run in one wave at this capacity |
 | `digest_lines_max` | the per-return cap of §1 |
 

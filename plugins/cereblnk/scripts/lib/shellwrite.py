@@ -27,6 +27,22 @@ The bias is deliberate: unresolved targets block, unknown utilities do
 not. A guard that blocks every unrecognised command stops the
 conductor from running `detect-stack`, `select-agents`, `run-quiet`
 and git, all of which run-discipline requires it to run.
+
+MODES. `--in-place` narrows the answer to the commands that modify a
+file that already exists — `sed -i`, `perl -i`, `patch`, `ed`, an
+editor, `git apply`/`git checkout`. Redirections and copy/create
+utilities are excluded there, because those are Write-shaped: an agent
+that holds Write may already replace a whole file with the tool, so
+blocking its shell equivalent would be stricter than the grant it was
+given. ToolFloor (F-24) asks in this mode; DelegationGuard asks in the
+default mode, where every write counts. The `--in-place` answer is a
+subset of the default one, never a superset.
+
+The bound is the same one stated above, and one case is named because
+it is the obvious gap: an inline interpreter (`python3 -c`) that
+rewrites a file in place reports UNRESOLVED in the default mode and
+NOTHING here, because a write hint cannot say which shape it was. A
+floor, still not a proof.
 """
 import json
 import shlex
@@ -48,8 +64,13 @@ ALL_OPERANDS = {"tee", "touch", "truncate"}
 # Utilities that edit named files in place, but only under a flag.
 IN_PLACE = {"sed": ("-i",), "perl": ("-i",), "ruby": ("-i",)}
 
-# Utilities that write somewhere this walk cannot name.
-OPAQUE = {"patch", "ed", "vi", "vim", "nano", "emacs", "dd", "tar", "unzip"}
+# Utilities that write somewhere this walk cannot name. Split by shape:
+# the first set opens a file that already exists and rewrites part of
+# it; the second unpacks or streams new content. Only the first is an
+# edit in the sense `disallowedTools: Edit` means.
+OPAQUE_IN_PLACE = {"patch", "ed", "vi", "vim", "nano", "emacs"}
+OPAQUE_CREATE = {"dd", "tar", "unzip"}
+OPAQUE = OPAQUE_IN_PLACE | OPAQUE_CREATE
 
 # Nested shells: the code string is a shell command, so read it as one
 # rather than guessing at it.
@@ -77,8 +98,12 @@ def _looks_like_flag(tok):
     return tok.startswith("-") and tok != "-"
 
 
-def targets(command):
-    """Yield write targets for a shell command, or UNRESOLVED."""
+def targets(command, in_place=False):
+    """Yield write targets for a shell command, or UNRESOLVED.
+
+    With in_place=True, only the commands that rewrite an existing file
+    are reported; see MODES in the module docstring.
+    """
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
@@ -92,12 +117,16 @@ def targets(command):
 
     def flush():
         if head in LAST_OPERAND:
+            if in_place:
+                return
             plain = [o for o in operands if not _looks_like_flag(o)]
             if plain:
                 found.append(plain[-1])
             else:
                 found.append(UNRESOLVED)
         elif head in ALL_OPERANDS:
+            if in_place:
+                return
             found.extend(o for o in operands if not _looks_like_flag(o))
         elif head in IN_PLACE:
             if any(o.startswith(IN_PLACE[head]) for o in operands
@@ -109,15 +138,19 @@ def targets(command):
         elif head in NESTED_SHELL:
             for j, o in enumerate(operands):
                 if o in INLINE_FLAGS and j + 1 < len(operands):
-                    found.extend(targets(operands[j + 1]))
+                    found.extend(targets(operands[j + 1], in_place))
                     break
         elif head in INLINE:
+            if in_place:
+                return
             for j, o in enumerate(operands):
                 if o in INLINE_FLAGS and j + 1 < len(operands):
                     if any(h in operands[j + 1] for h in WRITE_HINTS):
                         found.append(UNRESOLVED)
                     break
         elif head in OPAQUE:
+            if in_place and head not in OPAQUE_IN_PLACE:
+                return
             found.append(UNRESOLVED)
         elif head == "git" and operands[:1] in (["apply"], ["checkout"]):
             found.append(UNRESOLVED)
@@ -125,6 +158,11 @@ def targets(command):
     while i < len(toks):
         tok = toks[i]
         if tok in WRITE_REDIR:
+            if in_place:
+                # a redirection replaces or extends whole-file content,
+                # which is what Write does; it is not an Edit
+                i += 2 if i + 1 < len(toks) else 1
+                continue
             if i + 1 < len(toks):
                 nxt = toks[i + 1]
                 if nxt not in SINKS and not nxt.startswith("/dev/fd"):
@@ -153,6 +191,7 @@ def targets(command):
 
 
 def main():
+    in_place = "--in-place" in sys.argv[1:]
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -162,7 +201,7 @@ def main():
     command = (payload.get("tool_input") or {}).get("command") or ""
     if not command.strip():
         return 0
-    for t in targets(command):
+    for t in targets(command, in_place):
         # $CB_DIR and ${CB_DIR} are never expanded in the payload — the
         # command arrives as written. Both boundary skills tell the
         # conductor to redirect into the runtime directory through the

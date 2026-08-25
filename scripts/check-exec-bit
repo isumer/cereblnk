@@ -19,8 +19,21 @@ failure is silent or total:
 
   X-1  every command named in `hooks/hooks.json` is executable in the
        index — the twelve whose absence is invisible
+  X-3  every file in `plugins/cereblnk/scripts/` is executable — the
+       skills invoke them by path, and a missing mode bit stops the
+       workflow at its first step (F-22).
   X-2  `scripts/verify` itself is executable — the documented entry
        point, and the thing a contributor runs first
+  X-4  `plugins/cereblnk/bin/` exists, and anything in it other than
+       the README is executable. An installed plugin has that
+       directory on PATH whether or not it ships; it did not ship, so
+       PATH named nothing (F-12). Harmless as measured — every caller
+       uses a full path — but a claim with no tree behind it. The
+       directory now carries a note recording that it is deliberately
+       empty, and this rule keeps the two in agreement: delete it and
+       the check fails, put a script in it without the mode bit and
+       the check fails, which is the X-1 lesson at the one location
+       PATH resolution makes silent by construction.
 
 Everything else that loses the bit fails loudly at its call site, which
 is a report rather than a hazard.
@@ -71,10 +84,53 @@ def main():
     hook_count = len(wanted)
     wanted.add("scripts/verify")
 
-    bad = 0
+    # X-3: every shipped script. The lesson this checker was written for
+    # applied only to hooks, and the gap cost a release: `run-flag`
+    # shipped in 1.3.5 as the sole non-executable file among twenty in
+    # plugins/cereblnk/scripts/, and ten workflows name it as their
+    # first action. `Permission denied`, exit 126, and each of those
+    # skills then says a non-zero exit means the run is not guarded and
+    # must not proceed. The suite stayed green because this set never
+    # looked there.
+    script_paths = set()
+    for f in sorted((ROOT / "plugins/cereblnk/scripts").iterdir()):
+        if f.is_file():
+            script_paths.add(f"plugins/cereblnk/scripts/{f.name}")
+    wanted |= script_paths
+
+    # X-4: the bin/ directory and the claim about it. Its README is
+    # prose and needs no mode bit; anything else here is reached by
+    # bare name through PATH, where a missing bit is invisible.
+    bin_dir = ROOT / "plugins/cereblnk/bin"
+    bin_paths = set()
+    if not bin_dir.is_dir():
+        print("X-4 plugins/cereblnk/bin: an installed plugin puts this on "
+              "PATH, and it is not in the tree. Restore it with its README, "
+              "or remove this rule together with the claim it checks.")
+        bad_bin = 1
+    else:
+        bad_bin = 0
+        if not (bin_dir / "README.md").is_file():
+            print("X-4 plugins/cereblnk/bin: no README recording why it is "
+                  "empty — an empty directory with no note reads as an "
+                  "accident, which is what F-12 found.")
+            bad_bin += 1
+        for f in sorted(bin_dir.iterdir()):
+            if f.is_file() and f.name != "README.md":
+                bin_paths.add(f"plugins/cereblnk/bin/{f.name}")
+    wanted |= bin_paths
+
+    bad = bad_bin
     for path in sorted(wanted):
         mode = modes.get(path)
-        rule = "X-2" if path == "scripts/verify" else "X-1"
+        if path == "scripts/verify":
+            rule = "X-2"
+        elif path.startswith("plugins/cereblnk/scripts/"):
+            rule = "X-3"
+        elif path.startswith("plugins/cereblnk/bin/"):
+            rule = "X-4"
+        else:
+            rule = "X-1"
         if mode is None:
             print(f"{rule} {path}: named as a command but not tracked")
             bad += 1
@@ -87,7 +143,8 @@ def main():
         print(f"check-exec-bit: {bad} command(s) cannot run. Restore with "
               f"`git update-index --chmod=+x <path>` and commit.", file=sys.stderr)
         return 1
-    print(f"check-exec-bit: {hook_count} hook(s) and the verify entry point are executable")
+    print(f"check-exec-bit: {hook_count} hook(s), {len(script_paths)} script(s) and the verify entry point are executable; "
+          f"bin/ is present with {len(bin_paths)} executable(s)")
     return 0
 
 

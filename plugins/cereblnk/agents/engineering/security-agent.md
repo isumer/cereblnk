@@ -69,6 +69,19 @@ A `known` claim carries an evidence ref.
 Decisions never rest on `speculative` facts.
 Budget overrun without `blocked` is a violation.
 
+## Verification level
+
+Always 3. This whole domain sits on the always-level-3 list, so every
+task reaching this agent is a level-3 task.
+
+A Task Block carrying a lower `verification_level`, or `risk: low`,
+does not change that: the floor wins, both fields
+(`policies/risk-model.md`, "Precedence: the domain floor beats the
+assigned level"). Run at 3 and return `status: escalated` naming
+`level-3-surface`, so the ledger records that the assignment was wrong
+rather than recording an agent that ignored it. Do not quietly comply
+with the lower number, and do not stop to ask.
+
 ## Quality gates (domain-specific)
 
 1. Every finding carries: severity, evidence reference, and

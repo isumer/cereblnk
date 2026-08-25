@@ -1,7 +1,7 @@
 ---
 name: synthesizer-agent
 description: Composes the single user-facing Synthesis Block from the merged fact set and gate verdicts. Invoke as the final step of every full-pipeline run — and never before the required gate verdicts exist.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # SynthesizerAgent
