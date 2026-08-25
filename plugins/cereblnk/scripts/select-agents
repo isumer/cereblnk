@@ -16,6 +16,12 @@
 #           by the stack profile. The agent loads these at run start;
 #           SubagentStop blocks the run if it did not.
 #
+# CB-143 adds the missing direction. A stack token was a veto only, so
+# a project being a Spring Boot project never PUT a skill on a role. A
+# role already routed now also receives the stack-declared skills its
+# own map rules own (bounded stack completion, below), and a TEXT rule
+# names server-side behaviour so the implementer is routed at all.
+#
 # Usage: select-agents <file>...
 #        git diff --name-only main... | select-agents
 #        select-agents --text "add idempotency to the payment service"
@@ -134,6 +140,27 @@ TEXT_RULES = [
      ["frontend-agent"], 1),
     ("api contract",   r'(?i)(\bapi\b|endpoint|contract|versioning)',
      ["apidesign-agent"], 2),
+    # CB-143 / F-07. Twenty map rules carry backend-agent and every one
+    # of them is a LANGUAGE or FRAMEWORK rule whose topics are
+    # technology names -- java, spring boot, jpa. None carries request
+    # semantics. So "add a REST endpoint for user registration" matched
+    # the contract row and nothing else: the surface's designer was
+    # selected and its implementer never was, which §1 (server-side
+    # logic -> backend-agent, mandatory) and §3b (the owner of a surface
+    # is in every stage that shapes it) both forbid.
+    #
+    # This row names the WORK, not the stack. It pairs with the contract
+    # row rather than replacing it -- union, never max-only (§2.1): the
+    # designer owns the contract, the implementer owns the behaviour
+    # behind it, and a request for an endpoint asks for both. Level 2 is
+    # §1's floor for server-side logic.
+    #
+    # Deliberately excluded: bare "repository". A request to restructure
+    # the repository is configuration, not persistence, and CB-132
+    # already paid for routing that case wrongly.
+    ("server-side behavior",
+     r'(?i)(endpoint|\bhandler\b|controller|\bservice\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
+     ["backend-agent"], 2),
     ("infrastructure", r'(?i)(deploy|cluster|container|pipeline|terraform|helm|kubernetes)',
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
@@ -231,6 +258,49 @@ for r in rules:
             placed = True
     if placed:
         skill_why.append("%s <- %s" % (r["skill"], hit))
+
+# ---- bounded stack completion (CB-143 / F-07) -------------------------
+# In the loop above a declared stack token is a veto: it can only ever
+# subtract. A project BEING a Spring Boot project therefore added
+# nothing, and a routed backend-agent arrived with an empty skill floor
+# unless the request text happened to name the technology. Nobody
+# writing "add a REST endpoint for user registration" writes
+# "hibernate"; the pom.xml says it instead.
+#
+# Completion is the narrow inverse: a role the rules ALREADY routed
+# gains the skills whose declared stack token the profile confirms.
+# Three bounds keep it from becoming "a stack token triggers", the
+# version that would load java for a typo fix in a README:
+#
+#   1. it never adds a ROLE. Only roles already in `agents` gain
+#      skills, so the floor's membership is still decided by path and
+#      topic rules alone. docs-agent is in no stack rule's roles, so a
+#      docs-only change in a Java repository is untouched.
+#   2. it fires only for rules that DECLARE a stack token AND only when
+#      the profile confirms that token. A rule with no token is
+#      unaffected; an absent profile (stack is None) disables it
+#      entirely, so the "no stack gate, never a wrong guess" rule above
+#      still holds.
+#   3. it runs BEFORE the unresolved branch fills `agents` with the
+#      inferred fallback, so an unroutable request still gets an empty
+#      floor and stays visibly `inferred: true`. Completion must not
+#      dress a guess up as a routed answer.
+#
+# What this buys is the §3b guarantee in mechanism rather than in prose:
+# the specialist that owns the surface is selected, and it is selected
+# WITH the skill closure that surface needs in this repository.
+if stack:
+    for r in rules:
+        if not r["stack"] or r["stack"] not in stack:
+            continue
+        for role in r["roles"]:
+            if role not in agents:
+                continue
+            skills.setdefault(role, [])
+            if r["skill"] not in skills[role]:
+                skills[role].append(r["skill"])
+                skill_why.append("%s <- stack token '%s' in profile, for %s"
+                                 % (r["skill"], r["stack"], role))
 
 inferred = False
 if not agents:
