@@ -30,7 +30,7 @@ set -uo pipefail
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
-RUN="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
+RUN="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 [ -n "$RUN" ] || exit 0
 [ -f "$RUN/exec.log" ] || exit 0
 
@@ -52,18 +52,39 @@ if not agent:
 run = pathlib.Path(os.environ["CB_RUN"])
 cfg = pathlib.Path(os.environ["CB_CFG"])
 
-edited, executed = [], set()
-for line in (run / "exec.log").read_text(encoding="utf-8").splitlines():
+# F-32: this was a set difference — surfaces edited, minus surfaces
+# executed — and a set difference has no order in it. An agent that ran
+# the check and THEN edited the file was recorded as covered, which is
+# precisely the case this floor exists to catch: the state that shipped
+# was never run. The ledger already carried what the test needs, in
+# parts[0]. A surface is unrun when it has no exec at all, or when its
+# last edit is later than its last exec.
+#
+# Position in the file breaks ties, because two events in the same
+# second are ordered by the order they were appended, not by their
+# equal timestamps. The per-agent filter below is untouched: it was
+# verified correct.
+edited, executed = [], {}
+last_edit = {}
+for pos, line in enumerate(
+        (run / "exec.log").read_text(encoding="utf-8").splitlines()):
     parts = line.split("\t")
     if len(parts) != 4 or parts[1] != agent:
         continue
-    _, _, kind, surface = parts
-    if kind == "edit" and surface not in edited:
-        edited.append(surface)
+    stamp, _, kind, surface = parts
+    try:
+        when = (int(stamp), pos)
+    except ValueError:
+        continue
+    if kind == "edit":
+        if surface not in edited:
+            edited.append(surface)
+        last_edit[surface] = when
     elif kind == "exec":
-        executed.add(surface)
+        executed[surface] = when
 
-unrun = [s for s in edited if s not in executed]
+unrun = [s for s in edited
+         if s not in executed or last_edit[s] > executed[s]]
 if not unrun:
     sys.exit(0)
 

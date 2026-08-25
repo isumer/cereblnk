@@ -52,7 +52,7 @@ INPUT="$(cat 2>/dev/null || true)"
 case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 
 # progress metric from the newest run ledger
-NEWEST="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
+NEWEST="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 BLOCKS=0; TASKS=0; PENDING=""
 if [ -n "$NEWEST" ]; then
   BLOCKS=$(ls -1 "$NEWEST"*.yaml 2>/dev/null | wc -l | tr -cd '0-9'); BLOCKS=${BLOCKS:-0}
