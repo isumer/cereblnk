@@ -176,3 +176,5 @@ read.
 - [x] **CB-152** — The skill floor judged the run, not the pass
 - [x] **CB-153** — A gate verdict could not be checked for staleness
 - [x] **CB-154** — Revising a block cost more than being wrong
+- [x] **CB-155** — The intake surface had a reader and no writer
+- [x] **CB-156** — A wave could pair a gate with an edit to its target

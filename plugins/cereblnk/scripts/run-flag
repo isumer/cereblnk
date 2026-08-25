@@ -139,6 +139,56 @@ case "$CMD" in
       exit 1
     fi
     echo "run-flag: armed ($FLAG)"
+    # F-50: input-policy §3 routes every mid-run user message through
+    # `scripts/run-status`, which reads $CB_DIR/state.md and the inbox it
+    # points at. Measured: state.md did not exist, and nothing in the
+    # plugin ever created it — the reader was shipped, the writer was
+    # not, so `run-status` answered "no active run state" for every run
+    # and the intake surface was unreachable. Only /cb-implement even
+    # calls it, and it too expects the file to already be there.
+    #
+    # Scaffolded here because arm is the one command every workflow runs
+    # at execution start, and it is already holding the two facts the
+    # file needs. Created only when absent: the conductor owns the
+    # contents afterwards, and a run that resumes must not have its
+    # stage reset by re-arming.
+    if [ "$NAME" = "run-active" ] && [ -n "$CONTENT" ]; then
+      _state="$DIR/state.md"
+      if [ ! -f "$_state" ]; then
+        {
+          printf '# Run state — %s\n\n' "$CONTENT"
+          printf 'run_id: %s\n' "$CONTENT"
+          printf 'stage: armed\n'
+          printf 'spec: none\n'
+          printf 'plan: context/%s/plan.md\n' "$CONTENT"
+          printf '\nRead by `scripts/run-status`, which a second terminal can\n'
+          printf 'run while the conductor is blocked mid-run. Keep `stage`\n'
+          printf 'current; it is the only line that says where the run is.\n'
+        } > "$_state" 2>/dev/null || true
+      elif ! grep -q "^run_id: $CONTENT\$" "$_state" 2>/dev/null; then
+        # A stale run_id points run-status at another run's inbox, so the
+        # count it reports would be somebody else's.
+        _tmp="$_state.$$"
+        if sed "s|^run_id: .*|run_id: $CONTENT|" "$_state" > "$_tmp" 2>/dev/null; then
+          mv -f "$_tmp" "$_state" 2>/dev/null || rm -f "$_tmp" 2>/dev/null
+        else
+          rm -f "$_tmp" 2>/dev/null || true
+        fi
+      fi
+      _inbox="$DIR/context/$CONTENT/inbox.md"
+      if [ ! -f "$_inbox" ] && [ -d "$DIR/context/$CONTENT" ]; then
+        {
+          printf '# Inbox — %s\n\n' "$CONTENT"
+          printf 'written_by: conductor\nrun_id: %s\n' "$CONTENT"
+          printf 'date: %s\n' "$(date -u +%Y-%m-%d 2>/dev/null || echo unknown)"
+          printf 'acp_version: "1.0"\n\n'
+          printf 'Every user message arriving during a run lands here at the next\n'
+          printf 'task boundary, with its class (input-policy §3). Unchecked\n'
+          printf '`- [ ]` means unresolved; `correction` and `invalidation` hold\n'
+          printf 'the loop, `clarification` never does.\n'
+        } > "$_inbox" 2>/dev/null || true
+      fi
+    fi
     # F-23: stat answers "is the file there", not "is it in the tree the
     # hooks read". Under a split root the arm reported success while the
     # hooks saw nothing — the same silent-unguarded outcome this script
