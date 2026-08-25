@@ -84,11 +84,16 @@ anchoring, flag lifecycle, context-error recovery.
 
 ## Run flag (RunGuardHook wiring)
 
-Arm at execution start:
-`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm`.
+Arm at execution start, passing this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
 It resolves `$CB_DIR` and verifies the flag landed.
 A non-zero exit means the run is not guarded.
 Do not proceed as though it were.
+The id is not decoration.
+Eight hooks resolve the run from this flag.
+Armed without an id, they guess the newest directory.
+That guess is the F-31 defect (CB-147).
+The empty second argument holds the cb_dir slot.
 Remove it before ANY turn that ends awaiting the user.
 Remove it at final synthesis.
 Full lifecycle semantics live in `policies/run-discipline.md` §5.

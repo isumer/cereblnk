@@ -33,7 +33,7 @@ set -uo pipefail
 [ -n "${PYBIN:-}" ] || exit 0
 
 # Only inside a Cereblnk run. No ledger, no contract to enforce.
-RUN="$(ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -1)"
+RUN="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 [ -n "$RUN" ] || exit 0
 
 INPUT="$(cat 2>/dev/null || true)"

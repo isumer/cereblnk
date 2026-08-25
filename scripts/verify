@@ -14,6 +14,9 @@ unsupported paths where the tool has them):
   test-docparse           office/pdf golden files + path cases
   test-docindex           segmentation ladder + the read floor (CB-112)
   test-exec-floor         edit/exec ledger + the execution floor (CB-113)
+  test-run-identity       the run directory is carried, not guessed;
+                          eight hooks resolve it through one validated
+                          function and all fail open (CB-147)
   test-reachability       orphan-symbol analyser + the reach floor (CB-114)
   test-env-lifecycle      environment lifecycle + teardown safety (CB-115)
   test-contract-check     cross-surface contract reconciliation (CB-116)
@@ -75,7 +78,7 @@ def main():
 
     for name in ("check-skill-relations", "test-xmltools", "test-docparse", "test-hooks", "test-run-quiet", "test-lifecycle-scripts", "test-artifact-gate", "test-context-budget",
                  "test-skill-selection", "test-discovery", "test-select-rules",
-                 "test-docindex", "test-exec-floor",
+                 "test-docindex", "test-exec-floor", "test-run-identity",
                  "test-reachability", "test-env-lifecycle",
                  "test-contract-check", "test-behavior-check"):
         r = sh([sys.executable, str(S / name)])

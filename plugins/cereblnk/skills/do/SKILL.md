@@ -112,7 +112,10 @@ assumed, and what the absent spec would have pinned down.
 
 ## Run flag
 
-Arm at start: `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm`.
+Arm at start with this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
+The id is what every run-reading hook resolves against; without it they
+fall back to guessing the newest context directory (CB-147, F-31).
 Remove it before any turn that ends awaiting the user. Remove it at
 final synthesis. Full semantics live in `policies/run-discipline.md` §5.
 

@@ -107,6 +107,40 @@ def main():
         r = run("exec-floor.sh", stop_in(), proj)
         case("floor: executed surface passes", r.returncode == 0, "rc=%d" % r.returncode)
 
+        # F-32: the difference was timeless — a set of edited surfaces
+        # minus a set of executed ones. Running the check and THEN editing
+        # counted as covered, which is exactly the case the floor exists
+        # to catch: the last state of the surface was never run.
+        reset(["1\tfrontend-agent\texec\tui\n", "2\tfrontend-agent\tedit\tui\n"],
+              {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: exec then edit blocks (F-32)", r.returncode == 2, "rc=%d" % r.returncode)
+
+        # ...and the ordering is per surface, not global.
+        reset(["1\tfrontend-agent\tedit\tui\n", "2\tfrontend-agent\texec\tui\n",
+               "3\tfrontend-agent\tedit\tapi\n", "4\tfrontend-agent\texec\tapi\n"],
+              {"ui": "npm run build", "api": "mvn test"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: each surface run after its own last edit passes",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
+        reset(["1\tfrontend-agent\tedit\tui\n", "2\tfrontend-agent\texec\tui\n",
+               "3\tfrontend-agent\texec\tapi\n", "4\tfrontend-agent\tedit\tapi\n"],
+              {"ui": "npm run build", "api": "mvn test"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: one stale surface among fresh ones blocks",
+             r.returncode == 2, "rc=%d" % r.returncode)
+        case("floor: the stale surface is the one named",
+             "api" in r.stderr and "ui" not in r.stderr, r.stderr.strip()[:100])
+
+        # equal timestamps: the ledger's own order decides, and an exec
+        # recorded after an edit in the same second is a real run.
+        reset(["1\tfrontend-agent\tedit\tui\n", "1\tfrontend-agent\texec\tui\n"],
+              {"ui": "npm run build"})
+        r = run("exec-floor.sh", stop_in(), proj)
+        case("floor: same-second exec after edit passes",
+             r.returncode == 0, "rc=%d" % r.returncode)
+
         reset(["1\tfrontend-agent\tedit\tui\n"], {})
         r = run("exec-floor.sh", stop_in(), proj)
         case("floor: unconfigured surface allows", r.returncode == 0, "rc=%d" % r.returncode)

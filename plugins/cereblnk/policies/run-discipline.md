@@ -41,10 +41,23 @@ Resolve the root once at run start; subagents inherit the absolute
 path in their Task Blocks.
 
 ## 5. Run flag lifecycle (RunGuardHook, DelegationGuardHook)
-Arm with `scripts/run-flag arm` at execution start; disarm with
-`scripts/run-flag disarm` before ANY turn that ends awaiting the user,
-and at final synthesis. While armed, a premature stop gets exactly one
-continue-nudge.
+Arm with `scripts/run-flag arm "" <run_id>` at execution start; disarm
+with `scripts/run-flag disarm` before ANY turn that ends awaiting the
+user, and at final synthesis. While armed, a premature stop gets exactly
+one continue-nudge.
+
+The flag also carries the run's identity, and that is not bookkeeping.
+Eight hooks — the four floors, both ledgers, DigestCap and RunGuard —
+need to know which run directory to read or write. They used to infer
+it: newest directory under `context/` by mtime, recomputed on every
+invocation. An agent that edits source and only afterwards writes its
+Response Block creates a newer directory than the one holding its own
+edit records, so the floor read an empty directory and let an unrun
+change through (F-31). Writers and readers guessed separately, so the
+whole record layer could split. `cb_run_dir()` in `lib/cbenv.sh` is now
+the single resolver: it reads this flag, rejects anything that is not a
+bare run id, requires the directory to still exist, and falls back to
+the old scan otherwise. Arming without an id leaves every hook guessing.
 
 The flag is `$CB_DIR/flags/run-active`; the script exists because
 writing it by hand went wrong in a way nothing could see. A raw
