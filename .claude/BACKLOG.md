@@ -25,10 +25,10 @@
 An external operator drove the plugin through a build-shaped run in a
 scratch repository and kept a measurement journal: 29 findings, each
 with the command that produced it, and a 30th that appeared while the
-first batch was being fixed. Thirteen closed under CB-134 and nine more
-under CB-135..CB-140 and CB-143, CB-145, CB-146. These are what is left:
-one waiting on a live check, two waiting on a decision this release
-should not fake.
+first batch was being fixed. Thirteen closed under CB-134 and ten more
+under CB-135..CB-140 and CB-142, CB-143, CB-145, CB-146. Two are left:
+one waiting on a live check, one on a platform signal this release
+cannot invent.
 
 Every one was reproduced against this branch before being written here.
 A finding that stopped reproducing is recorded in CB-140 with the reason
@@ -81,31 +81,6 @@ than deadlock — but it is friction this release introduced.
    directory name; a checker enumerates the tree and asserts it.
 3. `scripts/check-agent-skills` still passes: no dangling reference, no
    unreachable skill, preload within budget.
-
-### CB-142 — The cascade has a parser and no executor (F-08)
-
-`policies/skill-selection.yaml` declares `discovery` triggers on most
-rules (`@Entity -> hibernate-jpa`, `spring-boot-starter -> spring-boot`).
-`scripts/lib/cbmap.py` defines `discovery_pairs` to read them. Nothing
-in the tree calls it — grep across 1.3.5 and 1.4.0 returns zero callers.
-
-The cascade is therefore instruction-driven: it happens when a
-specialist reads the map and decides to follow a trigger, and not
-otherwise. `agent-selection-policy.md` §4c presents it as a step that
-occurs.
-
-**The open question is who runs it**, and that is a design decision
-rather than a missing line: the conductor cannot see inside the
-specialist's window, and the specialist does not re-read the map after
-its evidence changes. Route through `/cb-think` or `/cb-frame` before
-implementing.
-
-**Acceptance.**
-1. Either a mechanism resolves declared triggers and records the
-   resolution, or `discovery` is documented as advisory and
-   `agent-selection-policy.md` §4c stops asserting it happens.
-2. Whichever is chosen, a checker fails when the tree and the claim
-   disagree.
 
 ### CB-144 — A conductor counted idle while its specialists run (F-14)
 
@@ -268,6 +243,7 @@ read.
 - [x] **CB-138** — The Boot skill answers the Boot question it was silent on
 - [x] **CB-139** — The `bin/` on PATH is a decision, and the tree records it
 - [x] **CB-140** — Five findings closed without a change, and why
+- [x] **CB-142** — The cascade is advisory, and the policy now says so
 - [x] **CB-143** — The floor routed the contract and forgot the implementer
 - [x] **CB-145** — The checkpoint is this project's threshold, not the host's
 - [x] **CB-146** — A suite that reads its own shell is not a suite
