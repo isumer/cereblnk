@@ -171,3 +171,4 @@ read.
 - [x] **CB-147** — Eight hooks guessed which run they were in
 - [x] **CB-148** — The routing map's `roles:` field could not route
 - [x] **CB-149** — Automatic routing was a description, not a mechanism
+- [x] **CB-150** — The monitor was worst exactly after a compaction
