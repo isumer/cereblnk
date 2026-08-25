@@ -80,6 +80,45 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — run lifecycle (CB-151; F-43, F-49, F-56)
+
+**A finished run had no verb.** `run-discipline` §5 has always said the
+flag is HANDED OFF at final synthesis — `run-completed` is written, and
+DelegationGuard reads it as the follow-up window. But eight workflow
+skills said only *"Remove it at final synthesis"*, deferring to §5
+without restating it, and `run-flag` had no subcommand that performed
+the handoff. The only route left was a hand-written `touch`, which is
+the exact failure this script was created to remove.
+
+Measured live: a conductor followed its skill's own final line, ran
+`run-flag disarm`, saw `run-flag: disarmed`, and had its next edit
+blocked — *"the run-active flag was removed while the run ledger was
+still being written"*. The guard was right. The instruction was wrong.
+
+- `run-flag complete` performs the handoff: clears `run-active` and its
+  siblings, writes `run-completed`, and verifies both — a failed handoff
+  exits non-zero rather than reporting a run as ended.
+- `run-flag disarm` now says what it is: a PAUSE, and names `complete`
+  for the other case. The bare word "disarmed" read like "the run is
+  over", which is how the wrong verb kept looking correct.
+- the eight skills and §5 now name the right verb.
+
+**The nudge budget survived a pause.** `run-active.state` outlived
+`disarm`, and since every workflow disarms before any turn that ends
+awaiting the user, a run that paused came back with its counter already
+spent. Measured: the first Stop after re-arming skipped the nudge and
+disarmed while a specialist was still out — the one thing that nudge's
+own message tells the reader never to do. The counter belongs to an
+uninterrupted armed period, so `disarm` now ends it.
+
+**The progress metric counted its own inputs.** RunGuard counted every
+`*.yaml` in the run directory, including the `skills-required.yaml` the
+conductor writes at run start. Two consequences, both measured: the
+count shown read as *"2/1 task blocks on disk"* — more blocks than
+planned, i.e. finished — and the conductor's own bookkeeping could
+advance the progress metric, buying a nudge no specialist earned. Now
+`0/2` before any block arrives and `1/2` after the first.
+
 ### Fixed — context measurement (CB-150; F-45, F-46, F-47)
 
 **The monitor was maximally wrong at the moment its reading mattered
