@@ -24,15 +24,29 @@
 
 An external operator drove the plugin through a build-shaped run in a
 scratch repository and kept a measurement journal: 29 findings, each
-with the command that produced it. Thirteen closed under CB-134. These
-are the rest. Every one of them was reproduced against 1.4.0 before
-being written here; a finding that stopped reproducing is recorded in
-CB-144 instead of being silently dropped.
+with the command that produced it, and a 30th that appeared while the
+first batch was being fixed. Thirteen closed under CB-134 and seven
+more under CB-135..CB-140 and CB-146. These are what is left.
+
+Every one was reproduced against this branch before being written here.
+A finding that stopped reproducing is recorded in CB-140 with the reason
+rather than silently dropped.
 
 The journal's own severity scale is preserved in the finding ids so a
 reader can trace a task back to the measurement that found it.
 
-### CB-141 — The domain-skill layer is inert (F-09)
+### CB-141 — The domain-skill layer is inert (F-09) — FIX COMMITTED, LIVE CHECK PENDING
+
+**Status.** `plugin.json` now declares the six group directories as
+scan roots, so the files do not move; `check-agent-skills` A-8 keeps the
+manifest and the tree in step, verified against a constructed failure.
+The deterministic layer confirms the manifest and the tree agree. It
+does not confirm the host loads them — that needs one command in a live
+session: update the plugin, `/reload-plugins`, then `Skill(spring-boot)`.
+Until that returns a skill body instead of `Unknown skill`, this stays
+open. The fallback if it fails is unchanged: a flat tree, 77 files moved.
+
+
 
 Seventy-seven of the ninety-four shipped `SKILL.md` files cannot be
 loaded. `skills/<group>/<skill>/SKILL.md` sits two directories deep and
@@ -46,10 +60,12 @@ Measured three times independently: `Skill(spring-boot)`,
 return `Unknown skill`, while the files exist on disk. Two specialists
 worked around it by reading `SKILL.md` with `cat`.
 
-This is a packaging decision, not a patch: it wants a flat distribution
-tree, and it moves every skill file. Sized as its own release
-deliberately — folding it into a routing PR would make both
-unreviewable.
+First sized as a release that moves every skill file. That turned out
+to be the wrong shape: the published plugin reference documents a
+`skills` field in `plugin.json` that declares additional scan roots, so
+the six group directories become discoverable where they are. The
+migration was avoided by reading the reference instead of inferring the
+contract from the failure.
 
 **Urgency changed after CB-134.** While the floors were identity-blind
 they never asked for these skills. CB-134 fixed identity matching, so a
@@ -155,32 +171,6 @@ are presented as the same and a reader will treat them as one.
    and not the host's compaction point.
 2. Sourced from the host's published behavior, not inferred from a
    binary; if it can only be inferred, it is labeled inferred.
-
-### CB-146 — The documented setup breaks the suite that guards it (F-30)
-
-`plugins/cereblnk/README.md` instructs the operator to export
-`CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_CODE_MAX_OUTPUT_TOKENS`,
-so that `context-budget` reports a measured window instead of an
-assumed one. Doing exactly that makes `scripts/verify` fail:
-`test-hooks` drops four context-monitor cases.
-
-Measured on four conditions. Variables unset, this branch: no failures.
-Variables set, this branch: `test-hooks 4/129`. Variables set,
-unmodified branch head: `test-hooks 4/89`. So the failure is inherited
-from the environment, not introduced by any change here.
-
-CI cannot see it — GitHub Actions has neither variable set, so the
-deterministic layer is always green there. The failure appears only on
-the machine of someone who both uses the plugin and contributes to it,
-which is the one reader the suite most needs to serve. Found because a
-specialist qualified its own green with the condition that produced it.
-
-**Acceptance.**
-1. `scripts/verify` passes with both variables exported at any value the
-   README suggests.
-2. The context-monitor cases construct the environment they test rather
-   than inheriting it, so no suite result depends on the shell that
-   started it.
 
 ---
 
@@ -324,3 +314,4 @@ read.
 - [x] **CB-138** — The Boot skill answers the Boot question it was silent on
 - [x] **CB-139** — The `bin/` on PATH is a decision, and the tree records it
 - [x] **CB-140** — Five findings closed without a change, and why
+- [x] **CB-146** — A suite that reads its own shell is not a suite
