@@ -124,6 +124,44 @@ if kind == "task":
                      f"floor beats the assigned level') — issue the block "
                      f"at {floor}. A smaller scope does not lower it.")
 
+# ---- T-4: revisions are appended, and each one pays for itself (F-54) ----
+# A revision that rewrites the block destroys the record of what the
+# previous pass cost — measured, a run summary could only report each
+# block's last pass because every rewrite replaced the budget_report
+# before it. So each appended revision carries its own, and the reason
+# it was appended is part of the block rather than of some conductor's
+# memory.
+#
+# The check is deliberately shallow. It does not try to resolve
+# `supersedes` paths against the block above: those name fields the
+# linter does not model, and a checker that half-resolves them would
+# fail honest blocks. It requires only that a revision be attributable
+# and priced.
+rev_m = re.search(r'^revisions\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
+if rev_m:
+    body = rev_m.group(1)
+    # strip commented-out example rows; the template ships one
+    body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    entries = re.split(r'^\s*-\s*revision\s*:', body, flags=re.M)
+    if len(entries) > 1:
+        for i, e in enumerate(entries[1:], 1):
+            label = (e.splitlines() or [""])[0].strip() or f"#{i}"
+            if not re.search(r'^\s+reason\s*:', e, re.M):
+                V.append(f"T-4: revision {label} carries no reason — an "
+                         f"appended revision states why it was appended, or "
+                         f"the block records that it changed without "
+                         f"recording what forced the change.")
+            if not re.search(r'^\s+budget_report\s*:', e, re.M):
+                V.append(f"T-4: revision {label} carries no budget_report. "
+                         f"Each pass pays for itself; a rewrite that "
+                         f"inherits the base report erases what the "
+                         f"previous pass cost (F-54).")
+    stray = re.search(r'^\s*-\s*(?!revision\s*:)\S', body, re.M)
+    if stray and len(entries) == 1:
+        V.append("T-4: revisions: has list entries that do not start with "
+                 "`revision:`. Each appended entry is keyed by its revision "
+                 "marker so the order on disk is the order they happened.")
+
 # ---- T-3: a gate verdict names the text it was derived from (F-53) ----
 # A gate block outlives the block it gates. The target is re-issued,
 # rewrites the reasoning the verdict rested on, and the verdict keeps

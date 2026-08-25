@@ -66,3 +66,50 @@ artifacts: []
 budget_report:
   tokens_received: 8000
   tokens_used: 6200
+
+# ---- revisions: APPEND, never rewrite (F-54) --------------------------
+# Everything above is written once. A block that must change — a gate
+# found a contradiction, a §3 re-verification is owed — APPENDS an entry
+# here and leaves the text above untouched.
+#
+# The reason is arithmetic, and it was measured. Twelve roles deny the
+# Edit tool: they decide and record, they never modify existing source.
+# Their own Response Block is not source, but Edit is denied per role,
+# not per path, so changing two fields meant re-emitting the whole file
+# with Write. A qa-agent spent 3900 tokens against a 2500 budget to
+# change two fields in a 230-line block, and reported it plainly: the
+# reasoning was cheap, the re-emission was the entire overrun. A
+# verifier pass ran ~9800 against 3500.
+#
+# Three things were wrong with that, only one of them tokens:
+#   - a role that is structurally over budget declares `over_budget:
+#     true` on every revision, so the flag stops carrying information;
+#   - it prices self-correction above being wrong, which inverts the
+#     incentive the gates exist to create;
+#   - re-emission REPLACED the block, so each rewrite destroyed the
+#     previous budget_report. A run summary could only report each
+#     block's last pass — the cost of revising was erased by revising.
+#
+# Appending needs no new permission. ToolFloorHook blocks in-place
+# rewrites (`sed -i`, `patch`, `ed`) and deliberately does NOT block
+# redirection, so `cat >> block.yaml <<'EOF'` was always available. What
+# was missing was this section telling an agent to use it.
+#
+# Reader rule: current state is the base block with each revision's
+# `supersedes` applied in order, newest last. The base is never edited,
+# so the block is its own history.
+revisions: []
+#  - revision: REV-03
+#    reason: "C-2 conceded: the byte-exact premise presumed an enforced
+#             constraint that no DDL in this repository creates."
+#    supersedes:
+#      - path: facts.derived.D-03
+#        now: "Duplicate match is reached through both branches; the
+#              surviving conclusion does not restore the premise."
+#      - path: facts.known.F-05
+#        now: "Evidences the annotation only, not an enforced index."
+#    adds: [F-09]
+#    verdict_unchanged: true        # say so explicitly when it holds
+#    budget_report:
+#      tokens_received: 3500
+#      tokens_used: 900             # reasoning only — nothing re-emitted

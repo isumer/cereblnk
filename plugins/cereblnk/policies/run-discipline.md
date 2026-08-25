@@ -19,6 +19,43 @@ the computed `digest_lines_max` and blocks an oversized one on exit 2;
 run summary `ledger_blocks_written` vs task count; SynthesizerAgent
 refuses inline full blocks when a ledger exists.
 
+## 1b. Revising a block: append, never rewrite
+
+A Response Block is written once. When a gate finds a contradiction and
+the owning role is re-issued, it APPENDS a `revisions:` entry and leaves
+the text above untouched. The base block is its own history.
+
+Rewriting was the default because it was the only thing anyone had
+named, and it cost three things. Twelve roles deny the Edit tool — they
+decide and record, they never modify existing source — and Edit is
+denied per role, not per path, so changing two fields in a block meant
+re-emitting the whole file with Write. Measured: a qa-agent spent 3900
+tokens against a 2500 budget to change two fields in a 230-line block,
+and a verifier pass ran ~9800 against 3500. In both cases the reasoning
+was cheap and the re-emission was the entire overrun.
+
+The tokens were the least of it. A role that is structurally over budget
+declares `over_budget: true` on every revision, so the flag stops
+carrying information. It prices self-correction above being wrong, which
+inverts the incentive the gates exist to create. And re-emission
+REPLACED the block, so each rewrite destroyed the previous
+`budget_report` — a run summary could only report each block's last
+pass, meaning the cost of revising was erased by revising.
+
+Appending needs no new permission. ToolFloorHook blocks in-place
+rewrites (`sed -i`, `patch`, `ed`) and deliberately does not block
+redirection, so `cat >> <block>.yaml <<'EOF'` was available the whole
+time. What was missing was anything telling an agent to use it.
+
+Each appended revision carries `revision:`, `reason:`, its own
+`budget_report:`, and the `supersedes:` entries naming what it replaces.
+`scripts/acp-lint` T-4 refuses one that is unattributable or unpriced.
+
+**Reader rule.** Current state is the base block with each revision's
+`supersedes` applied in order, newest last. A reader that takes the base
+alone is reading the first draft; a reader that takes only the last
+revision is reading a patch without its subject. Gate agents read both.
+
 ## 2. The conducting conversation is a budget
 It holds: intent, plan, digests, verdicts, synthesis — nothing else.
 Raw file contents belong in subagent contexts. Any slice/task that
