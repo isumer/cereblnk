@@ -43,6 +43,8 @@ unsupported paths where the tool has them):
                           prove; absent profile subtracts nothing (CB-109)
   test-discovery         cascade triggers name evidence that real files
                           contain, not plausible-looking strings (CB-098)
+  check-discovery-claim   the cascade is advisory and both the map and
+                          §4c still say so; no executor (CB-142)
   test-leakage            the leakage checker's own failure paths (CB-108)
   leakage scan            reference strings in tracked files; SKIPs when
                           no wordlist is configured — a skip is never a
@@ -220,6 +222,17 @@ def main():
         suite("check-agent-skills ships", True, "")
     suite("check-agent-skills", ags.returncode == 0,
           ags.stdout.strip().splitlines()[-1] if ags.stdout else "")
+
+    # CB-142/F-08: the discovery cascade has validators and no executor.
+    # This holds the map header and policy §4c to that fact in both
+    # directions, and ships with the plugin for the §4c reason above.
+    dc = sh([sys.executable, str(PS / "check-discovery-claim")])
+    if not (ROOT / "plugins/cereblnk/scripts/check-discovery-claim").is_file():
+        suite("check-discovery-claim ships", False, "not in the package")
+    else:
+        suite("check-discovery-claim ships", True, "")
+    suite("check-discovery-claim", dc.returncode == 0,
+          dc.stdout.strip().splitlines()[-1] if dc.stdout else "")
 
     r_ok = sh([sys.executable, str(S / "check-rules")])
     suite("rules-layer", r_ok.returncode == 0, r_ok.stdout.strip().splitlines()[-1] if r_ok.stdout else "")

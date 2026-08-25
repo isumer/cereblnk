@@ -188,9 +188,37 @@ Resolution order, per run:
 3. The orchestrator copies that block to
    `$CB_DIR/context/<run_id>/skills-required.yaml` and writes each
    role's list into its Task Block.
-4. The specialist loads exactly those with the Skill tool, then adds
-   any skill its own evidence obliges through the map's `discovery`
-   triggers. It reports every load in `skills_loaded`.
+4. The specialist loads exactly those with the Skill tool and reports
+   every load in `skills_loaded`. If its own evidence fires a
+   `discovery` trigger it SHOULD load that skill too and record it —
+   a judgement the specialist makes, not a step the system performs.
+
+**The cascade is advisory, and deliberately so (CB-142, F-08).** The
+map's `discovery` entries are read by two validators and executed by
+nothing: `check-agent-skills` A-5 proves each target resolves,
+`test-discovery` D-1..D-4 proves each token occurs in real files. The
+triggers are advisory: nothing in the tree resolves them.
+
+A mechanism was designed and rejected on measurement, not taste. The
+only place one could observe "evidence inside the agent's window" is a
+`PostToolUse` scan of Read/Grep responses, and a response is text, not
+evidence — the scan cannot tell a stack from a mention of one. Measured
+on this tree: all 94 declared triggers occur in `skill-selection.yaml`
+itself and all 94 in `tests/fixtures/discovery/`, so one Read of the
+map or of its own corpus would demand all 37 target skills at once.
+Nor is that demand safe to raise: all 37 targets are group-nested
+skills, the exact set CB-141 has not yet confirmed loadable in a live
+host, and a floor demand that `Skill()` cannot satisfy is worse than an
+inert declaration. Selection is gated — `(path OR topic) AND stack
+token` — and a substring hit carries no stack gate at all; feeding one
+into `skills-required.yaml` would let `SkillFloorHook` block on a
+demand `select-agents` never sanctioned. The map keeps the triggers
+because they are useful to a reader; it does not pretend to run them.
+
+`scripts/check-discovery-claim` holds this paragraph and the map header
+to the tree (C-1 no executor, C-2 the map says so, C-3 §4c says so).
+Build the executor and C-1 fails by name, which is the signal to revisit
+this section rather than leave it stale.
 
 **Checkers.** `SkillLedgerHook` records each load; `SkillFloorHook`
 blocks a SubagentStop whose floor is unmet; **VerifierAgent** compares

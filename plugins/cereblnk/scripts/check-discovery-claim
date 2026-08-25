@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""check-discovery-claim (CB-142, F-08) — the cascade is advisory, and
+the tree must keep saying so.
+
+`policies/skill-selection.yaml` declares 94 `discovery` triggers. Two
+validators read them — `check-agent-skills` A-5 proves each target
+resolves, `test-discovery` D-1..D-4 proves each token occurs in real
+files — and nothing else does. No hook, no script, no runtime step
+turns a fired trigger into a loaded skill. The cascade happens when a
+specialist reads the map and decides to follow it, and not otherwise.
+
+That is a legitimate design (see the ADR note in §4c), but it is only
+honest while both halves agree:
+
+  the tree has no executor  <->  the policy does not claim one
+
+This checker holds those two halves together. It is the checker half of
+CB-142 acceptance 2: it fails when the tree and the claim disagree, in
+either direction.
+
+  C-1  no executor. Nothing under `scripts/`, `plugins/cereblnk/scripts/`
+       or `plugins/cereblnk/hooks/` consumes `discovery` except the
+       parser and the two validators named in VALIDATORS. A hook that
+       reads the map at all is an executor by construction: hooks run,
+       they do not lint.
+  C-2  the map declares its own status — the schema header carries the
+       advisory marker verbatim, so the reader of the data learns it
+       from the data.
+  C-3  `agent-selection-policy.md` §4c carries the same marker, so the
+       prose and the data cannot drift apart silently.
+
+C-1 is the forcing function. Build the mechanism and C-1 fails, naming
+the file; the only way to green is to admit the new consumer here AND
+retire the markers C-2/C-3 require — which is exactly the edit to §4c
+that a real mechanism would oblige. A rule without a checker is a wish;
+so is a non-rule that reads like one.
+
+Exit: 0 the tree and the claim agree · 1 they do not (each printed
+with its C-id).
+"""
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+PLUGIN = ROOT / "plugins/cereblnk"
+MAP = PLUGIN / "policies/skill-selection.yaml"
+POLICY = PLUGIN / "policies/agent-selection-policy.md"
+
+# The one sentence both files must carry. Deliberately a full clause and
+# not the word "advisory": a bare adjective survives an edit that guts
+# the meaning around it.
+MARKER = "advisory: nothing in the tree resolves them"
+
+# Files permitted to consume `discovery`. Each is a validator that reads
+# the triggers to judge them, never to act on them.
+VALIDATORS = {
+    "plugins/cereblnk/scripts/lib/cbmap.py",         # the parser itself
+    "plugins/cereblnk/scripts/check-agent-skills",   # A-5: targets resolve
+    "scripts/test-discovery",                        # D-1..D-4: tokens occur
+    "plugins/cereblnk/scripts/check-discovery-claim",  # this checker
+}
+
+SCAN_ROOTS = ("scripts", "plugins/cereblnk/scripts", "plugins/cereblnk/hooks")
+CONSUMES = ("discovery_pairs", '"discovery"', "'discovery'", "discovery:")
+
+
+def main():
+    bad = 0
+
+    for name, path in (("map", MAP), ("policy", POLICY)):
+        if not path.is_file():
+            print(f"check-discovery-claim: {name} missing at {path}", file=sys.stderr)
+            return 1
+
+    # C-1 -------------------------------------------------------------
+    for root in SCAN_ROOTS:
+        base = ROOT / root
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(ROOT).as_posix()
+            if rel in VALIDATORS:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            hit = next((c for c in CONSUMES if c in text), None)
+            if hit is None:
+                continue
+            where = "hook" if rel.startswith("plugins/cereblnk/hooks/") else "script"
+            print(f"C-1 {rel}: {where} consumes discovery ({hit!r}) but is not a "
+                  f"declared validator — if this is the executor, say so in §4c "
+                  f"and drop the advisory marker; if it only inspects the "
+                  f"triggers, add it to VALIDATORS")
+            bad += 1
+
+    # C-2 / C-3 -------------------------------------------------------
+    if MARKER not in MAP.read_text(encoding="utf-8"):
+        print(f"C-2 {MAP.relative_to(ROOT)}: schema header does not carry the "
+              f"advisory marker {MARKER!r} — the data must state its own status")
+        bad += 1
+
+    ptext = POLICY.read_text(encoding="utf-8")
+    section = ptext.split("## 4c.", 1)[-1].split("\n## ", 1)[0] if "## 4c." in ptext else ""
+    if not section:
+        print(f"C-3 {POLICY.relative_to(ROOT)}: no §4c section found")
+        bad += 1
+    elif MARKER not in section:
+        print(f"C-3 {POLICY.relative_to(ROOT)}: §4c does not carry the advisory "
+              f"marker {MARKER!r} — the prose still lets discovery read as a "
+              f"step that occurs")
+        bad += 1
+
+    print("check-discovery-claim: cascade is advisory, "
+          f"{len(VALIDATORS)} declared validator(s), "
+          + ("tree and claim agree" if bad == 0 else f"{bad} VIOLATIONS"))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
