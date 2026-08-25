@@ -16,20 +16,10 @@ acp_version: "1.0"
 kind: verification          # or: challenge
 task_id: V-014
 target_task: T-014
-# REQUIRED (F-53). Which text of the target this verdict was derived
-# from. A gate block outlives the block it gates: the target gets
-# re-issued, rewrites its reasoning, and the verdict above keeps
-# describing text that no longer exists. Measured — a gate wrote
-# `weakened` citing a chain the target had already withdrawn, eight
-# minutes after the target was rewritten, and two more rounds passed
-# before a consistency check compared timestamps and caught it. The
-# verdict was wrong in the safe direction that time; nothing guarantees
-# the next one will be.
-#
-# A verdict that does not name its target's version cannot be checked
-# for staleness at all, which is the whole reason this field is not
-# optional. Use the target block's own revision marker
-# (`plan_version: 3`, `revision: REV-06`); for several targets, a map.
+# REQUIRED. Which text of the target this verdict was derived from, so
+# a later reader can tell whether the target has moved since. Use the
+# target's own revision marker (`plan_version: 3`, `revision: REV-06`);
+# a map when several targets were read.
 target_revision: "plan_version: 3"
 role: VerifierAgent
 status: completed

@@ -78,19 +78,8 @@ if not need and req and agent_key not in req:
 if not need:
     sys.exit(0)
 
-# F-52: the ledger is append-only for the whole run, so reading all of
-# it answered "has any pass of this role loaded this skill in this run",
-# when the question the floor is asking is "did THIS subagent load it in
-# its own context". Measured: a docs-agent re-issued for a §3
-# re-verification loaded nothing at all and the floor passed it, because
-# a line from the first pass of that role was still in the log. A re-issued
-# pass is a fresh context that has to reason again, which is exactly
-# where the floor matters most.
-#
-# The watermark is the fix: each stop is judged against the lines
-# written since the previous stop of the same agent. The block-then-load
-# cycle still works, because the loads the agent performs after being
-# blocked land after the mark and count for the retry.
+# Judged against the lines written since the previous stop of this
+# agent: the ledger is append-only for the whole run.
 log = run / "skills-loaded.log"
 lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 mark_f = run / ("skill-floor.%s.mark" % agent)
@@ -112,10 +101,7 @@ missing = [s for s in need if s not in loaded]
 
 state = run / ("skill-floor.%s.state" % agent)
 if not missing:
-    # A clean stop ends this pass. The mark moves so the next pass is
-    # judged on its own loads, and the nudge counter resets with it —
-    # the counter belongs to an uninterrupted period, the same rule the
-    # run flag follows (F-43).
+    # Clean stop: advance the mark, clear the counter.
     try:
         mark_f.write_text(str(len(lines)), encoding="utf-8")
         state.unlink()

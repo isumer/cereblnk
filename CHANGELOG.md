@@ -80,6 +80,39 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — three checkers that misread their own inputs (CB-157)
+
+**F-51** — `shellwrite.py` listed `open(` as a write hint, and Python's
+`open()` defaults to mode `"r"`. So the most ordinary read in an inline
+one-liner — `python3 -c "d=json.load(open(f))"` — was reported as a
+write, and DelegationGuard blocked a read-only diagnostic while naming
+the specialist that should perform the "edit". A mode argument now
+decides it. Two other hypotheses were tested against the same guard
+first and refuted: `2>/dev/null` and a quoted `>` are both handled
+correctly.
+
+**F-42** — `behavior-check` had four paths returning exit 3 in silence.
+Measured beside `env preflight`, which returns the same code and says
+*"SKIP no config/runtime.md — the runtime stage is not configured"*:
+same code, one of them tells the caller what to do. A gate the workflow
+orders you to run before design starts, exiting mute, is
+indistinguishable from a gate that passed. All four now say why.
+
+**F-37** — `spec-assemble` accepted `Known`/`Derived` only, while ACP
+blocks write the labels lowercase as field names. Four of six sections
+from a real `/cb-design` run were rejected for having "no epistemic
+label" while every one was labelled, in the spelling the protocol itself
+uses. Not fixed by dropping case sensitivity — "it is known that" is
+ordinary English — so the lowercase form is admitted only where it is a
+label rather than a word.
+
+### Changed — comments describe the code, not the finding
+
+The fixes above and in CB-148…CB-156 were first written with the
+measurement narrative inline. That belongs here, in the changelog, not
+in the source: a comment explains what the code does. Removed across
+ten files, net −165 lines.
+
 ### Fixed — run lifecycle (CB-151; F-43, F-49, F-56)
 
 **A finished run had no verb.** `run-discipline` §5 has always said the
