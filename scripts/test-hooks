@@ -245,6 +245,35 @@ def main():
         case("run-guard: stop_hook_active bypass", "run-guard.sh",
              json.dumps({"stop_hook_active": True}), 0)
 
+        # CB-144 (F-14): the message used to name one case — waiting on the
+        # user — and prescribe disarming for it. Measured against a real run
+        # it fired at a conductor waiting on two live specialists, where
+        # disarming removes the floors that judge them when they return. No
+        # host signal reports a live subagent, so the message must stop
+        # assuming which case it is in.
+        (flags / "run-active").touch()
+        (runctx / "T-3.yaml").touch()
+        r = run("run-guard.sh", "{}", proj); ran += 1
+        msg = r.stdout
+        for phrase, why in (
+                ("SPECIALISTS STILL OUT", "the waiting case is not named"),
+                ("WAITING ON THE USER", "the user case is not named"),
+                ("NEITHER", "the stalled case is not named")):
+            if phrase not in msg:
+                fails.append(f"run-guard: {why} — CB-144 requires the nudge to "
+                             f"distinguish waiting from stalling")
+        # The disarm advice must be attached to the user case, never offered
+        # unconditionally: a run whose specialists are still out must not be
+        # told to remove the flag.
+        head = msg.split("WAITING ON THE USER")[0]
+        if "disarm" in head.lower() and "do NOT disarm" not in head:
+            fails.append("run-guard: disarm is advised before the case that "
+                         "justifies it — CB-144 forbids recommending it while "
+                         "enforcement is still needed")
+        for f in ("run-active", "run-active.nudged"):
+            (flags / f).unlink(missing_ok=True)
+        (runctx / "run-guard.state").unlink(missing_ok=True)
+
         # DigestCapHook (CB-094). The cap is a contract; these assert the
         # paths that matter: a return that fits, one that does not, the
         # nudge ceiling, and every fail-open route. A guard that blocks
