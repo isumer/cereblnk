@@ -25,6 +25,9 @@ Rules enforced:
        of that (F-24). A denial the workflow contradicts is not a
        restriction — it is a detour: the measured run wrote the files
        through `cat > file <<'EOF'` and the work happened anyway.
+  A-8  every group directory holding nested skills is declared in
+       plugin.json `skills` — discovery reaches one level only, so an
+       undeclared group loads for nobody (F-09)
 
 Usage: check-agent-skills [plugin_root]
 Exit:  0 clean · 1 violations found
@@ -171,6 +174,33 @@ def main(argv):
                    "§1 requires this agent to write its Response Block to "
                    "the run ledger. Deny Edit/NotebookEdit if the intent is "
                    "that it must not modify existing files." % rel)
+
+    # A-8: a shipped skill the host cannot see is not shipped.
+    # Discovery walks ONE level under a declared root: `<root>/<name>/SKILL.md`.
+    # 77 of this plugin's skills sit a level deeper, under six group
+    # directories, and were unreachable — `Skill(spring-boot)` answered
+    # `Unknown skill` while the file sat on disk (F-09). plugin.json's
+    # `skills` field declares extra scan roots, which is why the files do
+    # not have to move. This rule keeps the manifest and the tree in step:
+    # add a group directory without declaring it and the skills inside it
+    # are invisible, silently, exactly as before.
+    manifest_path = plugin / ".claude-plugin/plugin.json"
+    declared = set()
+    try:
+        import json as _json
+        for entry in _json.loads(manifest_path.read_text(encoding="utf-8")).get("skills", []):
+            declared.add(entry.strip("./").rstrip("/"))
+    except Exception as exc:
+        bad.append("A-8 plugin.json: unreadable (%s)" % exc)
+    for group in sorted(p for p in skills_root.iterdir() if p.is_dir()):
+        nested = list(group.glob("*/SKILL.md"))
+        if not nested:
+            continue          # a skill directory itself, not a group
+        rel = "skills/%s" % group.name
+        if rel not in declared:
+            bad.append("A-8 %s: %d skill(s) one level deeper than discovery "
+                       "reaches, and the directory is not in plugin.json "
+                       "`skills` — they load for nobody" % (rel, len(nested)))
 
     # A-6
     for name in sorted(entry_points):
