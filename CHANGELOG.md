@@ -158,18 +158,47 @@ not survive contact with the measurement.
   because every caller uses a full path; recorded rather than left as a
   discrepancy between the claim and the tree.
 
+- **A suite that reads its own shell is not a suite** (CB-146). The
+  README tells the operator to export the two budget variables so the
+  context budget reports a measured window; doing so made four
+  context-monitor cases fail, because they hardcode the assumed capacity
+  and `run()` inherited the environment wholesale. A contributor who
+  followed the setup instructions could not run the suite guarding the
+  code they were contributing to, and CI never saw it — Actions sets
+  neither variable, so the failure lived only on the machine of the one
+  reader the suite most needs to serve. The helper now strips the
+  variables and hands them back to the cases that care. The case missing
+  on the other side was added: once the window IS measured, the hedge
+  must go, because a warning that cries `ASSUMED` at a figure the
+  operator supplied teaches the reader to ignore the word.
+
+- **The seventy-seven skills the host could not see** (CB-141, partial).
+  Discovery walks one level under a skills root; seventy-seven of
+  ninety-four sit a level deeper. First sized as a migration of every
+  skill file — then the published plugin reference supplied a `skills`
+  field in `plugin.json` that declares extra scan roots, so the files
+  stay where they are and the grouping survives. `check-agent-skills`
+  A-8 fails when a group directory is not declared, verified against a
+  constructed failure. Recorded as partial deliberately: the
+  deterministic layer proves manifest and tree agree, and cannot prove
+  the host loads them. The task stays open until a live session answers
+  `Skill(spring-boot)` with a body.
+
 ### What this does not claim
 
 Twenty-nine findings came from the journal and a thirtieth appeared
-while fixing them. This closes nineteen. Six stay open, each as its own
-task rather than a footnote, because each wants a decision this release
-should not make on its own:
+while fixing them. This closes twenty-one. Five stay open, each as its
+own task rather than a footnote, because each wants a decision or a
+measurement this release should not fake:
 
 - **CB-141** — seventy-seven of ninety-four skills sit two directories
-  deep and cannot be loaded. A packaging decision that moves every
-  skill file, sized as its own release. Its urgency rose here: once the
-  floors match identity, a Task Block naming a domain skill produces a
-  demand nothing can satisfy.
+  deep and cannot be loaded. Sized first as a release that moves every
+  skill file; the published plugin reference then supplied a `skills`
+  field in `plugin.json` that declares extra scan roots, so the fix is a
+  manifest change and the grouping survives. `check-agent-skills` A-8
+  keeps manifest and tree in step. The deterministic layer confirms they
+  agree; it cannot confirm the host loads them, so the task stays open
+  until a live session answers `Skill(spring-boot)` with a body.
 - **CB-142** — the discovery cascade has a parser and no caller. Who
   runs it is a design question.
 - **CB-143** — stack tokens gate the floor but never trigger it, while
@@ -179,10 +208,6 @@ should not make on its own:
   specialists, and recommends disarming the flag that guards them.
 - **CB-145** — the context budget models a quantity the host does not
   compact on.
-- **CB-146** — exporting the two variables the README recommends makes
-  `scripts/verify` fail four cases. CI never sees it, because CI never
-  sets them.
-
 Five findings were closed without a change (CB-140), and the reason is
 recorded rather than assumed: one is Claude Code's scope, not this
 plugin's; one was resolved by `/reload-plugins` during the test itself;
