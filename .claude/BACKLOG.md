@@ -173,3 +173,5 @@ read.
 - [x] **CB-149** — Automatic routing was a description, not a mechanism
 - [x] **CB-150** — The monitor was worst exactly after a compaction
 - [x] **CB-151** — A finished run had no way to say so
+- [x] **CB-152** — The skill floor judged the run, not the pass
+- [x] **CB-153** — A gate verdict could not be checked for staleness
