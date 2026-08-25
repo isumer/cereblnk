@@ -7,6 +7,88 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.1] — The run every hook was in was a guess
+
+A `backend-agent` edited `RegistrationController.java` and `pom.xml`,
+never ran the configured `api` check, and finished. `exec-floor` did not
+block it. The ledger was intact the whole time — the edits were on disk,
+in the right file, with the right agent name:
+
+```
+context/R-2026-08-24-002/exec.log:
+  cereblnk:engineering:backend-agent	edit	api     (x3)
+context/R-2026-08-25-001/exec.log:
+  absent
+```
+
+The floor read the second one. `exec-floor.sh:35` is
+`[ -f "$RUN/exec.log" ] || exit 0`, and `$RUN` came from
+`ls -1dt "$CB_DIR"/context/*/ | head -1` — newest by mtime, recomputed
+on every hook invocation. The timestamps say the rest. The agent edited
+source first (`1787653044`–`050`), when the newest directory was still
+`R-2026-08-24-002`, so the edits recorded there. It then wrote its
+Response Block (`1787653090`+), and that **created**
+`R-2026-08-25-001`. At SubagentStop the floor picked the newest, found
+no `exec.log`, and exited 0.
+
+Nothing was broken. Every part did what it was written to do. Run
+identity was inferred rather than carried, and the inference is wrong
+for any agent whose Response Block lands after its edits — which is
+every agent that finishes normally.
+
+### Eight hooks shared the guess
+
+`skill-floor`, `exec-floor`, `reach-floor`, `contract-floor`,
+`exec-ledger`, `skill-ledger`, `digest-cap` and `run-guard` each derived
+the run directory with their own copy of that scan. Writers and readers
+guessed independently, so the split does not just silence one floor: it
+desynchronises the runtime record layer, with the ledgers appending to
+one directory while the floors read another.
+
+Sorting differently does not fix it. `R-2026-08-25-001` sorts after
+`R-2026-08-24-002` under any ordering, so the empty directory still
+wins. "Newest" is the wrong selector, not the wrong sort key — the set
+of directories does not record which run an agent belongs to.
+
+### Fixed
+
+- **The run id is carried on the flag, and resolved in one place.**
+  `run-flag arm "" <run_id>` writes the id into
+  `flags/run-active`. `cb_run_dir()` in `scripts/lib/cbenv.sh` reads it
+  and is now the only thing that answers "which run is this"; all eight
+  hooks call it. The pin is validated rather than trusted: anything that
+  is not a bare run id is rejected, and an id whose directory no longer
+  exists is discarded. Both cases fall back to the old mtime scan, which
+  is still correct whenever one run directory exists. A stale pin is
+  asymmetric — for the floors it means reading an old ledger, but for
+  the ledgers it means writing into a dead directory, silently, which is
+  the same defect from the other side.
+- **`exec-floor` compares when, not whether.** The floor built the set
+  of surfaces an agent edited, subtracted the set it executed, and
+  blocked on the difference. A set difference has no order in it, so an
+  agent that ran the check and *then* edited the file counted as
+  covered — the state that shipped was never run. The ledger already
+  carried the timestamps. A surface is unrun when it has no exec, or
+  when its last edit is later than its last exec; ties break on the
+  ledger's own append order. The per-agent filter is unchanged.
+
+### Verification
+
+`scripts/test-run-identity` is new: it records the edits, *then* creates
+the newer directory, *then* invokes the floor, because that is the only
+ordering that fails against the old code. It also asserts that the
+fixture reproduces the mtime race before trusting the result — the first
+draft did not, because writing `exec.log` bumped the old directory's
+mtime past the new one and the test passed for the wrong reason. Beyond
+the regression it covers a removed pin falling back, six hostile flag
+values rejected including `../../etc`, and all eight hooks exiting 0 on
+an empty resolver result. That last one is the price of sharing: an
+error in `cb_run_dir` now reaches the whole record layer rather than one
+hook, so every caller's fail-open path is asserted rather than assumed.
+
+`scripts/test-exec-floor` gains the exec-then-edit case, per-surface
+ordering both ways, and same-second ordering.
+
 ## [1.4.0] — What an outside test found, and what it cost to look
 
 An external test journal ran 1.3.5 against a real Spring Boot fixture
