@@ -11,6 +11,12 @@ level 3. Verifier, Challenger, and Consistency. No exceptions, no
 fast path, regardless of how small the scope looks (policies/risk-model.md
 always-level-3 list).
 
+A Task Block that says otherwise does not lower it. The floor beats the
+assigned `verification_level` and the assigned `risk` alike — see
+`policies/risk-model.md`, "Precedence: the domain floor beats the
+assigned level". Issue every block in this workflow at level 3; a lower
+number is a malformed block, and `scripts/acp-lint` T-2 refuses it.
+
 ## Agent topology
 
 ```

@@ -1,0 +1,23 @@
+# The block as it was measured (F-26): a security task assigned the
+# fast path. `security-agent.md` and `skills/security-audit/SKILL.md`
+# both say the security domain is always verification level 3, citing
+# policies/risk-model.md, and nothing said which of the two wins when a
+# Task Block said otherwise. acp-lint T-2 now refuses this at the
+# assignment; risk-model.md states the precedence in prose for the
+# dispatcher and the specialist alike.
+acp_version: "1.0"
+kind: task
+task_id: T-044
+run_id: R-2026-08-21-002
+role: SecurityAgent
+objective: >
+  Confirm the new token refresh endpoint rejects a replayed refresh
+  token.
+constraints:
+  - Report exploitability, never a severity label alone
+risk: low
+budget_tokens: 6000
+verification_level: 1
+context_refs: []
+acceptance: >
+  A yes/no ruling on replay, with the check that establishes it.

@@ -17,8 +17,19 @@ Rules enforced:
   A-4  every map rule names an existing skill and existing roles
   A-5  every discovery target resolves to an existing skill
   A-6  entry-point skills (cb- prefixed) are neither preloaded nor mapped
+  A-7  no agent is denied a tool its own workflow requires. Concretely:
+       `disallowedTools` may not name `Write`, because run-discipline
+       §1 binds EVERY subagent to write its Response Block to
+       `$CB_DIR/context/<run_id>/<task_id>.yaml`, and /cb-design makes
+       architect-agent and qa-agent author spec sections to disk on top
+       of that (F-24). A denial the workflow contradicts is not a
+       restriction — it is a detour: the measured run wrote the files
+       through `cat > file <<'EOF'` and the work happened anyway.
+  A-8  every group directory holding nested skills is declared in
+       plugin.json `skills` — discovery reaches one level only, so an
+       undeclared group loads for nobody (F-09)
 
-Usage: scripts/check-agent-skills [repo_root]
+Usage: check-agent-skills [plugin_root]
 Exit:  0 clean · 1 violations found
 """
 import pathlib
@@ -29,10 +40,10 @@ MAX_PRELOAD = 2
 MAX_PRELOAD_TOKENS = 3000
 
 
-def load_cbmap(root):
-    sys.path.insert(0, str(root / "plugins/cereblnk/scripts/lib"))
+def load_cbmap(plugin):
+    sys.path.insert(0, str(plugin / "scripts/lib"))
     import cbmap
-    return cbmap, cbmap.load(root / "plugins/cereblnk/policies/skill-selection.yaml")
+    return cbmap, cbmap.load(plugin / "policies/skill-selection.yaml")
 
 
 def frontmatter(path):
@@ -57,9 +68,12 @@ def parse_list(raw):
 
 
 def main(argv):
-    root = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
+    # Anchored to the plugin it checks, not to a repository layout —
+    # it now ships inside that plugin, and an install has no
+    # `plugins/cereblnk/` above it. An explicit argument still wins so
+    # the repo can point it anywhere.
+    plugin = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
         pathlib.Path(__file__).resolve().parent.parent
-    plugin = root / "plugins/cereblnk"
     skills_root = plugin / "skills"
     agents_root = plugin / "agents"
     bad = []
@@ -79,6 +93,7 @@ def main(argv):
             entry_points.add(sk.parent.name)
 
     agents = {}          # agent name -> (path, [preloaded skills])
+    denied = {}          # agent name -> [tools its frontmatter forbids]
     for ag in sorted(agents_root.glob("*/*.md")):
         if ag.name == "README.md":
             continue
@@ -86,11 +101,12 @@ def main(argv):
         name = fm.get("name") or ag.stem
         pre = parse_list(fm.get("skills", ""))
         agents[name] = (ag, pre)
+        denied[name] = parse_list(fm.get("disallowedTools", ""))
 
     # A-1 / A-2
     preloaded = set()
     for name, (path, pre) in sorted(agents.items()):
-        rel = path.relative_to(root)
+        rel = path.relative_to(plugin)
         for s in pre:
             if s not in skills:
                 bad.append("A-1 %s: preloads unknown skill %r" % (rel, s))
@@ -108,7 +124,7 @@ def main(argv):
                        "against this agent's budget on every spawn"
                        % (rel, tokens, MAX_PRELOAD_TOKENS))
 
-    cbmap, (rules, errors) = load_cbmap(root)
+    cbmap, (rules, errors) = load_cbmap(plugin)
     for e in errors:
         bad.append("A-4 skill-selection.yaml: %s" % e)
 
@@ -136,6 +152,55 @@ def main(argv):
         if name not in preloaded and name not in mapped:
             bad.append("A-3 %s: unreachable — no agent preloads it and no "
                        "rule in skill-selection.yaml selects it" % name)
+
+    # A-7: the definition may not forbid what the workflow commands.
+    #
+    # Eight agents shipped `disallowedTools: Write, Edit, NotebookEdit`
+    # while run-discipline §1 required each of them to write a Response
+    # Block to the run ledger, planner-agent to write `plan.md`, and
+    # architect-agent and qa-agent to author spec sections for
+    # /cb-design. None of that is optional, so the restriction did not
+    # stop the work — it only decided which tool did it. Measured: the
+    # architect authored four sections through a Bash heredoc.
+    #
+    # `Edit` and `NotebookEdit` stay denied and are not checked here:
+    # those roles decide and record, they never modify existing source.
+    # That is the shape the context agents already shipped with.
+    for name, tools in sorted(denied.items()):
+        if "Write" not in tools:
+            continue
+        rel = agents[name][0].relative_to(plugin)
+        bad.append("A-7 %s: disallowedTools names Write, but run-discipline "
+                   "§1 requires this agent to write its Response Block to "
+                   "the run ledger. Deny Edit/NotebookEdit if the intent is "
+                   "that it must not modify existing files." % rel)
+
+    # A-8: a shipped skill the host cannot see is not shipped.
+    # Discovery walks ONE level under a declared root: `<root>/<name>/SKILL.md`.
+    # 77 of this plugin's skills sit a level deeper, under six group
+    # directories, and were unreachable — `Skill(spring-boot)` answered
+    # `Unknown skill` while the file sat on disk (F-09). plugin.json's
+    # `skills` field declares extra scan roots, which is why the files do
+    # not have to move. This rule keeps the manifest and the tree in step:
+    # add a group directory without declaring it and the skills inside it
+    # are invisible, silently, exactly as before.
+    manifest_path = plugin / ".claude-plugin/plugin.json"
+    declared = set()
+    try:
+        import json as _json
+        for entry in _json.loads(manifest_path.read_text(encoding="utf-8")).get("skills", []):
+            declared.add(entry.strip("./").rstrip("/"))
+    except Exception as exc:
+        bad.append("A-8 plugin.json: unreadable (%s)" % exc)
+    for group in sorted(p for p in skills_root.iterdir() if p.is_dir()):
+        nested = list(group.glob("*/SKILL.md"))
+        if not nested:
+            continue          # a skill directory itself, not a group
+        rel = "skills/%s" % group.name
+        if rel not in declared:
+            bad.append("A-8 %s: %d skill(s) one level deeper than discovery "
+                       "reaches, and the directory is not in plugin.json "
+                       "`skills` — they load for nobody" % (rel, len(nested)))
 
     # A-6
     for name in sorted(entry_points):

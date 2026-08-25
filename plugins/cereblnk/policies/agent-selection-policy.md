@@ -87,6 +87,41 @@ during gate review that every mandatory specialist for the task's
 signals was actually spawned; this section extends "task" to
 design/spec stages explicitly.
 
+**How the floor is computed (CB-143, finding F-07).** This mandate was
+prose only. `scripts/select-agents` fired a rule on a path match or a
+topic match and then used the stack token as a veto, so a token could
+only ever subtract: a project *being* a Spring Boot project added
+nothing. All twenty map rules carrying backend-agent were language or
+framework rules whose topics are technology names, so
+`--text "add a REST endpoint for user registration"` in a four-token
+Spring repository returned what an empty repository returned —
+apidesign-agent alone. The surface's designer was mandatory in
+mechanism; its implementer was mandatory only on this page. Two
+changes close that, and neither relaxes the mandate:
+
+1. A TEXT rule names **server-side behaviour** (endpoint, handler,
+   controller, service, persistence, worker, webhook) and routes
+   backend-agent at level 2, per the server-side row of §1. It pairs
+   with the API-contract row under §2.1 union rather than replacing
+   it — a request for an endpoint asks for a contract *and* the
+   behaviour behind it, so a new endpoint makes backend-agent
+   **mandatory via the server-side row**, not merely advisory via the
+   contract row.
+2. **Bounded stack completion:** a role already in the floor receives
+   the skills its own map rules declare for stack tokens the profile
+   carries, even when the request text never named the technology. The
+   bound is what makes it safe — completion attaches a skill, never a
+   role; it requires a declared token the profile confirms; and it does
+   not run for the inferred fallback, so an unroutable request still
+   reads `inferred: true` with an empty floor rather than a
+   confident-looking wrong one.
+
+Neither makes the floor a ceiling: both are additive, and the policy
+above stays authoritative for signals no path or verb carries. The
+fixture in `scripts/test-skill-selection` asserts the floor for the
+measured request, so this section and the mechanism cannot drift apart
+again silently.
+
 **Exclusion is also selection (/cb-rewrite).** Two agents are absent
 from a rewrite's design stage by rule. RefactoringAgent, because its
 domain is behavior-preserving transformation and a rewrite preserves
@@ -153,15 +188,48 @@ Resolution order, per run:
 3. The orchestrator copies that block to
    `$CB_DIR/context/<run_id>/skills-required.yaml` and writes each
    role's list into its Task Block.
-4. The specialist loads exactly those with the Skill tool, then adds
-   any skill its own evidence obliges through the map's `discovery`
-   triggers. It reports every load in `skills_loaded`.
+4. The specialist loads exactly those with the Skill tool and reports
+   every load in `skills_loaded`. If its own evidence fires a
+   `discovery` trigger it SHOULD load that skill too and record it —
+   a judgement the specialist makes, not a step the system performs.
+
+**The cascade is advisory, and deliberately so (CB-142, F-08).** The
+map's `discovery` entries are read by two validators and executed by
+nothing: `check-agent-skills` A-5 proves each target resolves,
+`test-discovery` D-1..D-4 proves each token occurs in real files. The
+triggers are advisory: nothing in the tree resolves them.
+
+A mechanism was designed and rejected on measurement, not taste. The
+only place one could observe "evidence inside the agent's window" is a
+`PostToolUse` scan of Read/Grep responses, and a response is text, not
+evidence — the scan cannot tell a stack from a mention of one. Measured
+on this tree: all 94 declared triggers occur in `skill-selection.yaml`
+itself and all 94 in `tests/fixtures/discovery/`, so one Read of the
+map or of its own corpus would demand all 37 target skills at once.
+Nor is that demand safe to raise: all 37 targets are group-nested
+skills, the exact set CB-141 has not yet confirmed loadable in a live
+host, and a floor demand that `Skill()` cannot satisfy is worse than an
+inert declaration. Selection is gated — `(path OR topic) AND stack
+token` — and a substring hit carries no stack gate at all; feeding one
+into `skills-required.yaml` would let `SkillFloorHook` block on a
+demand `select-agents` never sanctioned. The map keeps the triggers
+because they are useful to a reader; it does not pretend to run them.
+
+`scripts/check-discovery-claim` holds this paragraph and the map header
+to the tree (C-1 no executor, C-2 the map says so, C-3 §4c says so).
+Build the executor and C-1 fails by name, which is the signal to revisit
+this section rather than leave it stale.
 
 **Checkers.** `SkillLedgerHook` records each load; `SkillFloorHook`
 blocks a SubagentStop whose floor is unmet; **VerifierAgent** compares
 `skills_loaded` against the required list at gate review.
 `scripts/check-agent-skills` holds the graph itself: no dangling
 reference, no unreachable skill, no preload above the budget cap.
+
+It ships with the plugin, so an install holds the checker and not just
+the rule. It lived in the repository `scripts/` until a test journal
+observed that the package did not carry it — the rule was there, the
+checker was not, and that is the state this project calls a wish.
 
 **Empty floor is a failure, not a default.** `select-agents` exits 3
 when no signal matches. The conductor supplies `--text` or names the

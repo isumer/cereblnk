@@ -9,11 +9,13 @@ argument-hint: <path | off>
 Manage Cereblnk's EditBoundaryHook (see `hooks/README.md`).
 
 - `$ARGUMENTS` = a path: verify the path exists, then
-  `mkdir -p .claude/cereblnk/flags && echo "<path>" > .claude/cereblnk/flags/boundary`.
+  `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag flag boundary arm "" "<path>"`.
+It resolves `$CB_DIR` and verifies the flag landed.
+A non-zero exit means the boundary is not enforced.
   Confirm to the user that Write/Edit is now restricted to that
   directory subtree. Multiple allowed prefixes = one per line in the
   flag file.
-- `$ARGUMENTS` = `off`: `rm -f .claude/cereblnk/flags/boundary`, confirm
+- `$ARGUMENTS` = `off`: `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag flag boundary disarm`, confirm
   disengaged.
 
 Honest note: this blocks editing tools, not shell side-effects —

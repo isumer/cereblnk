@@ -29,6 +29,8 @@ unsupported paths where the tool has them):
   check-agent-skills      agent<->skill graph: no dangling, no orphan,
                           preload inside budget (CB-097)
   test-artifact-gate      R-2 loss gate + R-3 history preservation (CB-091)
+  acp-lint domain floor   a security task may not be assigned below
+                          level 3; an unfloored role keeps its own (F-26)
   acp-lint fixtures       canonical block passes; 5-violation block
                           reports all five checklist IDs; task blocks
                           with indexed documents, both ways (CB-112)
@@ -41,6 +43,8 @@ unsupported paths where the tool has them):
                           prove; absent profile subtracts nothing (CB-109)
   test-discovery         cascade triggers name evidence that real files
                           contain, not plausible-looking strings (CB-098)
+  check-discovery-claim   the cascade is advisory and both the map and
+                          §4c still say so; no executor (CB-142)
   test-leakage            the leakage checker's own failure paths (CB-108)
   leakage scan            reference strings in tracked files; SKIPs when
                           no wordlist is configured — a skip is never a
@@ -48,7 +52,7 @@ unsupported paths where the tool has them):
 
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
-import pathlib, re, subprocess, sys, tempfile
+import os, pathlib, re, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
@@ -136,13 +140,60 @@ def main():
     u = sh(["bash", str(rf), "arm", "/proc/cb-nonexistent/cereblnk"])
     if u.returncode == 0:
         fw.append("an unwritable target armed silently")
-    if "NOT guarded" not in u.stderr:
-        fw.append("the failure does not say the run is unguarded")
+    if "NOT active" not in u.stderr:
+        fw.append("the failure does not say the protection is inactive")
     # and the prose must call the script, or the script is never run
     raw = 'touch "$CB_DIR/flags/run-active"'
     for f in sorted((ROOT / "plugins/cereblnk").rglob("*.md")):
         if raw in f.read_text(encoding="utf-8", errors="replace"):
             fw.append(f"{f.relative_to(ROOT)} still arms by hand")
+    # F-16/F-20: careful and boundary were armed with a relative path,
+    # so they landed next to the shell rather than under $CB_DIR. A
+    # controlled experiment showed the same delete running when the flag
+    # sat where the skill wrote it and blocked when it sat where the
+    # hook reads. Both skills reported the protection as enabled either
+    # way.
+    for nm, extra in (("careful", []), ("boundary", ["src"])):
+        a = sh(["bash", str(rf), "flag", nm, "arm", str(rf_root)] + extra)
+        if a.returncode != 0 or not (rf_root / f"flags/{nm}").is_file():
+            fw.append(f"{nm} did not land (rc={a.returncode})")
+    if (rf_root / "flags/boundary").read_text().strip() != "src":
+        fw.append("boundary lost its content")
+    u2 = sh(["bash", str(rf), "flag", "careful", "arm",
+             "/proc/cb-nonexistent/cereblnk"])
+    if u2.returncode == 0 or "NOT active" not in u2.stderr:
+        fw.append("an unwritable protection armed silently")
+    for f in sorted((ROOT / "plugins/cereblnk/skills").rglob("SKILL.md")):
+        t = f.read_text(encoding="utf-8", errors="replace")
+        if ".claude/cereblnk/flags" in t:
+            fw.append(f"{f.parent.name} still writes a flag by relative path")
+    # F-01: CLAUDE_PROJECT_DIR won unconditionally and only hooks get
+    # it, so in a session opened above the project the hooks and the
+    # scripts resolved different trees. The baseline was written under
+    # one and looked for under the other, and every floor exited 0.
+    env_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-root-"))
+    (env_root / "proj/.git").mkdir(parents=True)
+    (env_root / "proj/sub").mkdir(parents=True)
+    (env_root / ".claude").mkdir(parents=True)
+    cbenv = PS / "lib/cbenv.sh"
+    def root_of(cwd, project_dir=None):
+        env = dict(os.environ)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        if project_dir:
+            env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+        r = subprocess.run(["bash", "-c", f'. "{cbenv}"; printf "%s" "$CB_DIR"'],
+                           cwd=str(cwd), env=env, capture_output=True, text=True)
+        return r.stdout.strip()
+    as_script = root_of(env_root / "proj/sub")
+    as_hook = root_of(env_root / "proj/sub", env_root)
+    if as_script != as_hook:
+        fw.append(f"root still splits: script={as_script} hook={as_hook}")
+    if "proj" not in as_hook:
+        fw.append("the nested project lost to the session directory")
+    # a marker OUTSIDE the session root must not win
+    outside = root_of(env_root / "proj/sub", env_root / "proj/sub")
+    if str(env_root / "proj/sub") not in outside:
+        fw.append("an explicit project dir was overridden from below")
     suite("run flag is armed by a mechanism", not fw, "; ".join(fw[:3]))
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])
@@ -157,9 +208,31 @@ def main():
     suite("budget-literals", bl.returncode == 0,
           bl.stdout.strip().splitlines()[-1] if bl.stdout else "")
 
-    ags = sh([sys.executable, str(S / "check-agent-skills")])
+    # F-04: the policy cites this as a live guarantee, but it lived in
+    # the repository scripts/ and the package does not carry those — so
+    # anyone reading the policy from an install held the rule without
+    # the checker. Moved into the plugin rather than copied: two copies
+    # of a checker drift, which is the defect class this release keeps
+    # closing.
+    ags = sh([sys.executable, str(PS / "check-agent-skills")])
+    # F-04: it must be reachable from an install, not just from here.
+    if not (ROOT / "plugins/cereblnk/scripts/check-agent-skills").is_file():
+        suite("check-agent-skills ships", False, "not in the package")
+    else:
+        suite("check-agent-skills ships", True, "")
     suite("check-agent-skills", ags.returncode == 0,
           ags.stdout.strip().splitlines()[-1] if ags.stdout else "")
+
+    # CB-142/F-08: the discovery cascade has validators and no executor.
+    # This holds the map header and policy §4c to that fact in both
+    # directions, and ships with the plugin for the §4c reason above.
+    dc = sh([sys.executable, str(PS / "check-discovery-claim")])
+    if not (ROOT / "plugins/cereblnk/scripts/check-discovery-claim").is_file():
+        suite("check-discovery-claim ships", False, "not in the package")
+    else:
+        suite("check-discovery-claim ships", True, "")
+    suite("check-discovery-claim", dc.returncode == 0,
+          dc.stdout.strip().splitlines()[-1] if dc.stdout else "")
 
     r_ok = sh([sys.executable, str(S / "check-rules")])
     suite("rules-layer", r_ok.returncode == 0, r_ok.stdout.strip().splitlines()[-1] if r_ok.stdout else "")
@@ -231,6 +304,49 @@ def main():
           f"fabricated rc={f_bad.returncode}, spelled-out rc={f_ok.returncode}, "
           f"CamelCase rc={f_camel.returncode}, task rc={t_bad_role.returncode}")
 
+    # F-26: two rules collided and nothing stated an order. A Task
+    # Block carried `verification_level: 1` and `risk: low` for a
+    # security task, while security-agent.md and the security-audit
+    # skill both said "always level 3 — no exceptions, no fast path".
+    # The agent chose 3 by judgment. risk-model.md now states the
+    # precedence; T-2 is the mechanical half, checked at the
+    # assignment because that is where the wrong number is written.
+    t2_bad = sh(["bash", str(PS / "acp-lint"),
+                 str(ROOT / "tests/fixtures/acp/security-task-level-1.yaml")])
+    _t2 = _tmp / "security-task-level-3.yaml"
+    _t2.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("verification_level: 1", "verification_level: 3"),
+        encoding="utf-8")
+    t2_ok = sh(["bash", str(PS / "acp-lint"), str(_t2)])
+    # the qualified spelling select-agents now emits must reach the
+    # same floor, or the block that names its agent correctly is the
+    # one that escapes the check
+    _t2q = _tmp / "security-task-qualified.yaml"
+    _t2q.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("role: SecurityAgent",
+                 "role: cereblnk:engineering:security-agent"),
+        encoding="utf-8")
+    t2_q = sh(["bash", str(PS / "acp-lint"), str(_t2q)])
+    # a role WITHOUT an unconditional floor keeps its assigned level:
+    # database and infra floors are conditional, and a checker that
+    # cannot read the objective must not refuse a well-formed block
+    _t2n = _tmp / "backend-task-level-1.yaml"
+    _t2n.write_text(
+        (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
+        .replace("role: SecurityAgent", "role: BackendAgent"),
+        encoding="utf-8")
+    t2_n = sh(["bash", str(PS / "acp-lint"), str(_t2n)])
+    suite("acp-lint domain floor",
+          t2_bad.returncode == 1 and "T-2" in t2_bad.stderr
+          and "risk-model" in t2_bad.stderr
+          and t2_ok.returncode == 0
+          and t2_q.returncode == 1 and "T-2" in t2_q.stderr
+          and t2_n.returncode == 0,
+          f"level-1 rc={t2_bad.returncode}, level-3 rc={t2_ok.returncode}, "
+          f"qualified rc={t2_q.returncode}, unfloored rc={t2_n.returncode}")
+
     suite("acp-lint fixtures",
           good.returncode == 0 and bad_b.returncode == 1 and all(i in bad_b.stderr for i in ids)
           and t_good.returncode == 0 and t_bad.returncode == 1
@@ -275,31 +391,76 @@ def main():
         if "refactoring-agent" in r.stdout:
             ok = False; why.append(text[:24] + " (refactoring-agent selected)")
 
-    # CB-124: exit 3 is correct here — "review the OrderValidator class"
-    # names a verb and a symbol, not a surface. The advice was not: it
-    # answered a --text call by asking for a --text call, and the run
-    # that got it twice abandoned the selector and chose the specialist
-    # by reading the policy itself. The refusal must name the step that
-    # has not been tried, and the path route must actually resolve.
+    # CB-124 asserted this branch exits 3 and does not repeat the step
+    # just taken. CB-133 keeps the second half and drops the first: the
+    # branch now infers a specialist and exits 0, because refusing
+    # produced improvisation rather than a question. What must not come
+    # back is the loop — advice that asks for the call already made —
+    # and what must never be lost is the mark on the inference.
     r_txt = sh(["bash", str(PS / "select-agents"), "--text",
                 "review the OrderValidator class"])
-    if r_txt.returncode != 3:
-        ok = False; why.append("unresolved --text did not exit 3")
+    if r_txt.returncode != 0:
+        ok = False; why.append("unresolved --text no longer proceeds")
+    if "inferred: true" not in r_txt.stdout:
+        ok = False; why.append("the inference is not marked")
     if "re-run with --text" in r_txt.stderr:
         ok = False; why.append("unresolved --text still asks for --text")
     if "select-agents <path>" not in r_txt.stderr:
         ok = False; why.append("unresolved --text does not name the path route")
-    r_bare = sh(["bash", str(PS / "select-agents"), "nothing.zzz"])
-    if r_bare.returncode != 3 or "re-run with --text" not in r_bare.stderr:
-        ok = False; why.append("unresolved path lost its --text advice")
-    for r_msg in (r_txt, r_bare):
-        if "policy.md 1 " in r_msg.stderr or "§1" not in r_msg.stderr:
-            ok = False; why.append("unresolved message lost its section reference")
-    # the escape the message names has to work
+    if "not the fallback" in r_txt.stderr:
+        ok = False; why.append("the refusal that had no way out is back")
     r_resolved = sh(["bash", str(PS / "select-agents"),
                      "src/main/java/com/x/OrderValidator.java"])
     if r_resolved.returncode != 0 or "backend-agent" not in r_resolved.stdout:
         ok = False; why.append("the path route the message names does not resolve")
+    if "inferred: true" in r_resolved.stdout:
+        ok = False; why.append("a routed choice was marked as inferred")
+
+    # CB-132: the routing table must name something the spawn API
+    # accepts. It emitted `docs-agent`; the platform wants
+    # `cereblnk:engineering:docs-agent`, and a run spawned the bare form
+    # four times because that is what the handoff told it to spawn.
+    q = sh(["bash", str(PS / "select-agents"), "README.md"])
+    qw = []
+    if "  - cereblnk:engineering:docs-agent" not in q.stdout:
+        qw.append("specialists are not spawnable names")
+    if "  cereblnk:engineering:docs-agent: [" not in q.stdout:
+        qw.append("skills_required keys drifted from the specialist list")
+    q3 = sh(["bash", str(PS / "select-agents"), "src/main/java/AuthFilter.java"])
+    if "cereblnk:core:challenger-agent" not in q3.stdout:
+        qw.append("the mandatory level-3 specialist is not qualified")
+    # a qualified role must still pass the roster check it feeds
+    qf = _tmp / "qualified-role.yaml"
+    qf.write_text(_acp_good.replace("role: SecurityAgent",
+                                    "role: cereblnk:engineering:security-agent"),
+                  encoding="utf-8")
+    if sh(["bash", str(PS / "acp-lint"), str(qf)]).returncode != 0:
+        qw.append("acp-lint rejects the qualified form it now receives")
+    # F-21: three file kinds resolved to nothing while sql, css and
+    # nginx resolved fine — so the cause was never the stack gate they
+    # share. The routing table simply had no row for shell, YAML or
+    # XML, nor for the AI configuration a request to restructure
+    # `.claude/` names.
+    sw2 = []
+    for path, want in (("deploy.sh", "infra-agent"),
+                       ("Makefile", "infra-agent"),
+                       ("config.yaml", "infra-agent"),
+                       ("pom.xml", "infra-agent"),
+                       ("CLAUDE.md", "technicalwriter-agent"),
+                       (".claude/rules/java.md", "technicalwriter-agent")):
+        r = sh(["bash", str(PS / "select-agents"), path])
+        if r.returncode != 0 or want not in r.stdout:
+            sw2.append(f"{path} -> {want} missing")
+        if "inferred: true" in r.stdout:
+            sw2.append(f"{path} fell through to the inferred default")
+    # the control group the journal used: these already worked
+    for path, want in (("a.sql", "database-agent"), ("a.css", "frontend-agent"),
+                       ("X.java", "backend-agent")):
+        if want not in sh(["bash", str(PS / "select-agents"), path]).stdout:
+            sw2.append(f"{path} regressed")
+    suite("infrastructure and config surfaces route", not sw2, "; ".join(sw2[:3]))
+
+    suite("agent names are spawnable", not qw, "; ".join(qw))
 
     suite("select-agents triples", ok, f"mismatch on {why}")
 

@@ -20,6 +20,89 @@
 
 ---
 
+## Open — the outside test journal, second pass
+
+An external operator drove the plugin through a build-shaped run in a
+scratch repository and kept a measurement journal: 29 findings, each
+with the command that produced it, and a 30th that appeared while the
+first batch was being fixed. Thirteen closed under CB-134 and ten more
+under CB-135..CB-140 and CB-142, CB-143, CB-145, CB-146. Two are left:
+one waiting on a live check, one on a platform signal this release
+cannot invent.
+
+Every one was reproduced against this branch before being written here.
+A finding that stopped reproducing is recorded in CB-140 with the reason
+rather than silently dropped.
+
+The journal's own severity scale is preserved in the finding ids so a
+reader can trace a task back to the measurement that found it.
+
+### CB-141 — The domain-skill layer is inert (F-09) — FIX COMMITTED, LIVE CHECK PENDING
+
+**Status.** `plugin.json` now declares the six group directories as
+scan roots, so the files do not move; `check-agent-skills` A-8 keeps the
+manifest and the tree in step, verified against a constructed failure.
+The deterministic layer confirms the manifest and the tree agree. It
+does not confirm the host loads them — that needs one command in a live
+session: update the plugin, `/reload-plugins`, then `Skill(spring-boot)`.
+Until that returns a skill body instead of `Unknown skill`, this stays
+open. The fallback if it fails is unchanged: a flat tree, 77 files moved.
+
+
+
+Seventy-seven of the ninety-four shipped `SKILL.md` files cannot be
+loaded. `skills/<group>/<skill>/SKILL.md` sits two directories deep and
+the host walks only the first level, so the six category trees —
+`practices/`, `frameworks/`, `languages/`, `data/`, `delivery/`,
+`infrastructure/` — are unreachable. Only the seventeen workflow entry
+points are invocable.
+
+Measured three times independently: `Skill(spring-boot)`,
+`Skill(api-design)` and `Skill(cereblnk:owasp-threat-modeling)` each
+return `Unknown skill`, while the files exist on disk. Two specialists
+worked around it by reading `SKILL.md` with `cat`.
+
+First sized as a release that moves every skill file. That turned out
+to be the wrong shape: the published plugin reference documents a
+`skills` field in `plugin.json` that declares additional scan roots, so
+the six group directories become discoverable where they are. The
+migration was avoided by reading the reference instead of inferring the
+contract from the failure.
+
+**Urgency changed after CB-134.** While the floors were identity-blind
+they never asked for these skills. CB-134 fixed identity matching, so a
+Task Block naming a domain skill now produces a floor demand that
+cannot be satisfied. The nudge cap bounds it, so it is friction rather
+than deadlock — but it is friction this release introduced.
+
+**Acceptance.**
+1. `Skill(spring-boot)` returns the skill body, not `Unknown skill`.
+2. Every file matching `skills/**/SKILL.md` is invocable by its
+   directory name; a checker enumerates the tree and asserts it.
+3. `scripts/check-agent-skills` still passes: no dangling reference, no
+   unreachable skill, preload within budget.
+
+### CB-144 — A conductor counted idle while its specialists run (F-14)
+
+RunGuard fired a continue-nudge on a turn that ended with two subagents
+still working: *"execute the NEXT unconfirmed task"*. There was no
+ledger to reconcile — the run had written no `plan.md` — and the
+conductor was not idle, it was waiting, which is the normal state of a
+multi-agent run.
+
+The remedy the nudge offers is worse than the nudge: removing
+`flags/run-active` while specialists are running disarms the floors
+that are supposed to judge them.
+
+**Acceptance.**
+1. A turn that ends with live background subagents produces no
+   continue-nudge, or produces one whose text distinguishes waiting
+   from stalling.
+2. The nudge never recommends an action that disarms enforcement while
+   enforcement is still needed.
+
+---
+
 ## Closed
 
 One line each. The full record of what shipped and why lives in
@@ -151,3 +234,16 @@ read.
 - [x] **CB-129** — Backlog ids stop shipping in copied templates
 - [x] **CB-130** — Rule globs narrowed to their own trigger tables
 - [x] **CB-131** — The arm that failed, and the boundary that went with it
+- [x] **CB-132** — A name nothing could spawn, and a refusal with no way out
+- [x] **CB-133** — Unresolved infers a specialist, and says so
+- [x] **CB-134** — Thirteen findings from an outside test journal
+- [x] **CB-135** — The destructive hook read its own documentation as a threat
+- [x] **CB-136** — No role is denied the tool its own workflow requires
+- [x] **CB-137** — The domain floor beats the level the block was assigned
+- [x] **CB-138** — The Boot skill answers the Boot question it was silent on
+- [x] **CB-139** — The `bin/` on PATH is a decision, and the tree records it
+- [x] **CB-140** — Five findings closed without a change, and why
+- [x] **CB-142** — The cascade is advisory, and the policy now says so
+- [x] **CB-143** — The floor routed the contract and forgot the implementer
+- [x] **CB-145** — The checkpoint is this project's threshold, not the host's
+- [x] **CB-146** — A suite that reads its own shell is not a suite

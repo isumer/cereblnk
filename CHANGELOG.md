@@ -7,6 +7,343 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.0] — What an outside test found, and what it cost to look
+
+An external test journal ran 1.3.5 against a real Spring Boot fixture
+and filed twenty-nine findings. Several describe mechanisms this
+project advertises as enforcement that were, in an ordinary setup,
+doing nothing at all — and saying nothing about it.
+
+Minor rather than patch: `select-agents` gains surfaces, the flag
+mechanism gains a subcommand, and root resolution changes for anyone
+who opens a session above their project. Behaviour that was silently
+absent becomes present, which is a change even when it is the change
+that was always intended.
+
+### The root was split, so the floors were not floors
+
+`CLAUDE_PROJECT_DIR` won unconditionally, and only hooks receive it. A
+script run by an agent walked up from `$PWD` instead. In a session
+opened above the project — one workspace, several repositories, a
+common arrangement — the two resolved different trees:
+
+```
+scripts (cwd inside the project)  -> <workspace>/cb-testbed/.claude/cereblnk
+hooks   (CLAUDE_PROJECT_DIR)      -> <workspace>/.claude/cereblnk
+```
+
+`select-agents` writes the skill baseline under one; `skill-floor`
+looks for it under the other, does not find it, and exits 0. Every
+floor reads the run directory the same way. The enforcement layer was
+not weakened, it was absent, and the only thing that would have said so
+was the thing that was absent.
+
+The same split disabled `/cb-careful` and `/cb-boundary`: both wrote
+their flag with a relative path while the hooks read `$CB_DIR`. A
+controlled experiment ran the same recursive delete twice — it
+executed when the flag sat where the skill wrote it, and was blocked
+when it sat where the hook looks. Both skills report the protection as
+enabled either way. A system announcing a guarantee it does not hold is
+worse than one with no guarantee, because the user then takes more
+risk.
+
+Resolution now prefers the nearest project marker at or below
+`CLAUDE_PROJECT_DIR`. A marker outside it is ignored — the session
+boundary is still a boundary. This does not converge every case: a hook
+whose cwd is the session root and a script whose cwd is the nested
+project still disagree, and `CB_ROOT_HINT` records the other candidate
+so `run-flag` can say so rather than reporting a success the hooks
+cannot see.
+
+### Fixed
+
+- **Subagent floors match identity on the last segment.** The baseline
+  is keyed by policy role names; SubagentStop hands back whatever the
+  harness has — measured as a bare hex id and as `general-purpose`.
+  Neither matched, so the floor exited 0 for every real subagent while
+  a synthetic payload engaged correctly. When the identity cannot be
+  matched at all the floor now says so on stderr and still allows: it
+  has no grounds to fail a subagent it cannot name, only grounds to
+  admit it did not check.
+- **Every shipped script is executable, and `check-exec-bit` looks.**
+  `run-flag` shipped in 1.3.5 as the only non-executable file among
+  twenty, and ten workflows name it as their first action —
+  `Permission denied`, exit 126, and each of those skills then says a
+  non-zero exit means the run is not guarded. The checker's rule set
+  covered hooks and `scripts/verify`; X-3 now covers the package
+  scripts too.
+- **`careful`, `boundary` and `refactor` arm through `run-flag`**,
+  which grows a `flag <name> arm|disarm` subcommand with optional
+  content. One mechanism, verified after writing, for every flag rather
+  than for one.
+- **Shell, configuration and AI-configuration surfaces route.** `.sh`,
+  `Makefile`, `.yaml`, `.xml`, `.toml` and the `.claude/` tree matched
+  no rule, so a request about any of them fell through — while `.sql`,
+  `.css` and `nginx.conf` resolved fine, which is why the stack gate
+  they share was never the cause. Cereblnk's own tree is mostly shell.
+- **Rules are addressed by name, not by index.** `RULES[5]` and
+  `RULES[10]` were compiled into `UI` and `AUTHORED`; adding three rows
+  above them repointed both at the wrong pattern, and the only thing
+  that noticed was a fixture two suites away.
+- **`digest-cap` prints a path an agent can act on.** It printed
+  `{run}<task_id>.yaml` — a literal placeholder with no separator
+  before it, resolving outside any run directory. Two specialists
+  received it and both declined to follow it, which is the right
+  outcome reached without the protocol's help.
+- **The conductor may write its own run journal.** The block message
+  counts verdicts among what the conductor holds and the ownership
+  table had no path for one. Scoped to `context/<run>/*.md`:
+  `memory/specs` remains the technical writer's surface, as the routing
+  table says.
+- **An assumed context window says so.** `context-budget` labels the
+  window `source: assumed`; the monitor printed the derived percentage
+  as fact. A session warned at 101.8% and 104.7% of a guessed
+  denominator — a figure above 100 is the tell — and reshaped its work
+  around it.
+- **`check-agent-skills` ships with the plugin.** The policy cites it
+  as a live guarantee; it lived in the repository `scripts/`, which the
+  package does not carry. Moved rather than copied: two copies of a
+  checker drift.
+
+### The second pass
+
+The first round closed thirteen and deferred the rest with reasons.
+The reasons were then re-examined one at a time, and most of them did
+not survive contact with the measurement.
+
+- **The destructive hook read its own documentation as a threat**
+  (CB-135). The pattern ran over the raw command string, so a heredoc
+  whose body *mentioned* a recursive delete was blocked while writing a
+  file. A project cannot document the operations this hook guards
+  against while the hook is on. The same header this repository already
+  wrote for `delegation-guard.sh` — read the parsed payload, never a
+  substring of it — applies here in mirror image: there the risk was a
+  planted bypass, here it was a false positive. The block message also
+  prescribed an escape the hook itself refused, so a user who turned the
+  protection on could be unable to turn it off; the message now names a
+  command the pattern permits. `/cb-careful` decides its direction by
+  exact match instead of interpolating the argument into a comparison.
+  An adversarial matrix written for the fix found and closed one real
+  bypass (`cat <<EOF | bash`).
+
+- **No role is denied the tool its own workflow requires** (CB-136).
+  Eight agent definitions denied `Write` while the workflows that
+  dispatch them asked for files on disk; one was measured complying
+  through `cat > file <<'EOF'`. The declared restriction decided which
+  tool did the work and nothing else. Half of that lived in the
+  definitions and is fixed there — run-discipline §1 requires every
+  subagent to write its Response Block, so no agent may be denied
+  `Write` (checker: `check-agent-skills` A-7). The other half is the
+  restriction that remains: twelve agents deny `Edit`/`NotebookEdit`
+  because they decide and record rather than modify source, and `sed -i`,
+  `patch` and `ed` do exactly that under a tool the denial never named.
+  `ToolFloorHook` closes that path, with the same declared bound
+  CB-123 wrote for itself: it sees ordinary in-place forms, not a
+  determined bypass.
+
+- **The domain floor beats the level the block was assigned** (CB-137).
+  A Task Block carried `verification_level: 1` into a security task
+  whose own definition says the domain is always level 3. Nothing said
+  which won; the specialist chose correctly by judgment. Precedence is
+  now written where both dispatcher and specialist will find it, and a
+  fixture asserts it.
+
+- **The Boot skill answers the Boot question it was silent on**
+  (CB-138). Searching the Spring Boot skill for validation guidance
+  returned one line. Bean Validation and `@ControllerAdvice` error
+  contracts — the most common Boot design decision — were absent.
+
+- **The `bin/` on PATH is a decision, and the tree records it**
+  (CB-139). The directory named in `PATH` did not exist. Harmless,
+  because every caller uses a full path; recorded rather than left as a
+  discrepancy between the claim and the tree.
+
+- **The cascade is advisory, and the policy now says so** (CB-142).
+  `skill-selection.yaml` declares ninety-four `discovery` triggers and
+  §4c read as though something resolved them. Nothing did. The obvious
+  fix — a `PostToolUse` hook scanning tool responses for trigger tokens —
+  was rejected on measurement rather than taste: a scan sees text, and
+  cannot separate a stack from a mention of one. All ninety-four triggers
+  occur inside `skill-selection.yaml` itself and all ninety-four inside
+  the discovery fixtures, so a single Read of the map would have demanded
+  all thirty-seven targets at once. Every one of those targets is a
+  group-nested skill, which is the exact set CB-141 addresses, so each
+  demand would have been one the Skill tool may not satisfy.
+
+  §4c now says the specialist SHOULD follow a fired trigger, and records
+  the rejected design so the next reader does not re-derive it.
+  `check-discovery-claim` binds both halves: no consumer outside the
+  declared validators, and both documents stating the advisory status.
+  Build the executor and C-1 fails by name, which forces §4c to be
+  revisited rather than quietly outgrown.
+
+- **The floor routed the contract and forgot the implementer**
+  (CB-143). `select-agents --text "add a REST endpoint for user
+  registration"`, in a repository whose stack profile carried `java`,
+  `maven`, `spring-boot` and `hibernate-jpa`, returned exactly what the
+  same command returned in an empty repository: the contract designer,
+  alone. Two causes, and neither closes without the other. No map rule
+  connected request *semantics* to `backend-agent` — all twenty rules
+  carrying that role are technology-name rules, matching `java` or
+  `spring`, never `endpoint`. And a declared stack token was applied
+  only as a veto, so even a correctly routed implementer would have
+  arrived with an empty skill floor.
+
+  §3b was fixed by honouring it, not by rewriting it: it names
+  VerifierAgent as its checker and is the only statement making a
+  missing implementer a selection violation. Demoting it to a
+  description of current behaviour would have removed a guarantee and
+  put nothing in its place. A text rule now routes server-side
+  behaviour, and stack completion attaches profile-confirmed skills to
+  a role **already** in the floor — completion adds a skill, never a
+  role, so a documentation request in a Java repository still resolves
+  to nothing and says so. The measured request now yields
+  `[apidesign-agent, backend-agent]` with
+  `backend-agent: [java, spring-boot, hibernate-jpa]`, and each signal
+  states why it fired.
+
+- **The checkpoint is this project's threshold, not the host's**
+  (CB-145). `input_capacity = window − output_reserve` with a percentage
+  taken off it is not what the host compacts on; the host uses its own
+  effective window less a summary buffer. The sharp edge is the third
+  variable: the host also reads `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, and
+  not in these units, so tuning the Cereblnk checkpoint with it moves
+  something in the host too. Recorded as `inferred` — the host's side
+  was read from the shipped binary, not from published documentation.
+
+- **A suite that reads its own shell is not a suite** (CB-146). The
+  README tells the operator to export the two budget variables so the
+  context budget reports a measured window; doing so made four
+  context-monitor cases fail, because they hardcode the assumed capacity
+  and `run()` inherited the environment wholesale. A contributor who
+  followed the setup instructions could not run the suite guarding the
+  code they were contributing to, and CI never saw it — Actions sets
+  neither variable, so the failure lived only on the machine of the one
+  reader the suite most needs to serve. The helper now strips the
+  variables and hands them back to the cases that care. The case missing
+  on the other side was added: once the window IS measured, the hedge
+  must go, because a warning that cries `ASSUMED` at a figure the
+  operator supplied teaches the reader to ignore the word.
+
+- **The seventy-seven skills the host could not see** (CB-141, partial).
+  Discovery walks one level under a skills root; seventy-seven of
+  ninety-four sit a level deeper. First sized as a migration of every
+  skill file — then the published plugin reference supplied a `skills`
+  field in `plugin.json` that declares extra scan roots, so the files
+  stay where they are and the grouping survives. `check-agent-skills`
+  A-8 fails when a group directory is not declared, verified against a
+  constructed failure. Recorded as partial deliberately: the
+  deterministic layer proves manifest and tree agree, and cannot prove
+  the host loads them. The task stays open until a live session answers
+  `Skill(spring-boot)` with a body.
+
+### What this does not claim
+
+Twenty-nine findings came from the journal and a thirtieth appeared
+while fixing them. This closes twenty-four. Two stay open, each as its
+own task rather than a footnote:
+
+- **CB-141** — seventy-seven of ninety-four skills sit two directories
+  deep and cannot be loaded. Sized first as a release that moves every
+  skill file; the published plugin reference then supplied a `skills`
+  field in `plugin.json` that declares extra scan roots, so the fix is a
+  manifest change and the grouping survives. `check-agent-skills` A-8
+  keeps manifest and tree in step. The deterministic layer confirms they
+  agree; it cannot confirm the host loads them, so the task stays open
+  until a live session answers `Skill(spring-boot)` with a body.
+- **CB-144** — a continue-nudge fires at a conductor waiting on live
+  specialists, and recommends disarming the flag that guards them.
+Five findings were closed without a change (CB-140), and the reason is
+recorded rather than assumed: one is Claude Code's scope, not this
+plugin's; one was resolved by `/reload-plugins` during the test itself;
+two were dispatch errors the journal records honestly as its own; and
+one — that an epistemic label certifies an observation was made, not
+that it was correct — is a true statement about the protocol rather
+than a defect in it. The journal itself proved the point twice, once
+against a specialist and once against its own author.
+
+## [1.3.6] — A name nothing could spawn, and a refusal with no way out
+
+Two corrections to routing, both to things this project shipped and one
+of them added a release ago.
+
+**The name.** The platform addresses an agent as
+`cereblnk:engineering:docs-agent`. `select-agents` emitted `docs-agent`,
+DelegationGuard copied that into `NEXT ACTION: spawn docs-agent`, and a
+run did exactly what it was told — four times, each rejected with
+`Agent type 'docs-agent' not found` and answered with the full 27-agent
+roster, until the model reverse-engineered the shape from the error.
+
+Nothing in the tree carried the qualified form. Not the agent
+frontmatter, not TOPOLOGY, not the policies. It existed only as a
+directory path nobody surfaced, while the one component that owns the
+roster and knows where every file lives printed a name the spawn API
+does not accept. A routing table whose output cannot be handed to the
+API it routes for is a suggestion, not a mechanism.
+
+**The refusal.** 1.3.1 fixed a real loop: the unresolved message
+answered a `--text` call by asking for a `--text` call. The fix went
+further than the loop and added that reading the policy by hand "is not
+the fallback." That closed the only route a caller had left, and the
+route offered instead — resolve the request to a repository path — does
+not exist for every surface. A request to restructure `.claude/` or
+`CLAUDE.md` names configuration, the rule table has no configuration
+surface, and so no path resolves. Observed as a run cycling through
+candidate agents for minutes and reaching none.
+
+Forbidding the remaining option without opening another is worse than
+the loop it replaced. A wrong specialist chosen out loud is visible and
+correctable; a run that cannot proceed at all is neither.
+
+### Fixed
+
+- **`select-agents` emits spawnable names.** `specialists:` and the
+  `skills_required` keys both carry `cereblnk:<dir>:<name>`, derived
+  from where the agent file actually lives. A name with no agent file
+  passes through unchanged rather than being invented. DelegationGuard's
+  handoff carries the same form, and `acp-lint` takes the last segment
+  before checking the roster, so a block naming its agent correctly is
+  not the one the linter rejects.
+
+### Changed
+
+- **Unresolved now infers a specialist instead of refusing.** The
+  refusal was built to force a human choice. It never produced one:
+  twice it produced improvisation — a specialist invented out of a
+  project's skills directory, and minutes of cycling through
+  candidates. The rule table is permanently incomplete, so the branch
+  this fires on is not an edge case to be closed but a standing
+  condition, and an unrecorded guess is precisely what refusing was
+  meant to prevent.
+
+  So the run proceeds with `architect-agent` — by elimination, a
+  request naming no code surface is about structure, boundaries or
+  setup, and an agent that decides rather than implements does the
+  least damage when the inference is wrong. What survives from the old
+  behaviour is the half that mattered: `inferred: true` in stdout, a
+  `signals:` line saying the choice was inferred and not routed, and
+  the stderr note unchanged. A wrong default is visible and
+  correctable; a model choosing quietly never was.
+
+  A risk gate was designed and dropped as dead code. Payment, auth,
+  migration and deploy all resolve through the text rules already, so a
+  high-risk request never reaches this branch. The one that did —
+  secret rotation — turned out to be a missing word in the auth rule,
+  which the path rule had all along. That is fixed at the rule rather
+  than guarded by a second mechanism.
+
+- **The unresolved message stops forbidding the fallback.** It still
+  names the path route as the better one, and now says plainly that a
+  request naming no code surface is not covered by any rule: choose from
+  §1 and record in the plan that the choice was made by hand. The loop
+  fix stays; the prohibition goes.
+
+### What this does not claim
+
+The rule table still has no configuration surface — `.claude/`,
+`CLAUDE.md`, agent and skill files route nowhere. This release stops
+that gap from stalling a run; it does not close it.
+
 ## [1.3.5] — The arm that failed, and the boundary that went with it
 
 Eleven files told the conductor to arm a run by hand:

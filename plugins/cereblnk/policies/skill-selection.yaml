@@ -12,11 +12,35 @@
 #   stack:      token that must appear in the stack profile for this
 #               skill to be selectable at all (omitted = always)
 #   topics:     literal phrases matched against the request text
-#   discovery:  evidence seen INSIDE the agent window -> next skill
-#               (the cascade; the agent loads it mid-run and records it)
+#   discovery:  evidence seen INSIDE the agent window -> next skill.
+#               ADVISORY (CB-142, F-08): nothing in the tree resolves
+#               them. Two validators read these entries to judge them —
+#               check-agent-skills A-5 proves the target resolves,
+#               test-discovery D-1..D-4 proves the token occurs in real
+#               files — and no hook or script acts on one. A specialist
+#               that reads this map SHOULD follow a trigger its own
+#               evidence fires, and record the load in skills_loaded;
+#               that judgement is the agent's, not a mechanism's.
+#               These triggers are
+#               advisory: nothing in the tree resolves them.
+#               scripts/check-discovery-claim fails if that stops being
+#               true here or in agent-selection-policy.md §4c.
 #
 # Floor = (path OR topic match) AND (stack token present, when declared).
 # A skill reachable by no rule is a check-agent-skills failure.
+#
+# CB-143 adds the second, bounded direction. The line above describes a
+# token that can only SUBTRACT, which is why a Spring Boot project once
+# routed "add a REST endpoint" to the contract designer with no stack
+# skills at all. So, additionally:
+#
+#   Completion = role ALREADY in the floor
+#                AND this rule lists that role
+#                AND this rule declares a stack token the profile carries.
+#
+# Completion attaches a skill; it never selects a role, and it does not
+# run for the inferred fallback. Which roles are in the floor is still
+# decided by path and topic rules only.
 
 version: 1
 rules:

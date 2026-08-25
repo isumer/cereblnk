@@ -2,7 +2,7 @@
 name: evidencecollector-agent
 description: Extracts labeled, source-referenced facts from raw context chunks before any compression happens. Invoke when a workflow needs evidence pulled from files or diffs
 into ACP fact form.
-disallowedTools: Write, Edit, NotebookEdit
+disallowedTools: Edit, NotebookEdit
 ---
 
 # EvidenceCollectorAgent
