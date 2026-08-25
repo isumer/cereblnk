@@ -7,6 +7,86 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.2] — The map that described routing it could not do
+
+`policies/skill-selection.yaml` declares 77 rules, each naming the roles
+that own a skill. Measured on the real map, the field was inert for
+routing:
+
+```
+select-agents --text "owasp threat model"   -> architect-agent (fallback)
+select-agents --text "vulnerability"        -> architect-agent (fallback)
+```
+
+`owasp-threat-modeling` declares `roles: [security-agent]` and lists all
+three phrasings as topics. It matched every time and placed nothing,
+because placement was conditional on the role having ALREADY been
+selected by the hardcoded tables above it:
+
+```python
+for role in r["roles"]:
+    if role in agents:          # agents = what was selected already
+```
+
+So the map could enrich a routing decision, never make one. The sharper
+consequence: a diff could not raise concern, only the user's own wording
+could — which inverts what a routing layer is for.
+
+### Fixed
+
+- **A matched map rule now brings in its owner.** Bounded twice: only
+  the first role (`roles:` lists every role that MAY use the skill,
+  which is not every role a match should summon), and always at gate
+  level 1 — the map carries no risk model, so it may add a specialist
+  but never invent risk. Escalation stays with the hardcoded tables and
+  the always-level-3 list.
+- **Topic matching gained word boundaries.** It was a naive substring
+  test, latent while a match could only attach a skill, consequential
+  the moment a match could summon an agent. Measured: `tests` contains
+  `ts` and recruited the typescript rule's roles; `stored` contains
+  `store` and recruited redux's.
+- **`auth/session` admits what auth actually handles.** `password`,
+  `passwd`, `parola`, `plaintext`, `hashed`, `hashing`, `salted`. A
+  plaintext-password report — the textbook always-level-3 case — matched
+  nothing before and routed at gate 1.
+- **`tests` admits its own plural.** `\btest\b` took the bare singular
+  only, so "write tests for this", "the tests are failing" and "testing
+  strategy" all fell to the architect fallback. So did "these tests miss
+  the failure mode", which is lifted from `/cb-pr-review`'s own text.
+- **`documentation` is a text rule at last.** `docs-agent` appeared in
+  zero text rules, so `/cb-docs` could not select the lead its own
+  topology names, from its own trigger sentence.
+
+### Measured, including what the first attempt got wrong
+
+The first cut of the auth regex added bare `hash` and `salt`. Controls
+caught it: "basalt tiles" and "hash browns" each took a mandatory gate-3
+security review, and both were correctly unresolved before the change.
+The noun forms are ambiguous in a codebase and in English; the verb
+forms are not, and "password hash" is already caught by `password`.
+
+The first cut of the map fix summoned every role in a matched rule. The
+topic `gradle` then pulled backend, architect, debugger and refactoring
+out of the java rule for a vague build-speed complaint — five
+specialists from one sentence. Narrowing to the owner plus word-bounded
+topics brought that to two.
+
+| input | before | first cut | shipped |
+|---|---|---|---|
+| `the gradle build feels slow lately` | 1 | 5 | 2 |
+| `the tests are failing` | unresolved | 3 | 1 |
+| `basalt tiles` | unresolved | security @ 3 | unresolved |
+| `db/changelog/001-init.xml` | 3 | 5 | 4 |
+
+Gate levels were checked separately and did not move in any case.
+
+### Known residual
+
+A generic path rule still fires alongside a specific one on the same
+file: `xml-processing` (`\.xml$`) matches a Liquibase changelog that
+already has `liquibase-migrations`. Rule specificity is a map design
+question, not a selector bug, and is left open.
+
 ## [1.4.1] — The run every hook was in was a guess
 
 A `backend-agent` edited `RegistrationController.java` and `pom.xml`,

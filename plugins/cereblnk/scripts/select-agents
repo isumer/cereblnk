@@ -130,7 +130,20 @@ FALLBACK_AGENT = "architect-agent"
 TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
      ["backend-agent", "security-agent"], 3),
-    ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt)',
+    # F-39: the list named every way of SAYING "auth" and none of the
+    # things auth actually handles. Measured: "kayıt akışında parola düz
+    # metin saklanıyor" — plaintext password storage, the textbook
+    # always-level-3 case — matched nothing and routed at gate 1.
+    # Bare `hash` and `salt` were tried first and measured as a
+    # regression: "basalt tiles" and "hash browns" both took a mandatory
+    # gate-3 security review, and both were correctly unresolved before.
+    # The noun forms are ambiguous in a codebase (hashmap, hashCode) and
+    # in English; the verb forms are not, and "password hash" is already
+    # caught by `password`. So the weak tokens are admitted only where
+    # they cannot mean anything else.
+    ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt'
+                       r'|password|passwd|parola|plaintext'
+                       r'|\bhashed\b|\bhashing\b|\bsalted\b)',
      ["security-agent"], 3),
     ("deletion/retention", r'(?i)(delete|purge|retention|drop table)',
      ["database-agent", "security-agent"], 3),
@@ -165,8 +178,22 @@ TEXT_RULES = [
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
      ["performance-agent"], 2),
-    ("tests",          r'(?i)(\btest\b|coverage|regression)',
+    # F-48: `\btest\b` admitted the bare singular only. Measured — "write
+    # tests for this", "the tests are failing", "testing strategy" all
+    # fell through to the architect fallback, and so did "these tests
+    # miss the failure mode", which is lifted from /cb-pr-review's own
+    # text. Every sibling rule here matches substrings without anchors;
+    # this one was the outlier, so the anchor was an accident, not a
+    # design choice.
+    ("tests",          r'(?i)(\btests?\b|\btesting\b|coverage|regression)',
      ["qa-agent"], 1),
+    # F-44: docs-agent appeared in ZERO text rules, so /cb-docs — whose
+    # topology names it as the lead — could not select its own lead from
+    # its own trigger sentence. Path signals reached it; a request with
+    # no diff yet did not (dispatch §8 routes those through --text).
+    ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
+                       r'|\bguide\b|tutorial|dokümantasyon|belge)',
+     ["docs-agent"], 1),
     # A rewrite reads the old code before anything is designed, so the
     # analyst is selected from the request rather than from a diff --
     # there is no diff yet. Level 3: the blast radius is the module.
@@ -244,20 +271,52 @@ for r in rules:
     if not hit and text:
         low = text.lower()
         for t in r["topics"]:
-            if t.lower() in low:
+            # Topic matching was a naive substring test. Latent while a
+            # matched rule could only ATTACH a skill to an
+            # already-selected agent; consequential the moment a match
+            # could also summon one. Measured: "tests" contains "ts" and
+            # recruited the typescript rule's roles, "stored" contains
+            # "store" and recruited redux's. Word boundaries on both
+            # ends, with the topic escaped — topics are data, not
+            # patterns.
+            if re.search(r'(?<!\w)%s(?!\w)' % re.escape(t.lower()), low):
                 hit = "topic '%s'" % t
                 break
     if not hit:
         continue
-    placed = False
+    # F-40/F-41: this loop used to place a skill only if the rule's role
+    # had ALREADY been selected by the hardcoded tables above. So the
+    # map's `roles:` field read like routing and was, for routing,
+    # inert. Measured: `owasp-threat-modeling` declares
+    # roles: [security-agent] and topics: [owasp, threat model,
+    # vulnerability] — all four phrasings fell through to the architect
+    # fallback, because nothing else had selected security-agent. The
+    # consequence in F-41 is sharper: a diff could not raise concern,
+    # only the user's own wording could, which inverts what a routing
+    # layer is for.
+    #
+    # A matched rule now brings its roles in. Two limits keep this a
+    # floor rather than a licence:
+    #   - gate level 1. The map carries no risk model, so it may add a
+    #     specialist but never invent risk. Escalation stays with the
+    #     hardcoded tables and the always-level-3 list.
+    #   - the rule must have MATCHED (path or topic) and survived the
+    #     stack gate above, which is unchanged.
+    # Only the FIRST role is summoned. `roles:` lists every role that may
+    # USE the skill, which is not the same as every role a match should
+    # call in. Recruiting the whole list was measured and was too much:
+    # the topic `gradle` pulled backend, architect, debugger AND
+    # refactoring out of the java rule for a vague build-speed
+    # complaint. The head of the list is the owner; the rest still
+    # receive the skill when something else selects them, exactly as
+    # before.
+    if not any(role in agents for role in r["roles"]):
+        add(r["roles"][:1], 1, "%s -> %s (skill map)" % (hit, r["roles"][0]))
     for role in r["roles"]:
-        if role in agents:
-            skills.setdefault(role, [])
-            if r["skill"] not in skills[role]:
-                skills[role].append(r["skill"])
-            placed = True
-    if placed:
-        skill_why.append("%s <- %s" % (r["skill"], hit))
+        skills.setdefault(role, [])
+        if r["skill"] not in skills[role]:
+            skills[role].append(r["skill"])
+    skill_why.append("%s <- %s" % (r["skill"], hit))
 
 # ---- bounded stack completion (CB-143 / F-07) -------------------------
 # In the loop above a declared stack token is a veto: it can only ever
