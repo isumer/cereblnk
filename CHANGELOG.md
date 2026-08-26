@@ -80,6 +80,33 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — reachability sees Java and Kotlin methods (CB-163, F-34)
+
+A helper was added to a Java class and never called — `normalizeEmail`,
+appearing exactly once in the project, on its own declaration line. The
+reach floor did not block and wrote no state. The reason was not a
+missed case: the Java/Kotlin pattern matched `class|interface|enum|
+object` and nothing else, so methods were never in scope at all, while
+Python matched `def`, TypeScript `function`, and Go `func`.
+
+Methods are now matched. A return type is required, which excludes
+constructors — those are reached through the class name the type
+pattern already tracks. Two exemption sets keep the precision this
+check trades recall for: accessor-shaped names (`get*`/`set*`/`is*`/
+`has*`), reached by serialisers and template engines, and the Object
+overrides and entry points reached by the runtime.
+
+Measured on a real Spring controller: the uncalled helper is reported,
+while the annotated endpoints, the entry point and the entity accessors
+are not. Adversarial cases pass too — an interface implementation
+without `@Override`, a private helper called in its own file, and two
+overloads where only one is used are all left alone.
+
+One bound, now written down where it was implicit: the haystack is
+every text file under the root, prose included, so a symbol named in a
+README or a design note counts as reached. Documented dead code is not
+reported.
+
 ### Fixed — a contract may name the path clients actually call (CB-162, F-36)
 
 `contract-check` matched a channel by plain substring over the party's
