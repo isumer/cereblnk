@@ -171,12 +171,15 @@ TEXT_RULES = [
     # the repository is configuration, not persistence, and CB-132
     # already paid for routing that case wrongly.
     ("server-side behavior",
-     r'(?i)(endpoint|\bhandler\b|controller|\bservice\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
+     r'(?i)(endpoint|\bhandler\b|controller|[A-Za-z]*[Ss]ervices?\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
      ["backend-agent"], 2),
     ("infrastructure", r'(?i)(deploy|cluster|container|pipeline|terraform|helm|kubernetes)',
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
      ["performance-agent"], 2),
+    ("restructure",    r'(?i)(refactor|restructur|clean\s*up|\bcleanup\b'
+                       r'|simplif|extract\s+(a\s+)?(method|class|function|module))',
+     ["refactoring-agent"], 1),
     ("tests",          r'(?i)(\btests?\b|\btesting\b|coverage|regression)',
      ["qa-agent"], 1),
     ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
