@@ -77,11 +77,13 @@ gate = m.group(1) if m else "?"
 why = re.findall(r'"([^"]+)"', out.split("signals:", 1)[-1])[:3]
 
 note = (
-    "Cereblnk routing signal: this request resolves to %s at gate level %s"
-    "%s. This is the case cb-dispatch exists for — it owns the intent "
-    "table and this hook deliberately does not. Invoke it before editing "
-    "files yourself. If the request is a question rather than work on "
-    "the codebase, answer it directly and ignore this line."
+    "Cereblnk routing signal: this request resolves to the AGENT role(s) "
+    "%s at gate level %s%s. Those are agents, spawned with the Agent "
+    "tool — not skills; passing one to the Skill tool fails with "
+    "'Unknown skill'. This is the case cb-dispatch exists for: it owns "
+    "the intent table and this hook deliberately does not, so invoke it "
+    "before editing files yourself. If the request is a question rather "
+    "than work on the codebase, answer it directly and ignore this line."
 ) % (", ".join(specs), gate, (" (signals: %s)" % "; ".join(why)) if why else "")
 
 print(json.dumps({"hookSpecificOutput": {
