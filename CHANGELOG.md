@@ -80,6 +80,29 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — the exec floor says what it can check (CB-161, F-33)
+
+The floor blocked with *"an unexecuted change carries an assumed label,
+not a known one"*, which reads as: run the configured check and the
+claim becomes `known`. It cannot deliver that. It sees a command
+recorded in `exec.log`; it never sees what the command proved, and it
+does not run the command itself.
+
+Measured: the configured check for the `api` surface was
+`grep -q class RegistrationController.java`. The specialist ran it, it
+passed, the floor was satisfied — and the specialist refused the
+upgrade anyway, on the grounds that the command matches
+`public class RegistrationController` and would have passed identically
+before the edit, with `@Size` misspelt, or attached to the wrong field.
+It was right, and nothing mechanical had caught it.
+
+Relevance is a judgment a floor cannot make: a check that names no file
+(`mvn test`) is legitimate, so requiring the command to mention the diff
+would refuse honest work. So the message stops implying otherwise. It
+now states that it sees the command ran and not what it proved, and asks
+for what the output rules out — or for the specialist to say the check
+does not reach the change, rather than labelling on it.
+
 ### Fixed — the skill floor has one copy (CB-160, F-35)
 
 The floor was hand-copied to two places: the file the SubagentStop hook
