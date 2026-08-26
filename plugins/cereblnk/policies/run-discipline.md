@@ -56,6 +56,27 @@ Each appended revision carries `revision:`, `reason:`, its own
 alone is reading the first draft; a reader that takes only the last
 revision is reading a patch without its subject. Gate agents read both.
 
+## 1c. The skill floor has one copy
+
+`scripts/select-agents --emit-floor` writes
+`$CB_DIR/context/<run_id>/skills-required.yaml`. That file is the only
+place the floor exists. A Task Block names the file and the role key; it
+never restates the list.
+
+The list used to be hand-copied to two places — the file the
+SubagentStop floor reads, and the Task Block text the subagent reads.
+Two copies of one truth, written by the same conductor at different
+moments, and nothing kept them in sync. Both failure modes were
+measured: a run where the file was never written left the floor silently
+inert for four consecutive runs, and a run where the two disagreed
+blocked a specialist for not loading a skill its own Task Block never
+named.
+
+`--emit-floor` writes only to a run pinned by id. Without one it says so
+and writes nothing: `cb_run_dir` falls back to a newest-directory guess,
+and a guessed destination for the judge's own input is how a ledger
+splits.
+
 ## 2. The conducting conversation is a budget
 It holds: intent, plan, digests, verdicts, synthesis — nothing else.
 Raw file contents belong in subagent contexts. Any slice/task that

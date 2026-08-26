@@ -85,8 +85,10 @@ Rules:
    is /cb-do. Bug, feature, review and docs intents never reach this
    rule.
 8. **Nothing changed yet? Route on the request.** Design and new-build
-   work has no diff. Use `select-agents --text "<the request>"`. Its
-   `skills_required` block travels into the Task Blocks. Exit 3 is
+   work has no diff. Use
+   `select-agents --emit-floor --text "<the request>"`, which writes the
+   skill floor to `context/<run_id>/skills-required.yaml`. Task Blocks
+   point at that file; they never restate the list. Exit 3 is
    unresolved, never a reason to guess one agent.
 
 ## Step 4 — When NOT to dispatch
