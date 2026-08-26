@@ -130,12 +130,26 @@ Resolve the root once at run start; subagents inherit the absolute
 path in their Task Blocks.
 
 ## 5. Run flag lifecycle (RunGuardHook, DelegationGuardHook)
-Arm with `scripts/run-flag arm "" <run_id>` at execution start; disarm
-with `scripts/run-flag disarm` before ANY turn that ends awaiting the
-user; and at final synthesis use `scripts/run-flag complete`, which
-performs the handoff described below. The two verbs are not synonyms —
-`disarm` is a pause the run may return from, `complete` ends it. While armed, a premature stop gets exactly
-one continue-nudge.
+Arm with `scripts/run-flag arm "" <run_id>` at execution start. Disarm
+with `scripts/run-flag disarm` before a turn that ends because the
+conductor is asking the human user something, and only then.
+
+A turn that ends to await subagents in flight is not that case. Their
+result also arrives as a later turn, but the flag is what judges those
+subagents when they return. Disarming here removes the judge before it
+can act.
+
+At final synthesis use `scripts/run-flag complete`, which performs the
+handoff described below. The two verbs are not synonyms — `disarm` is
+a pause the run may return from, `complete` ends it. While armed, a
+premature stop gets exactly one continue-nudge.
+
+Disarm-before-asking is one case of three. `hooks/scripts/run-guard.sh`
+is the operational authority for all three: specialists still out,
+waiting on the user, neither. Its nudge text is what a conductor
+actually reads at the moment of decision, so that is where the
+decision logic lives. This section states the principle; it does not
+restate the hook's cases.
 
 The flag also carries the run's identity, and that is not bookkeeping.
 Eight hooks — the four floors, both ledgers, DigestCap and RunGuard —
