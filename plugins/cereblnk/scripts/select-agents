@@ -482,7 +482,7 @@ for role in agents:
         for tok, tgt in got:
             watch_lines.append("    - \"%s -> %s\"" % (tok, tgt))
 if watch_lines:
-    print("discovery_watch:   # seen while reading -> load that skill")
+    print("discovery_watch:   # one hop from the matched rule, not the full cascade; seen while reading -> load that skill")
     for line in watch_lines:
         print(line)
 
