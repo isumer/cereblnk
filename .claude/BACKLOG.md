@@ -185,3 +185,4 @@ read.
 - [x] **CB-161** — The exec floor promised what it could not check
 - [x] **CB-162** — A contract could not name the path clients actually call
 - [x] **CB-163** — Reachability covered Java types and no Java methods
+- [x] **CB-164** — The manifest stopped declaring its own entry points
