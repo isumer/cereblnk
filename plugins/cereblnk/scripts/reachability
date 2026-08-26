@@ -51,7 +51,24 @@ PATTERNS = [
     ({".java", ".kt"},
      re.compile(r"^\s*(?:public|internal)\s+(?:final\s+|abstract\s+|open\s+|data\s+)*"
                 r"(?:class|interface|enum|object)\s+(?P<name>[A-Z][\w]*)")),
+    # Methods. The type patterns above cover Java and Kotlin declarations
+    # only, so a helper that is written, compiled and never called was
+    # outside the check entirely. A return type is required, which
+    # excludes constructors: those are reached through the class name,
+    # which the type pattern already tracks.
+    ({".java", ".kt"},
+     re.compile(r"^\s*(?:public|protected|private)\s+"
+                r"(?:static\s+|final\s+|synchronized\s+|abstract\s+|default\s+)*"
+                r"[\w<>\[\],.?\s]+?\s+(?P<name>[a-z][\w]*)\s*\(")),
 ]
+
+# Names whose caller is conventionally outside the source. Accessors are
+# reached by serialisers and template engines; the Object overrides and
+# entry points by the runtime. Reporting them is the wolf-crying this
+# check trades recall to avoid.
+FRAMEWORK_CALLED = re.compile(r"^(get|set|is|has)[A-Z]")
+RUNTIME_CALLED = {"main", "toString", "equals", "hashCode", "clone",
+                  "run", "call", "close", "compareTo", "iterator"}
 
 
 def is_annotated(lines, idx):
@@ -82,6 +99,8 @@ def declared_symbols(path):
                 continue
             name = m.group("name")
             if len(name) < 3 or name in ("main", "default", "init", "setup"):
+                continue
+            if name in RUNTIME_CALLED or FRAMEWORK_CALLED.match(name):
                 continue
             if is_annotated(lines, i):
                 continue

@@ -78,18 +78,37 @@ if not need and req and agent_key not in req:
 if not need:
     sys.exit(0)
 
-loaded = set()
+# Judged against the lines written since the previous stop of this
+# agent: the ledger is append-only for the whole run.
 log = run / "skills-loaded.log"
-if log.exists():
-    for line in log.read_text(encoding="utf-8").splitlines():
-        parts = line.split("\t")
-        if len(parts) == 3 and parts[1] == agent:
-            loaded.add(parts[2])
+lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+mark_f = run / ("skill-floor.%s.mark" % agent)
+start = 0
+if mark_f.exists():
+    try:
+        start = int(mark_f.read_text(encoding="utf-8").strip() or 0)
+    except ValueError:
+        start = 0
+if start > len(lines):        # log rotated or truncated: judge all of it
+    start = 0
+
+loaded = set()
+for line in lines[start:]:
+    parts = line.split("\t")
+    if len(parts) == 3 and parts[1] == agent:
+        loaded.add(parts[2])
 missing = [s for s in need if s not in loaded]
-if not missing:
-    sys.exit(0)
 
 state = run / ("skill-floor.%s.state" % agent)
+if not missing:
+    # Clean stop: advance the mark, clear the counter.
+    try:
+        mark_f.write_text(str(len(lines)), encoding="utf-8")
+        state.unlink()
+    except OSError:
+        pass
+    sys.exit(0)
+
 count = 0
 if state.exists():
     try:

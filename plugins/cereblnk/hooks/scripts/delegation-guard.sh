@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # DelegationGuardHook (PreToolUse: Edit|Write|MultiEdit|NotebookEdit)
 #
-# Enforces, as a MECHANISM, what three PRs of instructions could not:
-# while a Cereblnk run is active, file edits belong to surface
-# specialist subagents — the conducting conversation never implements.
+# While a Cereblnk run is active, file edits belong to surface
+# specialist subagents; the conducting conversation never implements.
 #
 # Decision table (safe under BOTH known platform behaviors):
 #   run-active flag absent            -> allow (no run; normal editing)
@@ -15,9 +14,8 @@
 #                                        surface specialist instead
 # Identity is read from the PARSED hook input's top-level keys — never
 # by substring over the raw JSON, because the raw payload contains
-# tool_input.content/new_source: any file that merely MENTIONS
-# "agent_id" (this hook's own docs, hooks.json, fixtures) would have
-# let the conductor through. Found as a planted-bypass in review.
+# tool_input.content/new_source, so any file that merely MENTIONS
+# "agent_id" would otherwise let the conductor through.
 # Old platform versions where subagent tool calls bypass hooks
 # entirely are equally safe: those edits never reach this guard.
 # Failure semantics, honestly: fail-open only when no project root or
@@ -32,16 +30,11 @@ set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbowner.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 
-# Armed state, with staleness bounds on BOTH arming flags (CB-099).
-# run-active had none: a flag left behind by an abnormally terminated
-# run blocked every conductor edit forever, and the only escape was
-# deleting the file by hand — which also removes the protection for the
-# NEXT run, and in the reported case the conductor then filled its own
-# context, the exact failure this guard exists to prevent. A run is now
-# considered live while the flag is recent OR the run ledger is still
-# growing; an aged flag with a cold ledger is treated as absent.
-# Deliberately an OR: a run resumed after an overnight pause keeps its
-# protection as long as it is still writing blocks.
+# Armed state, with staleness bounds on both arming flags. A run is
+# live while the flag is recent OR the run ledger is still growing; an
+# aged flag over a cold ledger is treated as absent. Deliberately an
+# OR, so a run resumed after a long pause keeps its protection as long
+# as it is still writing blocks.
 #
 # run-active covers the run itself. run-completed covers
 # the follow-up window AFTER final synthesis — the seam where the

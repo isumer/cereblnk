@@ -36,12 +36,14 @@ Run both scripts. Do not reason the routing table by hand.
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/detect-stack
-${CLAUDE_PLUGIN_ROOT}/scripts/select-agents --text "<the request>"
+${CLAUDE_PLUGIN_ROOT}/scripts/select-agents --emit-floor --text "<the request>"
 ```
 
-Take `specialists`, `gate_level`, and `skills_required`. Each role's
-skill list travels into that role's Task Block. Exit 3 means
-unresolved: name the surface, or ask. Never guess one agent.
+Take `specialists` and `gate_level`. `--emit-floor` writes the skill
+floor to `context/<run_id>/skills-required.yaml`, which is the single
+source of truth — the Task Block points at it rather than restating it,
+because a second copy can drift from the one the floor enforces. Exit 3
+means unresolved: name the surface, or ask. Never guess one agent.
 
 ## Step 3 — Stop only where the work is irreversible
 

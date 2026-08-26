@@ -169,3 +169,19 @@ read.
 - [x] **CB-145** — The checkpoint is this project's threshold, not the host's
 - [x] **CB-146** — A suite that reads its own shell is not a suite
 - [x] **CB-147** — Eight hooks guessed which run they were in
+- [x] **CB-148** — The routing map's `roles:` field could not route
+- [x] **CB-149** — Automatic routing was a description, not a mechanism
+- [x] **CB-150** — The monitor was worst exactly after a compaction
+- [x] **CB-151** — A finished run had no way to say so
+- [x] **CB-152** — The skill floor judged the run, not the pass
+- [x] **CB-153** — A gate verdict could not be checked for staleness
+- [x] **CB-154** — Revising a block cost more than being wrong
+- [x] **CB-155** — The intake surface had a reader and no writer
+- [x] **CB-156** — A wave could pair a gate with an edit to its target
+- [x] **CB-157** — Three checkers that misread their own inputs
+- [x] **CB-158** — Comments that told the changelog's story
+- [x] **CB-159** — The staleness gate was an instruction the linter never read
+- [x] **CB-160** — The skill floor was hand-copied to two places
+- [x] **CB-161** — The exec floor promised what it could not check
+- [x] **CB-162** — A contract could not name the path clients actually call
+- [x] **CB-163** — Reachability covered Java types and no Java methods

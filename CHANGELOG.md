@@ -7,6 +7,389 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.2] — The map that described routing it could not do
+
+`policies/skill-selection.yaml` declares 77 rules, each naming the roles
+that own a skill. Measured on the real map, the field was inert for
+routing:
+
+```
+select-agents --text "owasp threat model"   -> architect-agent (fallback)
+select-agents --text "vulnerability"        -> architect-agent (fallback)
+```
+
+`owasp-threat-modeling` declares `roles: [security-agent]` and lists all
+three phrasings as topics. It matched every time and placed nothing,
+because placement was conditional on the role having ALREADY been
+selected by the hardcoded tables above it:
+
+```python
+for role in r["roles"]:
+    if role in agents:          # agents = what was selected already
+```
+
+So the map could enrich a routing decision, never make one. The sharper
+consequence: a diff could not raise concern, only the user's own wording
+could — which inverts what a routing layer is for.
+
+### Fixed
+
+- **A matched map rule now brings in its owner.** Bounded twice: only
+  the first role (`roles:` lists every role that MAY use the skill,
+  which is not every role a match should summon), and always at gate
+  level 1 — the map carries no risk model, so it may add a specialist
+  but never invent risk. Escalation stays with the hardcoded tables and
+  the always-level-3 list.
+- **Topic matching gained word boundaries.** It was a naive substring
+  test, latent while a match could only attach a skill, consequential
+  the moment a match could summon an agent. Measured: `tests` contains
+  `ts` and recruited the typescript rule's roles; `stored` contains
+  `store` and recruited redux's.
+- **`auth/session` admits what auth actually handles.** `password`,
+  `passwd`, `plaintext`, `hashed`, `hashing`, `salted`. A
+  plaintext-password report — the textbook always-level-3 case — matched
+  nothing before and routed at gate 1.
+- **`tests` admits its own plural.** `\btest\b` took the bare singular
+  only, so "write tests for this", "the tests are failing" and "testing
+  strategy" all fell to the architect fallback. So did "these tests miss
+  the failure mode", which is lifted from `/cb-pr-review`'s own text.
+- **`documentation` is a text rule at last.** `docs-agent` appeared in
+  zero text rules, so `/cb-docs` could not select the lead its own
+  topology names, from its own trigger sentence.
+
+### Measured, including what the first attempt got wrong
+
+The first cut of the auth regex added bare `hash` and `salt`. Controls
+caught it: "basalt tiles" and "hash browns" each took a mandatory gate-3
+security review, and both were correctly unresolved before the change.
+The noun forms are ambiguous in a codebase and in English; the verb
+forms are not, and "password hash" is already caught by `password`.
+
+The first cut of the map fix summoned every role in a matched rule. The
+topic `gradle` then pulled backend, architect, debugger and refactoring
+out of the java rule for a vague build-speed complaint — five
+specialists from one sentence. Narrowing to the owner plus word-bounded
+topics brought that to two.
+
+| input | before | first cut | shipped |
+|---|---|---|---|
+| `the gradle build feels slow lately` | 1 | 5 | 2 |
+| `the tests are failing` | unresolved | 3 | 1 |
+| `basalt tiles` | unresolved | security @ 3 | unresolved |
+| `db/changelog/001-init.xml` | 3 | 5 | 4 |
+
+Gate levels were checked separately and did not move in any case.
+
+### Fixed — reachability sees Java and Kotlin methods (CB-163, F-34)
+
+A helper was added to a Java class and never called — `normalizeEmail`,
+appearing exactly once in the project, on its own declaration line. The
+reach floor did not block and wrote no state. The reason was not a
+missed case: the Java/Kotlin pattern matched `class|interface|enum|
+object` and nothing else, so methods were never in scope at all, while
+Python matched `def`, TypeScript `function`, and Go `func`.
+
+Methods are now matched. A return type is required, which excludes
+constructors — those are reached through the class name the type
+pattern already tracks. Two exemption sets keep the precision this
+check trades recall for: accessor-shaped names (`get*`/`set*`/`is*`/
+`has*`), reached by serialisers and template engines, and the Object
+overrides and entry points reached by the runtime.
+
+Measured on a real Spring controller: the uncalled helper is reported,
+while the annotated endpoints, the entry point and the entity accessors
+are not. Adversarial cases pass too — an interface implementation
+without `@Override`, a private helper called in its own file, and two
+overloads where only one is used are all left alone.
+
+One bound, now written down where it was implicit: the haystack is
+every text file under the root, prose included, so a symbol named in a
+README or a design note counts as reached. Documented dead code is not
+reported.
+
+### Fixed — a contract may name the path clients actually call (CB-162, F-36)
+
+`contract-check` matched a channel by plain substring over the party's
+files. A framework that splits a route across annotations never spells
+the whole path anywhere:
+
+```java
+@RequestMapping("/api/users")   // class
+@PostMapping("/register")       // method
+```
+
+So a contract naming `POST /api/users/register` — the path a client
+actually calls — was reported as *"api never mentions channel"*, and the
+only way to satisfy the checker was to write `/register` in the
+contract. A checker that forces the artifact it protects to be written
+incorrectly is worse than one that misses.
+
+The script already knew this for migration rows: `path_token`'s own
+docstring says *"POST /api/x is matched on /api/x — the verb is not in
+the client's source"*. Channels were the one place that did not use it.
+
+Channels now match on the token, then on the longest trailing run of
+segments that appears. Measured, with controls: the real wire path
+matches, a channel for an endpoint that does not exist still reports,
+and a different route sharing a final segment (`/admin/register`) still
+matches — a false positive that could not be removed without refusing
+honest split routes. It is not silent: a partial match prints a note
+saying it is not proof of the same route.
+
+### Fixed — the exec floor says what it can check (CB-161, F-33)
+
+The floor blocked with *"an unexecuted change carries an assumed label,
+not a known one"*, which reads as: run the configured check and the
+claim becomes `known`. It cannot deliver that. It sees a command
+recorded in `exec.log`; it never sees what the command proved, and it
+does not run the command itself.
+
+Measured: the configured check for the `api` surface was
+`grep -q class RegistrationController.java`. The specialist ran it, it
+passed, the floor was satisfied — and the specialist refused the
+upgrade anyway, on the grounds that the command matches
+`public class RegistrationController` and would have passed identically
+before the edit, with `@Size` misspelt, or attached to the wrong field.
+It was right, and nothing mechanical had caught it.
+
+Relevance is a judgment a floor cannot make: a check that names no file
+(`mvn test`) is legitimate, so requiring the command to mention the diff
+would refuse honest work. So the message stops implying otherwise. It
+now states that it sees the command ran and not what it proved, and asks
+for what the output rules out — or for the specialist to say the check
+does not reach the change, rather than labelling on it.
+
+### Fixed — the skill floor has one copy (CB-160, F-35)
+
+The floor was hand-copied to two places: the file the SubagentStop hook
+reads, and the Task Block text the subagent reads. Two copies of one
+truth, written by the same conductor at different moments, with nothing
+keeping them in sync. Both failure modes were measured.
+
+*Silence.* `skill-floor.sh` opens with
+`[ -f "$RUN/skills-required.yaml" ] || exit 0`. Four consecutive runs
+were dispatched with the list in the Task Block and no file. The floor
+never ran and said nothing — the protection looked active the whole
+time. Writing the file on the fifth run made it fire.
+
+*Divergence.* With three skills in the file and two in the Task Block,
+the specialist followed its prompt, loaded two, and was blocked for
+missing the third. It had done exactly what it was told, and was judged
+against a list it was never shown.
+
+`select-agents --emit-floor` now writes the file itself, and the Task
+Block points at it instead of restating it. One copy, written by the
+same command that computes it, read by both the agent and the floor.
+
+It writes only to a run pinned by id, and says so when there is none:
+`cb_run_dir` falls back to a newest-directory guess, and a guessed
+destination for the judge's own input is how a ledger splits. That case
+was caught by its own control during this change.
+
+### Fixed — the plan declares a spec the linter now reads (CB-159, F-38)
+
+`/cb-implement` carries a staleness gate in prose: read the plan
+header's `derived_from_spec`, read the spec's `spec_version`, halt if
+the plan is behind. `plan-lint` runs before task 1 and already parses
+the header — and never looked at either field. It required `spec:` to
+be present (R4) and accepted any value at all, so `spec: yes` and a
+path to a file that does not exist both passed.
+
+R7 resolves the declared path and, when the header pins `@v<N>`,
+compares it against the spec's own `spec_version`. `spec: none` still
+passes untouched: a direct `/cb-do` run has no spec and says so. The
+defect was silence dressed as a declaration, not the absence of one.
+
+Closes the mechanisable half of F-38. The other half stands as
+recorded: nothing stops a spec-less implementation from starting, and
+gating that would fire on the legitimate spec-less workflows.
+
+### Changed — comments describe the code, not its history (CB-158)
+
+Several scripts had grown a second changelog inside their comments:
+the run that failed, the timestamps that proved it, what the previous
+version got wrong. `run-guard.sh` was 52% comment, `cbenv.sh` 50%,
+`delegation-guard.sh` 42%.
+
+That history belongs here, where it is indexed and dated. A comment is
+for the reader of the code, and it earns its place by explaining what
+the code does or why it is shaped that way.
+
+Kept: decision tables, fail-open semantics, resolution orders, usage
+blocks, and the reasons behind non-obvious structure — why identity is
+parsed rather than substring-matched, why the mtime scan is a floor and
+not an error path, why Store aliases are skipped without running them.
+
+Removed: the measurement narratives. Across the files touched by
+CB-148…CB-157 and the five densest hooks, roughly 300 lines.
+
+### Fixed — three checkers that misread their own inputs (CB-157)
+
+**F-51** — `shellwrite.py` listed `open(` as a write hint, and Python's
+`open()` defaults to mode `"r"`. So the most ordinary read in an inline
+one-liner — `python3 -c "d=json.load(open(f))"` — was reported as a
+write, and DelegationGuard blocked a read-only diagnostic while naming
+the specialist that should perform the "edit". A mode argument now
+decides it. Two other hypotheses were tested against the same guard
+first and refuted: `2>/dev/null` and a quoted `>` are both handled
+correctly.
+
+**F-42** — `behavior-check` had four paths returning exit 3 in silence.
+Measured beside `env preflight`, which returns the same code and says
+*"SKIP no config/runtime.md — the runtime stage is not configured"*:
+same code, one of them tells the caller what to do. A gate the workflow
+orders you to run before design starts, exiting mute, is
+indistinguishable from a gate that passed. All four now say why.
+
+**F-37** — `spec-assemble` accepted `Known`/`Derived` only, while ACP
+blocks write the labels lowercase as field names. Four of six sections
+from a real `/cb-design` run were rejected for having "no epistemic
+label" while every one was labelled, in the spelling the protocol itself
+uses. Not fixed by dropping case sensitivity — "it is known that" is
+ordinary English — so the lowercase form is admitted only where it is a
+label rather than a word.
+
+### Changed — comments describe the code, not the finding
+
+The fixes above and in CB-148…CB-156 were first written with the
+measurement narrative inline. That belongs here, in the changelog, not
+in the source: a comment explains what the code does. Removed across
+ten files, net −165 lines.
+
+### Fixed — run lifecycle (CB-151; F-43, F-49, F-56)
+
+**A finished run had no verb.** `run-discipline` §5 has always said the
+flag is HANDED OFF at final synthesis — `run-completed` is written, and
+DelegationGuard reads it as the follow-up window. But eight workflow
+skills said only *"Remove it at final synthesis"*, deferring to §5
+without restating it, and `run-flag` had no subcommand that performed
+the handoff. The only route left was a hand-written `touch`, which is
+the exact failure this script was created to remove.
+
+Measured live: a conductor followed its skill's own final line, ran
+`run-flag disarm`, saw `run-flag: disarmed`, and had its next edit
+blocked — *"the run-active flag was removed while the run ledger was
+still being written"*. The guard was right. The instruction was wrong.
+
+- `run-flag complete` performs the handoff: clears `run-active` and its
+  siblings, writes `run-completed`, and verifies both — a failed handoff
+  exits non-zero rather than reporting a run as ended.
+- `run-flag disarm` now says what it is: a PAUSE, and names `complete`
+  for the other case. The bare word "disarmed" read like "the run is
+  over", which is how the wrong verb kept looking correct.
+- the eight skills and §5 now name the right verb.
+
+**The nudge budget survived a pause.** `run-active.state` outlived
+`disarm`, and since every workflow disarms before any turn that ends
+awaiting the user, a run that paused came back with its counter already
+spent. Measured: the first Stop after re-arming skipped the nudge and
+disarmed while a specialist was still out — the one thing that nudge's
+own message tells the reader never to do. The counter belongs to an
+uninterrupted armed period, so `disarm` now ends it.
+
+**The progress metric counted its own inputs.** RunGuard counted every
+`*.yaml` in the run directory, including the `skills-required.yaml` the
+conductor writes at run start. Two consequences, both measured: the
+count shown read as *"2/1 task blocks on disk"* — more blocks than
+planned, i.e. finished — and the conductor's own bookkeeping could
+advance the progress metric, buying a nudge no specialist earned. Now
+`0/2` before any block arrives and `1/2` after the first.
+
+### Fixed — context measurement (CB-150; F-45, F-46, F-47)
+
+**The monitor was maximally wrong at the moment its reading mattered
+most.** `UserPromptSubmit` fires before the next assistant turn is
+written, so on the first prompt after a `/compact` the newest `usage`
+record in the tail still describes the pre-compaction turn:
+
+```
+telemetry/context.log, compaction at 15:52
+  15:21:26  occupancy=702145  pct=77.8   <- before
+  15:58:43  occupancy=706493  pct=78.2   <- FIRST PROMPT AFTER
+  16:05:48  occupancy=103817  pct=11.5   <- next prompt, self-corrects
+```
+
+The true figure sat in the same tail the hook already read:
+`compactMetadata.postTokens: 31272`. It reported 22x that. Structural,
+not a fluke — it happens on every compaction. Observed harm: the reader
+throttled its own work and deferred a task on that number.
+
+A compaction record carries no `usage` of its own, so it is tracked
+separately and preferred only when it comes *after* the last `usage`
+record. The second prompt after a compaction still reads its own turn.
+
+**The hedge escaped through the reserve.** `input_capacity = window −
+output_reserve`, resolved independently, but the hedge test only looked
+at `window:`. A `settings.json` naming the window while the reserve fell
+back printed a confident percentage over a partly guessed denominator —
+the exact failure F-13's fix existed to prevent, through the door beside
+it. It now matches `context-budget`'s own aggregate `labelled: assumed`
+line rather than re-deriving that logic.
+
+The warning text broadened with its condition. It used to say "the
+window was never measured", which is wrong in precisely the case this
+change added, and sent the reader to set a variable that was already set.
+
+**The telemetry could not diagnose its own worst error.** F-45 was
+invisible in the log; finding it took hand-reading `compactMetadata` out
+of the raw transcript. The line now carries `compacted=` and
+`capacity_source=`, appended at the end so `occupancy=`/`capacity=`/`pct=`
+still parse unchanged.
+
+Measured on transcript fixtures, including the ordering case that decides
+the fix: compaction record *after* the last usage → `occupancy=31272
+compacted=yes`; compaction record *before* a newer usage → falls back to
+the usage sum, `compacted=no`. No-usage, malformed-JSON and
+`postTokens: 0` transcripts all stay silent at exit 0.
+
+### Added — RouteHintHook (CB-149, F-57)
+
+`TOPOLOGY.md` says cb-dispatch "routes engineering work to the right
+Cereblnk workflow automatically" whenever a request touches a codebase
+without naming a `/cb-` command. Measured across a full session of
+codebase work — branch edits, a release, a PR:
+
+```
+skills-loaded.log, whole session:
+  1787657616  main  dispatch      <- typed by the user
+  1787667468  main  orchestrate   <- typed by the user
+```
+
+Zero automatic invocations. Description matching is the host model's
+discretion, not a mechanism, and nothing else pushed: the only
+UserPromptSubmit hook was ContextMonitorHook, which injects a token
+warning and says nothing about routing. The platform's own entry point
+was REGISTERED and never ENGAGED.
+
+The new hook supplies the push and only the push. It runs the same
+`select-agents` every workflow already runs and injects one line naming
+the resolved specialists and gate level. It does **not** name a
+workflow: that table lives in `skills/dispatch` Step 3, and a second
+copy would diverge from the first — which is the defect CB-148 closed
+one layer down.
+
+Silence is the larger half of the design, since a hook that speaks every
+turn spends the budget it exists to protect:
+
+| condition | why |
+|---|---|
+| prompt names a `/cb-` command | the explicit command wins, and always has |
+| `flags/run-active` is armed | a workflow already owns this turn |
+| selector returns `inferred: true` | unresolved is silence, never a guess |
+| `flags/no-route-hint` | opt-out, same shape as careful/boundary |
+
+Measured after CB-148 landed, because it depends on it: before the
+word-boundary fix, `"the tests are failing"` resolved to three
+specialists and this hook would have injected two wrong ones on every
+such prompt.
+
+### Known residual
+
+A generic path rule still fires alongside a specific one on the same
+file: `xml-processing` (`\.xml$`) matches a Liquibase changelog that
+already has `liquibase-migrations`. Rule specificity is a map design
+question, not a selector bug, and is left open.
+
 ## [1.4.1] — The run every hook was in was a guess
 
 A `backend-agent` edited `RegistrationController.java` and `pom.xml`,
