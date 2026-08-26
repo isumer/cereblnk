@@ -15,6 +15,11 @@
 # near-certain; a clean result is weak evidence. That is the correct
 # trade for a check that gets switched off the first time it cries wolf.
 #
+# The haystack is every text file under the root, prose included, so a
+# symbol named in a README or a design note counts as reached. That
+# biases the same way the rest of this check does — toward staying
+# quiet — and it is a real bound: documented dead code is not reported.
+#
 # Escape hatch: $CB_DIR/config/reachability-ignore, one symbol per line.
 # A public API surface with no in-repo consumer is a real thing and the
 # agent must not be trapped arguing with a hook about it.
