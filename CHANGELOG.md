@@ -80,6 +80,24 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — the plan declares a spec the linter now reads (CB-159, F-38)
+
+`/cb-implement` carries a staleness gate in prose: read the plan
+header's `derived_from_spec`, read the spec's `spec_version`, halt if
+the plan is behind. `plan-lint` runs before task 1 and already parses
+the header — and never looked at either field. It required `spec:` to
+be present (R4) and accepted any value at all, so `spec: yes` and a
+path to a file that does not exist both passed.
+
+R7 resolves the declared path and, when the header pins `@v<N>`,
+compares it against the spec's own `spec_version`. `spec: none` still
+passes untouched: a direct `/cb-do` run has no spec and says so. The
+defect was silence dressed as a declaration, not the absence of one.
+
+Closes the mechanisable half of F-38. The other half stands as
+recorded: nothing stops a spec-less implementation from starting, and
+gating that would fire on the legitimate spec-less workflows.
+
 ### Changed — comments describe the code, not its history (CB-158)
 
 Several scripts had grown a second changelog inside their comments:

@@ -23,6 +23,40 @@ for key in ("spec", "goal", "out_of_scope", "recomposition_check"):
     m = re.search(rf'^\s*-\s*{key}\s*:\s*(.+)$', text, re.M)
     if not m or not m.group(1).strip():
         V.append(f"R4: header missing or empty field: {key}")
+    else:
+        header[key] = m.group(1).split("#")[0].strip()
+
+# ---- R7: the declared spec resolves, and the plan is not behind it ----
+# `spec:` may name a path or say `none`. A path is resolved and read;
+# `@v<N>` on the end is checked against the spec's own `spec_version`.
+spec_decl = header.get("spec", "")
+if spec_decl and not spec_decl.lower().startswith("none"):
+    spec_path, _, want_v = spec_decl.partition("@")
+    spec_path = spec_path.strip()
+    want_v = want_v.strip().lstrip("vV")
+    plan_dir = os.path.dirname(os.path.abspath(os.environ["PLAN"]))
+    roots = [os.getcwd(), plan_dir]
+    d = plan_dir
+    while d and d != os.path.dirname(d):          # walk up to the project
+        roots.append(d)
+        d = os.path.dirname(d)
+    found = next((os.path.join(r, spec_path) for r in roots
+                  if os.path.isfile(os.path.join(r, spec_path))), None)
+    if not found:
+        V.append(f"R7: header declares spec {spec_path!r} and no such file "
+                 f"exists. A plan that names a source of truth it cannot "
+                 f"reach has no source of truth; say `spec: none` if the "
+                 f"work is a direct request.")
+    elif want_v:
+        head = open(found).read()[:4000]
+        sm = re.search(r'^\s*spec_version\s*:\s*v?(\S+)', head, re.M)
+        if not sm:
+            V.append(f"R7: header pins {spec_decl!r} but {spec_path} declares "
+                     f"no spec_version, so the pin cannot be checked.")
+        elif sm.group(1).strip() != want_v:
+            V.append(f"R7: plan derives from {spec_path}@v{want_v}, the spec "
+                     f"is at v{sm.group(1).strip()}. The plan is behind its "
+                     f"spec — reconstruct it; do not run it.")
 
 # ---- Split into tasks ----
 task_hdr = re.compile(r'^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:', re.M)
