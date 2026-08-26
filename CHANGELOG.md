@@ -23,8 +23,14 @@ together:
   makes the compound invisible, so the most common way to name a
   service in Java or TypeScript matched the server-side rule not at all.
 
+Reported live: a request to refactor a Java service named in camelCase
+fired the hook but named `frontend-agent` — the wrong surface. With the compound matched, it resolves to `backend-agent` plus
+`refactoring-agent` at gate 2 and the wrong target drops out.
+
 A `restructure` rule now routes to `refactoring-agent`, and the
-server-side pattern admits camelCase compounds. Controls unchanged:
+server-side pattern admits camelCase compounds. `rewrite` is
+deliberately NOT in the new rule — the existing rewrite/legacy rule owns
+that verb, and claiming it broke a selection fixture. Controls unchanged:
 "basalt tiles" and a weather question still resolve to nothing.
 
 

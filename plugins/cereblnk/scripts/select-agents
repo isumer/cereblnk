@@ -177,7 +177,7 @@ TEXT_RULES = [
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
      ["performance-agent"], 2),
-    ("restructure",    r'(?i)(refactor|restructur|\brewrite\b|clean\s*up|\bcleanup\b'
+    ("restructure",    r'(?i)(refactor|restructur|clean\s*up|\bcleanup\b'
                        r'|simplif|extract\s+(a\s+)?(method|class|function|module))',
      ["refactoring-agent"], 1),
     ("tests",          r'(?i)(\btests?\b|\btesting\b|coverage|regression)',
