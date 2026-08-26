@@ -54,6 +54,15 @@ OUT="$(timeout 10 "$SEL" --text "$PROMPT" 2>/dev/null || true)"
 #    rule matched and the selector fell back.
 case "$OUT" in *"inferred: true"*) exit 0 ;; esac
 
+# What the hook routed on, so a wrong specialist can be traced to the
+# text that produced it rather than guessed at.
+if [ -n "${CB_DIR:-}" ]; then
+  mkdir -p "$CB_DIR/telemetry" 2>/dev/null || true
+  printf '%s\tprompt=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+    "$(printf '%s' "$PROMPT" | tr '\n\t' '  ' | cut -c1-300)" \
+    >> "$CB_DIR/telemetry/route-hint.log" 2>/dev/null || true
+fi
+
 # Heredoc, not -c: the parser below needs single quotes of its own, and
 # a -c block wrapped in them ends at the first one it contains.
 CEREBLNK_SEL_OUT="$OUT" $PYBIN - <<'PY' 2>/dev/null || true
