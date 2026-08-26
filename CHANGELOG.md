@@ -7,6 +7,32 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.4.3] — The seventeen entry points the manifest stopped declaring
+
+CB-141 added a `skills` array to the manifest so the host could see the
+77 group skills under `skills/<group>/<name>/`. On Claude Code 2.1.92
+that declaration REPLACES the default scan rather than extending it, so
+the seventeen entry points at `skills/<name>/` — every `/cb-` command —
+disappeared. They were still on disk, byte-identical to 1.3.5.
+
+Bracketed on the reporting host across four versions:
+
+```
+1.3.0 · 1.3.2 · 1.3.5   no skills array   -> /cb-* present
+1.4.0 · 1.4.1 · 1.4.2   skills array      -> /cb-* absent
+```
+
+The fix is to declare the default root explicitly, `"./skills/"`, so
+both scan behaviours find every skill.
+
+Two things are worth recording about how long this took to find. The
+regression shipped from a host where it could not occur — on 2.1.246
+the array extends, so both sets loaded and the change looked correct.
+And the first three attempts to verify a fix were unmeasurable: a
+plugin is read at INSTALL time, so editing the cached copy afterwards
+changes nothing. The fix had to be applied to the manifest before
+installing, which is how it was finally confirmed.
+
 ## [1.4.2] — The map that described routing it could not do
 
 `policies/skill-selection.yaml` declares 77 rules, each naming the roles
