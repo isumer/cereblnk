@@ -80,6 +80,33 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — the skill floor has one copy (CB-160, F-35)
+
+The floor was hand-copied to two places: the file the SubagentStop hook
+reads, and the Task Block text the subagent reads. Two copies of one
+truth, written by the same conductor at different moments, with nothing
+keeping them in sync. Both failure modes were measured.
+
+*Silence.* `skill-floor.sh` opens with
+`[ -f "$RUN/skills-required.yaml" ] || exit 0`. Four consecutive runs
+were dispatched with the list in the Task Block and no file. The floor
+never ran and said nothing — the protection looked active the whole
+time. Writing the file on the fifth run made it fire.
+
+*Divergence.* With three skills in the file and two in the Task Block,
+the specialist followed its prompt, loaded two, and was blocked for
+missing the third. It had done exactly what it was told, and was judged
+against a list it was never shown.
+
+`select-agents --emit-floor` now writes the file itself, and the Task
+Block points at it instead of restating it. One copy, written by the
+same command that computes it, read by both the agent and the floor.
+
+It writes only to a run pinned by id, and says so when there is none:
+`cb_run_dir` falls back to a newest-directory guess, and a guessed
+destination for the judge's own input is how a ledger splits. That case
+was caught by its own control during this change.
+
 ### Fixed — the plan declares a spec the linter now reads (CB-159, F-38)
 
 `/cb-implement` carries a staleness gate in prose: read the plan

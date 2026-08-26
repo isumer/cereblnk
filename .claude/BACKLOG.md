@@ -181,3 +181,4 @@ read.
 - [x] **CB-157** — Three checkers that misread their own inputs
 - [x] **CB-158** — Comments that told the changelog's story
 - [x] **CB-159** — The staleness gate was an instruction the linter never read
+- [x] **CB-160** — The skill floor was hand-copied to two places
