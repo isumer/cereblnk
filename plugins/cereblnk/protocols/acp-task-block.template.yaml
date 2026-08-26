@@ -34,6 +34,13 @@ verification_level: 3
 context_refs:
   - ref: CTX-114   # compressed evidence bundle: AuthFilter diff
   - ref: CTX-115   # compressed evidence bundle: SecurityConfig
+skills_required: [spring-security]   # this role's line from select-agents,
+                                     # copied verbatim. Load these first.
+discovery_watch:                     # the same role's discovery_watch lines.
+  - "@PreAuthorize -> owasp-threat-modeling"   # if the evidence appears in a
+  - "SecurityFilterChain -> owasp-threat-modeling"  # file you read, load that
+                                     # skill and record it in skills_loaded.
+                                     # The file decides; nothing fires these.
 acceptance: >
   A pass/fail conclusion on auth bypass with every supporting claim
   labeled Known or Derived and linked to evidence.

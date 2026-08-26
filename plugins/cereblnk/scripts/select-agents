@@ -248,6 +248,21 @@ if errors:
     raise SystemExit(2)
 
 skills, skill_why = {}, []
+# role -> [(trigger, skill)], one hop from the rules that actually matched.
+# Not the transitive closure: chasing it from `java` yields 29 pairs that
+# reach React, Redux and express() through generic hubs like docker, which
+# is the whole graph rather than a set about this task.
+watch = {}
+
+
+def watch_add(rule):
+    for role in rule["roles"]:
+        seen = watch.setdefault(role, [])
+        for pair in cbmap.discovery_pairs(rule):
+            if pair not in seen:
+                seen.append(pair)
+
+
 for r in rules:
     if stack is not None and r["stack"] and r["stack"] not in stack:
         continue                      # declared for a stack this project does not have
@@ -276,6 +291,7 @@ for r in rules:
         if r["skill"] not in skills[role]:
             skills[role].append(r["skill"])
     skill_why.append("%s <- %s" % (r["skill"], hit))
+    watch_add(r)
 
 # ---- bounded stack completion (CB-143 / F-07) -------------------------
 # In the loop above a declared stack token is a veto: it can only ever
@@ -319,6 +335,7 @@ if stack:
                 skills[role].append(r["skill"])
                 skill_why.append("%s <- stack token '%s' in profile, for %s"
                                  % (r["skill"], r["stack"], role))
+                watch_add(r)
 
 inferred = False
 if not agents:
@@ -453,6 +470,22 @@ if os.environ.get("CB_EMIT"):
                   "has nothing to read and will not run." % (dest, e),
                   file=sys.stderr)
             raise SystemExit(1)
+# The floor above is everything the request text and the file paths can
+# justify before anything is read. These are the triggers that only become
+# visible once the specialist opens a file, so they travel into its Task
+# Block instead of being resolved here.
+watch_lines = []
+for role in agents:
+    got = watch.get(role) or []
+    if got:
+        watch_lines.append("  %s:" % qualify(role))
+        for tok, tgt in got:
+            watch_lines.append("    - \"%s -> %s\"" % (tok, tgt))
+if watch_lines:
+    print("discovery_watch:   # seen while reading -> load that skill")
+    for line in watch_lines:
+        print(line)
+
 print("signals:")
 for s in signals:
     print("  - \"%s\"" % s)

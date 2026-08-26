@@ -1,39 +1,44 @@
 #!/usr/bin/env python3
-"""check-discovery-claim (CB-142, F-08) — the cascade is advisory, and
-the tree must keep saying so.
+"""check-discovery-claim (CB-142, F-08) — discovery is carried, never
+fired, and the tree must keep saying so.
 
-`policies/skill-selection.yaml` declares 94 `discovery` triggers. Two
-validators read them — `check-agent-skills` A-5 proves each target
-resolves, `test-discovery` D-1..D-4 proves each token occurs in real
-files — and nothing else does. No hook, no script, no runtime step
-turns a fired trigger into a loaded skill. The cascade happens when a
-specialist reads the map and decides to follow it, and not otherwise.
+`policies/skill-selection.yaml` declares 94 `discovery` triggers. They
+name evidence a specialist can only see once it opens a file: `@Entity`
+in a source file means the hibernate-jpa skill is the one this task
+needs, and no amount of reading the request text could have said so.
 
-That is a legitimate design (see the ADR note in §4c), but it is only
-honest while both halves agree:
+The tree therefore does exactly one thing with them. `select-agents`
+carries the pairs belonging to the rules that matched into the Task
+Block of each role that owns them, one hop, so the trigger is in the
+specialist's window before it starts reading. Whether a trigger fires
+is decided by the file, and loading the skill is the specialist's act.
+No hook watches for the token. No script loads a skill.
 
-  the tree has no executor  <->  the policy does not claim one
+That distinction is the design, and it is only honest while both halves
+agree:
 
-This checker holds those two halves together. It is the checker half of
-CB-142 acceptance 2: it fails when the tree and the claim disagree, in
-either direction.
+  the tree carries but does not fire  <->  the policy claims no more
 
-  C-1  no executor. Nothing under `scripts/`, `plugins/cereblnk/scripts/`
-       or `plugins/cereblnk/hooks/` consumes `discovery` except the
-       parser and the two validators named in VALIDATORS. A hook that
-       reads the map at all is an executor by construction: hooks run,
-       they do not lint.
+This checker holds those two halves together.
+
+  C-1  one emitter, no firing. Nothing under `scripts/`,
+       `plugins/cereblnk/scripts/` or `plugins/cereblnk/hooks/` touches
+       `discovery` except the parser, the validators in VALIDATORS, and
+       the emitters in EMITTERS. A hook is refused outright, whatever it
+       is added to: hooks run on events, so a hook reading these
+       triggers would be firing them, which is the one thing this design
+       does not do.
   C-2  the map declares its own status — the schema header carries the
-       advisory marker verbatim, so the reader of the data learns it
-       from the data.
+       marker verbatim, so the reader of the data learns it from the
+       data.
   C-3  `agent-selection-policy.md` §4c carries the same marker, so the
        prose and the data cannot drift apart silently.
 
-C-1 is the forcing function. Build the mechanism and C-1 fails, naming
-the file; the only way to green is to admit the new consumer here AND
-retire the markers C-2/C-3 require — which is exactly the edit to §4c
-that a real mechanism would oblige. A rule without a checker is a wish;
-so is a non-rule that reads like one.
+C-1 stays the forcing function. Adding automatic loading fails it by
+name, and the only way back to green is to change what C-2 and C-3
+oblige the map and the policy to say — which is the honest edit that
+such a mechanism would owe its readers. A rule without a checker is a
+wish; so is a non-rule that reads like one.
 
 Exit: 0 the tree and the claim agree · 1 they do not (each printed
 with its C-id).
@@ -47,17 +52,24 @@ MAP = PLUGIN / "policies/skill-selection.yaml"
 POLICY = PLUGIN / "policies/agent-selection-policy.md"
 
 # The one sentence both files must carry. Deliberately a full clause and
-# not the word "advisory": a bare adjective survives an edit that guts
-# the meaning around it.
-MARKER = "advisory: nothing in the tree resolves them"
+# not a bare adjective, which survives an edit that guts the meaning
+# around it.
+MARKER = "carried into the Task Block; loading remains an agent decision on evidence"
 
-# Files permitted to consume `discovery`. Each is a validator that reads
-# the triggers to judge them, never to act on them.
+# Files permitted to read `discovery` to judge the triggers, never to act
+# on them.
 VALIDATORS = {
     "plugins/cereblnk/scripts/lib/cbmap.py",         # the parser itself
     "plugins/cereblnk/scripts/check-agent-skills",   # A-5: targets resolve
     "scripts/test-discovery",                        # D-1..D-4: tokens occur
     "plugins/cereblnk/scripts/check-discovery-claim",  # this checker
+}
+
+# Files permitted to put the triggers in front of a specialist. Carrying
+# a pair into a Task Block is not firing it — the file decides that, and
+# the specialist decides what to load.
+EMITTERS = {
+    "plugins/cereblnk/scripts/select-agents",        # one hop, matched rules only
 }
 
 SCAN_ROOTS = ("scripts", "plugins/cereblnk/scripts", "plugins/cereblnk/hooks")
@@ -81,7 +93,8 @@ def main():
             if not p.is_file():
                 continue
             rel = p.relative_to(ROOT).as_posix()
-            if rel in VALIDATORS:
+            is_hook = rel.startswith("plugins/cereblnk/hooks/")
+            if rel in VALIDATORS or (rel in EMITTERS and not is_hook):
                 continue
             try:
                 text = p.read_text(encoding="utf-8")
@@ -90,17 +103,23 @@ def main():
             hit = next((c for c in CONSUMES if c in text), None)
             if hit is None:
                 continue
-            where = "hook" if rel.startswith("plugins/cereblnk/hooks/") else "script"
-            print(f"C-1 {rel}: {where} consumes discovery ({hit!r}) but is not a "
-                  f"declared validator — if this is the executor, say so in §4c "
-                  f"and drop the advisory marker; if it only inspects the "
-                  f"triggers, add it to VALIDATORS")
+            if is_hook:
+                print(f"C-1 {rel}: a hook reads discovery ({hit!r}). Hooks run on "
+                      f"events, so this fires the trigger instead of carrying it, "
+                      f"and no declaration makes that allowed — the map and §4c "
+                      f"say the load is the agent decision")
+            else:
+                print(f"C-1 {rel}: script touches discovery ({hit!r}) and is "
+                      f"declared neither validator nor emitter — add it to "
+                      f"VALIDATORS if it only judges the triggers, to EMITTERS if "
+                      f"it carries them to a specialist, and if it loads a skill "
+                      f"by itself change what C-2/C-3 oblige the map and §4c to say")
             bad += 1
 
     # C-2 / C-3 -------------------------------------------------------
     if MARKER not in MAP.read_text(encoding="utf-8"):
         print(f"C-2 {MAP.relative_to(ROOT)}: schema header does not carry the "
-              f"advisory marker {MARKER!r} — the data must state its own status")
+              f"marker {MARKER!r} — the data must state its own status")
         bad += 1
 
     ptext = POLICY.read_text(encoding="utf-8")
@@ -109,13 +128,13 @@ def main():
         print(f"C-3 {POLICY.relative_to(ROOT)}: no §4c section found")
         bad += 1
     elif MARKER not in section:
-        print(f"C-3 {POLICY.relative_to(ROOT)}: §4c does not carry the advisory "
-              f"marker {MARKER!r} — the prose still lets discovery read as a "
-              f"step that occurs")
+        print(f"C-3 {POLICY.relative_to(ROOT)}: §4c does not carry the marker "
+              f"{MARKER!r} — the prose still lets discovery read as a step that "
+              f"fires on its own")
         bad += 1
 
-    print("check-discovery-claim: cascade is advisory, "
-          f"{len(VALIDATORS)} declared validator(s), "
+    print("check-discovery-claim: triggers are carried, not fired; "
+          f"{len(VALIDATORS)} validator(s), {len(EMITTERS)} emitter(s), "
           + ("tree and claim agree" if bad == 0 else f"{bad} VIOLATIONS"))
     return 1 if bad else 0
 
