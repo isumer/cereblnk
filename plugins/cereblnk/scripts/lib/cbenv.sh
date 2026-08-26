@@ -143,31 +143,15 @@ fi
 # Always exits 0: eight hooks depend on this and a hook that exits
 # non-zero blocks the tool call it was watching.
 #
-# F-31: eight hooks each derived the run with
-# `ls -1dt "$CB_DIR"/context/*/ | head -1` — newest by mtime,
-# re-evaluated per invocation. A backend-agent edited two files and
-# never ran the configured `api` check; ExecFloor did not block it.
-# The ledger was intact. The timestamps show why: the agent edited
-# source first (1787653044-050), when the newest directory was still
-# R-2026-08-24-002, so the edits recorded there. It then wrote its
-# Response Block (1787653090+), which CREATED R-2026-08-25-001. At
-# SubagentStop the floor picked the newest, found no exec.log, and
-# exited 0. Writers and readers guessed independently and split.
+# Identity is carried, not inferred: "newest directory by mtime" does
+# not encode which run an agent belongs to, because a writer can create
+# a newer directory between the edit and the stop. The run id lives in
+# flags/run-active, whose content `run-flag arm` sets.
 #
-# Sorting differently does not fix it: R-2026-08-25-001 sorts after
-# R-2026-08-24-002 under any ordering. "Newest" is the wrong selector,
-# not the wrong sort key — the directory set does not encode which run
-# an agent belongs to, so identity has to be carried. It is carried on
-# flags/run-active, whose content run-flag arm sets to the run id.
-#
-# The pin is validated, never trusted. A stale pin is asymmetric: for
-# the four floors it reads an old ledger, which is friction; for the
-# two ledgers it scatters records into a dead directory silently,
-# which is F-31 again from the writer side. And the flag is written by
-# more than one path and read here as a path component, so anything
-# that is not a bare run id is rejected outright rather than resolved.
-# A rejected or dead pin falls back to the old scan: the pre-CB-147
-# behavior is the floor of this function, not an error path.
+# The pin is validated, never trusted. It is read here as a path
+# component, so anything that is not a bare run id is rejected. A
+# rejected or dead pin falls back to the mtime scan — that is the floor
+# of this function, not an error path.
 cb_run_dir() {
   [ -n "${CB_DIR:-}" ] || return 0
   _cb_rd_pin=""

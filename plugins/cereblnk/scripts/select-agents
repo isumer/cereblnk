@@ -37,6 +37,9 @@ CB_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cb_require_python
 CB_LIB="$CB_SCRIPTS/lib"
 
+CB_EMIT=""
+if [ "${1:-}" = "--emit-floor" ]; then CB_EMIT=1; shift; fi
+
 CB_TEXT=""
 if [ "${1:-}" = "--text" ]; then
   [ $# -ge 2 ] || { echo "select-agents: --text needs a request string" >&2; exit 2; }
@@ -46,7 +49,14 @@ fi
 if [ $# -ge 1 ]; then CB_PATHS="$(printf '%s\n' "$@")"
 elif [ -n "$CB_TEXT" ]; then CB_PATHS=""
 else CB_PATHS="$(cat)"; fi
-export CB_PATHS CB_TEXT CB_LIB
+# The floor is what judges the subagent, so it is written only to a
+# PINNED run — cb_run_dir falls back to a newest-directory guess, and a
+# guessed destination for the judge's own input is how a ledger splits.
+CB_RUN=""
+if [ -n "$CB_EMIT" ] && [ -n "${CB_DIR:-}" ] && [ -s "$CB_DIR/flags/run-active" ]; then
+  CB_RUN="$(cb_run_dir)"
+fi
+export CB_PATHS CB_TEXT CB_LIB CB_EMIT CB_RUN
 $PYBIN << 'PY'
 import os, pathlib, re, sys
 
@@ -130,7 +140,9 @@ FALLBACK_AGENT = "architect-agent"
 TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
      ["backend-agent", "security-agent"], 3),
-    ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt)',
+    ("auth/session",   r'(?i)(auth|login|token|session|permission|secret|credential|crypt'
+                       r'|password|passwd|plaintext'
+                       r'|\bhashed\b|\bhashing\b|\bsalted\b)',
      ["security-agent"], 3),
     ("deletion/retention", r'(?i)(delete|purge|retention|drop table)',
      ["database-agent", "security-agent"], 3),
@@ -165,8 +177,11 @@ TEXT_RULES = [
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
      ["performance-agent"], 2),
-    ("tests",          r'(?i)(\btest\b|coverage|regression)',
+    ("tests",          r'(?i)(\btests?\b|\btesting\b|coverage|regression)',
      ["qa-agent"], 1),
+    ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
+                       r'|\bguide\b|tutorial)',
+     ["docs-agent"], 1),
     # A rewrite reads the old code before anything is designed, so the
     # analyst is selected from the request rather than from a diff --
     # there is no diff yet. Level 3: the blast radius is the module.
@@ -244,20 +259,20 @@ for r in rules:
     if not hit and text:
         low = text.lower()
         for t in r["topics"]:
-            if t.lower() in low:
+            # Word-bounded; the topic is escaped, not a pattern.
+            if re.search(r'(?<!\w)%s(?!\w)' % re.escape(t.lower()), low):
                 hit = "topic '%s'" % t
                 break
     if not hit:
         continue
-    placed = False
+    # The head of `roles:` owns the skill; the rest only receive it.
+    if not any(role in agents for role in r["roles"]):
+        add(r["roles"][:1], 1, "%s -> %s (skill map)" % (hit, r["roles"][0]))
     for role in r["roles"]:
-        if role in agents:
-            skills.setdefault(role, [])
-            if r["skill"] not in skills[role]:
-                skills[role].append(r["skill"])
-            placed = True
-    if placed:
-        skill_why.append("%s <- %s" % (r["skill"], hit))
+        skills.setdefault(role, [])
+        if r["skill"] not in skills[role]:
+            skills[role].append(r["skill"])
+    skill_why.append("%s <- %s" % (r["skill"], hit))
 
 # ---- bounded stack completion (CB-143 / F-07) -------------------------
 # In the loop above a declared stack token is a veto: it can only ever
@@ -402,13 +417,39 @@ if level == 3:
     print("  - %s   # mandatory at gate level 3" % qualify("challenger-agent"))
 print("gate_level: %d" % level)
 print("stack_source: %s" % stack_note)
-print("skills_required:")
+floor_lines = []
 for role in agents:
     got = skills.get(role) or []
     if got:
-        print("  %s: [%s]" % (qualify(role), ", ".join(got)))
+        floor_lines.append("  %s: [%s]" % (qualify(role), ", ".join(got)))
     else:
-        print("  %s: []   # no skill signal for this role" % qualify(role))
+        floor_lines.append("  %s: []   # no skill signal for this role" % qualify(role))
+print("skills_required:")
+for line in floor_lines:
+    print(line)
+
+# --emit-floor writes the block the SubagentStop floor reads, so the
+# list exists in exactly one place. Without a pinned run there is
+# nowhere to write it, and a query-only invocation must not create
+# files, so this is opt-in and silent when it cannot apply.
+if os.environ.get("CB_EMIT"):
+    run = (os.environ.get("CB_RUN") or "").rstrip("/")
+    if not run:
+        print("emit_floor: skipped — no run is armed with an id "
+              "(scripts/run-flag arm \"\" <run_id>). The floor is not "
+              "written to a guessed directory.", file=sys.stderr)
+    else:
+        dest = pathlib.Path(run) / "skills-required.yaml"
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text("skills_required:\n" + "\n".join(floor_lines) + "\n",
+                            encoding="utf-8")
+            print("emit_floor: %s" % dest)
+        except OSError as e:
+            print("emit_floor: could NOT write %s (%s) — the skill floor "
+                  "has nothing to read and will not run." % (dest, e),
+                  file=sys.stderr)
+            raise SystemExit(1)
 print("signals:")
 for s in signals:
     print("  - \"%s\"" % s)

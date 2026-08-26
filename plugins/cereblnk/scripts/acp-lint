@@ -30,36 +30,19 @@ def top(key):
     m = re.search(rf'^{key}\s*:\s*(.*)$', text, re.M)
     return m.group(1).strip() if m else None
 
-kind = top("kind")
+# Strip a trailing YAML comment from the scalar.
+kind = (top("kind") or "").split("#")[0].strip() or None
 
 # ---- T-1: Task Block documents: field (ACP A1) ----
 # A task may hand over indexed sections; it may never hand over a bare
 # path, which is an instruction to read the whole file.
-# ---- V-1: the role has to be an agent that exists (CB-125, CB-127) ----
-# Checked on every kind, Task Blocks included. The Task Block is where
-# an invented role is written FIRST — the conductor assigning the work —
-# and the Response Block is only where the fabricated answer lands,
-# twenty-seven minutes later. ACP §4.2 closes the vocabulary; catching
-# it at the assignment is the difference between a refused block and a
-# wasted run.
+# ---- V-1: the role has to be an agent that exists ----
+# Checked on every kind, Task Blocks included: the assignment is where
+# an invented role is written first. The message names the likely
+# category error — a skill is a capability an agent loads, not an agent.
 #
-# A run asked for a specialist that was never shipped. The Task returned
-# "Done" with zero tool uses and no Response Block — a silent no-op the
-# conductor read as a finished task. It then re-ran the work on a
-# general-purpose agent under a domain-expertise prompt and wrote the
-# block itself, so a fabricated specialist's verdict reached the gate
-# and the gate believed it.
-#
-# The name came from the project's own skills directory. That is the
-# category error worth naming in the message: a skill is a capability an
-# agent loads, not an agent. Nothing here scans for skills or assumes
-# any project layout — the check needs only the roster Cereblnk ships,
-# which it knows by definition.
-#
-# Fails open when agents/ cannot be resolved: acp-lint is also run
-# against blocks outside the plugin tree, and a linter that rejects
-# every role because it cannot find its own roster is worse than one
-# that checks a field less.
+# Fails open when agents/ cannot be resolved: acp-lint also runs against
+# blocks outside the plugin tree.
 def _norm(s):
     # A role may arrive qualified now that select-agents emits the
     # spawnable form (CB-132): cereblnk:engineering:docs-agent. The
@@ -85,18 +68,9 @@ if role and roster and _norm(role) not in roster:
 
 
 # ---- T-2: a domain floor beats the level the block was assigned (F-26) ----
-# A Task Block carried `verification_level: 1` and `risk: low` for a
-# security task. security-agent.md and skills/security-audit/SKILL.md
-# both say "always verification level 3 — no exceptions, no fast path",
-# citing policies/risk-model.md. Nothing said which of the two wins.
-# The agent chose 3, correctly, and by judgment — which means the next
-# one could as easily have obeyed the block.
-#
-# risk-model.md now states the precedence ("Precedence: the domain
-# floor beats the assigned level"). This is that rule with a checker,
-# applied at the ASSIGNMENT, because that is where the wrong number is
-# written first — the same reason V-1's roster check moved onto Task
-# Blocks in CB-127.
+# risk-model.md: the domain floor beats the assigned level. Applied at
+# the ASSIGNMENT, because that is where the wrong number is written
+# first.
 #
 # Scope is deliberately the UNCONDITIONAL floors only. security-agent's
 # whole domain sits on the always-level-3 list, so every task it is
@@ -118,6 +92,47 @@ if kind == "task":
                      f"(policies/risk-model.md, 'Precedence: the domain "
                      f"floor beats the assigned level') — issue the block "
                      f"at {floor}. A smaller scope does not lower it.")
+
+# ---- T-4: revisions are appended, and each one pays for itself (F-54) ----
+# `supersedes` paths are not resolved; only that a revision is
+# attributable and priced.
+rev_m = re.search(r'^revisions\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
+if rev_m:
+    body = rev_m.group(1)
+    # strip commented-out example rows; the template ships one
+    body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    entries = re.split(r'^\s*-\s*revision\s*:', body, flags=re.M)
+    if len(entries) > 1:
+        for i, e in enumerate(entries[1:], 1):
+            label = (e.splitlines() or [""])[0].strip() or f"#{i}"
+            if not re.search(r'^\s+reason\s*:', e, re.M):
+                V.append(f"T-4: revision {label} carries no reason — an "
+                         f"appended revision states why it was appended, or "
+                         f"the block records that it changed without "
+                         f"recording what forced the change.")
+            if not re.search(r'^\s+budget_report\s*:', e, re.M):
+                V.append(f"T-4: revision {label} carries no budget_report. "
+                         f"Each pass pays for itself; a rewrite that "
+                         f"inherits the base report erases what the "
+                         f"previous pass cost (F-54).")
+    stray = re.search(r'^\s*-\s*(?!revision\s*:)\S', body, re.M)
+    if stray and len(entries) == 1:
+        V.append("T-4: revisions: has list entries that do not start with "
+                 "`revision:`. Each appended entry is keyed by its revision "
+                 "marker so the order on disk is the order they happened.")
+
+# ---- T-3: a gate verdict names the text it was derived from (F-53) ----
+# Presence only: whether the named revision is the current one is the
+# consistency gate's question, not this one.
+if kind in ("verification", "challenge"):
+    if not top("target_revision"):
+        V.append("T-3: a gate block must carry target_revision — the "
+                 "revision of the block this verdict was derived from "
+                 "(e.g. 'plan_version: 3', 'revision: REV-06'; a map when "
+                 "several targets were read). A verdict that does not name "
+                 "its target's version cannot be checked for staleness, and "
+                 "a gate that has gone stale states a verdict over text "
+                 "that no longer exists (F-53).")
 
 if kind == "task":
     dm = re.search(r'^documents\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)

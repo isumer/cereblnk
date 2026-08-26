@@ -16,6 +16,11 @@ acp_version: "1.0"
 kind: verification          # or: challenge
 task_id: V-014
 target_task: T-014
+# REQUIRED. Which text of the target this verdict was derived from, so
+# a later reader can tell whether the target has moved since. Use the
+# target's own revision marker (`plan_version: 3`, `revision: REV-06`);
+# a map when several targets were read.
+target_revision: "plan_version: 3"
 role: VerifierAgent
 status: completed
 

@@ -51,7 +51,9 @@
 # skill passes the user's argument through verbatim; an argument that is
 # not one of the four accepted words changes nothing and says so.
 #
-# Usage: run-flag arm|disarm|status [cb_dir] [run_id]
+# Usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]
+#   disarm   = pause; the run may resume
+#   complete = final synthesis; hands off to run-completed (§5)
 #        run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
@@ -100,15 +102,15 @@ else
       .* | *[!A-Za-z0-9._-]*)
         echo "run-flag: '$CONTENT' is not a run id. Expected a bare directory name under context/, e.g. R-2026-08-25-001." >&2
         echo "run-flag: nothing was changed — the run-active flag is still whatever it was." >&2
-        echo "usage: run-flag arm|disarm|status [cb_dir] [run_id]" >&2
+        echo "usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]" >&2
         exit 2 ;;
     esac
   fi
 fi
 
 case "$CMD" in
-  arm|disarm|status) ;;
-  *) echo "usage: run-flag [flag <name>] arm|disarm|status [cb_dir] [run_id]" >&2; exit 2 ;;
+  arm|disarm|complete|status) ;;
+  *) echo "usage: run-flag [flag <name>] arm|disarm|complete|status [cb_dir] [run_id]" >&2; exit 2 ;;
 esac
 
 if [ -z "$DIR" ]; then
@@ -137,6 +139,44 @@ case "$CMD" in
       exit 1
     fi
     echo "run-flag: armed ($FLAG)"
+    # Scaffold what run-status reads. Created only when absent; the
+    # conductor owns the contents afterwards.
+    if [ "$NAME" = "run-active" ] && [ -n "$CONTENT" ]; then
+      _state="$DIR/state.md"
+      if [ ! -f "$_state" ]; then
+        {
+          printf '# Run state — %s\n\n' "$CONTENT"
+          printf 'run_id: %s\n' "$CONTENT"
+          printf 'stage: armed\n'
+          printf 'spec: none\n'
+          printf 'plan: context/%s/plan.md\n' "$CONTENT"
+          printf '\nRead by `scripts/run-status`, which a second terminal can\n'
+          printf 'run while the conductor is blocked mid-run. Keep `stage`\n'
+          printf 'current; it is the only line that says where the run is.\n'
+        } > "$_state" 2>/dev/null || true
+      elif ! grep -q "^run_id: $CONTENT\$" "$_state" 2>/dev/null; then
+        # A stale run_id would point run-status at another run.
+        _tmp="$_state.$$"
+        if sed "s|^run_id: .*|run_id: $CONTENT|" "$_state" > "$_tmp" 2>/dev/null; then
+          mv -f "$_tmp" "$_state" 2>/dev/null || rm -f "$_tmp" 2>/dev/null
+        else
+          rm -f "$_tmp" 2>/dev/null || true
+        fi
+      fi
+      _inbox="$DIR/context/$CONTENT/inbox.md"
+      if [ ! -f "$_inbox" ] && [ -d "$DIR/context/$CONTENT" ]; then
+        {
+          printf '# Inbox — %s\n\n' "$CONTENT"
+          printf 'written_by: conductor\nrun_id: %s\n' "$CONTENT"
+          printf 'date: %s\n' "$(date -u +%Y-%m-%d 2>/dev/null || echo unknown)"
+          printf 'acp_version: "1.0"\n\n'
+          printf 'Every user message arriving during a run lands here at the next\n'
+          printf 'task boundary, with its class (input-policy §3). Unchecked\n'
+          printf '`- [ ]` means unresolved; `correction` and `invalidation` hold\n'
+          printf 'the loop, `clarification` never does.\n'
+        } > "$_inbox" 2>/dev/null || true
+      fi
+    fi
     # F-23: stat answers "is the file there", not "is it in the tree the
     # hooks read". Under a split root the arm reported success while the
     # hooks saw nothing — the same silent-unguarded outcome this script
@@ -152,6 +192,39 @@ case "$CMD" in
       echo "run-flag: could not remove $FLAG — the guards still consider this run active." >&2
       exit 1
     fi
+    # The nudge counter covers one uninterrupted armed period.
+    if [ "$NAME" = "run-active" ]; then
+      rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
+    fi
     echo "run-flag: disarmed"
+    if [ "$NAME" = "run-active" ] && [ ! -f "$DIR/flags/run-completed" ]; then
+      echo "run-flag: note — this is a PAUSE, not a completion. If the run" >&2
+      echo "run-flag: is finished, use 'run-flag complete' instead: it hands off" >&2
+      echo "run-flag: to run-completed, which is what DelegationGuard reads as a" >&2
+      echo "run-flag: run that ENDED rather than one whose guard was removed." >&2
+    fi
+    ;;
+  complete)
+    # Final-synthesis handoff (run-discipline §5): clears the run
+    # flag and its siblings, then writes run-completed.
+    rm -f "$FLAG" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.nudged" 2>/dev/null || true
+    rm -f "$DIR/flags/run-active.witness" 2>/dev/null || true
+    mkdir -p "$DIR/flags" 2>/dev/null || true
+    : > "$DIR/flags/run-completed" 2>/dev/null || true
+    if [ ! -f "$DIR/flags/run-completed" ]; then
+      echo "run-flag: could not write $DIR/flags/run-completed — the follow-up" >&2
+      echo "run-flag: window is NOT armed. Do not report the run as handed off." >&2
+      exit 1
+    fi
+    for _stale in run-active run-active.nudged run-active.witness; do
+      if [ -f "$DIR/flags/$_stale" ]; then
+        echo "run-flag: could not remove $DIR/flags/$_stale — the guards may still" >&2
+        echo "run-flag: read this run as live." >&2
+        exit 1
+      fi
+    done
+    echo "run-flag: completed (handed off to run-completed)"
     ;;
 esac

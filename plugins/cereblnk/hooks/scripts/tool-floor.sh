@@ -1,41 +1,26 @@
 #!/usr/bin/env bash
-# ToolFloorHook (PreToolUse: Bash) — F-24, the mirror of CB-123.
+# ToolFloorHook (PreToolUse: Bash) — the shell half of a tool denial.
 #
-# `disallowedTools` closes the tools it names. It does not close the
-# shell, and the shell reaches the same files. Measured: architect-agent
-# shipped `disallowedTools: Write, Edit, NotebookEdit`, /cb-design
-# tasked it with authoring four spec sections, and it authored them
-# through `cat > file <<'EOF'`. The declared restriction decided which
-# tool did the work and nothing else.
-#
-# Half of that finding is a definition bug, fixed where it lived: no
-# agent is denied Write any more, because run-discipline §1 requires
-# every subagent to write its Response Block (checker: check-agent-skills
-# A-7). This hook is the other half — the restriction that REMAINS.
-#
-# Twelve agents deny `Edit, NotebookEdit`: they decide and record, they
-# never modify existing source. `sed -i`, `patch`, `ed` and an editor
-# invocation do exactly that, under a tool the denial never named.
+# `disallowedTools` closes the tools it names, not the shell, and the
+# shell reaches the same files. Twelve agents deny `Edit, NotebookEdit`:
+# they decide and record, they never modify existing source. `sed -i`,
+# `patch`, `ed` and an editor invocation do exactly that.
 #
 # Decision table:
-#   no agent identity in the payload   -> allow (that is the conductor;
+#   no agent identity in the payload   -> allow (the conductor;
 #                                         DelegationGuard owns it)
-#   identity is not a Cereblnk agent   -> allow (nothing to read)
+#   identity is not a Cereblnk agent   -> allow
 #   agent denies no edit tool          -> allow
 #   command rewrites no existing file  -> allow
 #   otherwise                          -> BLOCK (exit 2)
 #
-# Scope, honestly. It asks `shellwrite.py --in-place`, so it sees the
-# ordinary in-place forms and not a determined bypass — the same bound
-# CB-123 wrote down for itself, and for the same reason. It also does
-# NOT block redirections: an agent that holds Write may replace a whole
-# file with the tool, so blocking `> file` would be stricter than the
-# grant it was given, and a guard that produces false blocks is one the
-# model learns to route around.
+# Scope: it asks `shellwrite.py --in-place`, so it sees the ordinary
+# in-place forms and not a determined bypass. It does NOT block
+# redirection — an agent holding Write may replace a whole file with the
+# tool, so blocking `> file` would be stricter than the grant it has.
 #
 # Fails open on every error path: no project root, no interpreter, no
-# roster, unparseable input -> exit 0. A floor that cannot read the
-# definition has no grounds to block, only grounds to stay quiet.
+# roster, unparseable input -> exit 0.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 . "$HERE/lib/cbenv.sh" 2>/dev/null || true

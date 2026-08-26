@@ -124,8 +124,13 @@ state.write_text(str(count + 1), encoding="utf-8")
 detail = "; ".join("%s -> %s" % (s, c) for s, c in blocking)
 print("%s edited %s and finished without running it. Run the configured "
       "check for each surface, read the output, and fix what it reports "
-      "before finishing: %s. State the result in your Response Block; an "
-      "unexecuted change carries an assumed label, not a known one."
+      "before finishing: %s. State the result in your Response Block. "
+      "This floor sees that the command ran, never what it proved: it "
+      "cannot tell a check that exercises your change from one that "
+      "would have passed before it. So running it does not by itself "
+      "earn a known label — say what the output rules out, and if the "
+      "configured check does not reach your change, say that instead of "
+      "labelling on it."
       % (agent, ", ".join(s for s, _ in blocking), detail))
 ' 2>/dev/null || true)"
 

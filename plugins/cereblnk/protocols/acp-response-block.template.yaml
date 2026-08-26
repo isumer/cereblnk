@@ -66,3 +66,30 @@ artifacts: []
 budget_report:
   tokens_received: 8000
   tokens_used: 6200
+
+# ---- revisions: APPEND, never rewrite --------------------------------
+# Everything above is written once. A block that must change appends an
+# entry here and leaves the text above untouched, so the block is its
+# own history and each pass reports what it cost.
+#
+# Appending needs no new permission: ToolFloorHook blocks in-place
+# rewrites, not redirection, so `cat >> block.yaml <<'EOF'` is available
+# to every role.
+#
+# Reader rule: current state is the base with each revision's
+# `supersedes` applied in order, newest last.
+revisions: []
+#  - revision: REV-03
+#    reason: "C-2 conceded: the byte-exact premise presumed an enforced
+#             constraint that no DDL in this repository creates."
+#    supersedes:
+#      - path: facts.derived.D-03
+#        now: "Duplicate match is reached through both branches; the
+#              surviving conclusion does not restore the premise."
+#      - path: facts.known.F-05
+#        now: "Evidences the annotation only, not an enforced index."
+#    adds: [F-09]
+#    verdict_unchanged: true        # say so explicitly when it holds
+#    budget_report:
+#      tokens_received: 3500
+#      tokens_used: 900             # reasoning only — nothing re-emitted

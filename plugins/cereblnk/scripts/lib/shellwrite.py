@@ -45,6 +45,7 @@ NOTHING here, because a write hint cannot say which shape it was. A
 floor, still not a proof.
 """
 import json
+import re
 import shlex
 import sys
 
@@ -84,9 +85,21 @@ NESTED_SHELL = {"sh", "bash", "zsh", "dash"}
 INLINE = {"python", "python3", "py", "perl", "node", "ruby",
           "powershell", "pwsh", "awk"}
 INLINE_FLAGS = {"-c", "-e", "-Command", "--command"}
-WRITE_HINTS = ("open(", ".write", "writeFile", "writeFileSync",
+WRITE_HINTS = (".write", "writeFile", "writeFileSync",
                "Set-Content", "Out-File", "shutil.copy", "shutil.move",
                "os.rename", "os.replace", "File.write", "write_text")
+
+# open() defaults to mode "r", so it is a write only when a mode
+# argument says so: "w", "a", "x", or a bytes/plus variant.
+OPEN_WRITE = re.compile(
+    r"""open\s*\(          # the call
+        [^)]*?             # the path, however it is spelled
+        ,\s*               # a second positional or keyword argument
+        (?:mode\s*=\s*)?   # open(f, mode="w") is the same thing
+        (['"])             # its quote
+        [rbt+]*[wax][rbt+]*  # a mode containing w, a or x
+        \1
+    """, re.X)
 
 # Command separators: what follows starts a new command head.
 SEPARATORS = {"|", "||", "&&", ";", "&", "|&", "(", ")", "{", "}", "\n"}
@@ -145,7 +158,9 @@ def targets(command, in_place=False):
                 return
             for j, o in enumerate(operands):
                 if o in INLINE_FLAGS and j + 1 < len(operands):
-                    if any(h in operands[j + 1] for h in WRITE_HINTS):
+                    _src = operands[j + 1]
+                    if any(h in _src for h in WRITE_HINTS) \
+                            or OPEN_WRITE.search(_src):
                         found.append(UNRESOLVED)
                     break
         elif head in OPAQUE:

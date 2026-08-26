@@ -59,7 +59,10 @@ except Exception:
     sys.exit(0)
 
 usage = None
-for raw in tail.splitlines():
+last_usage_idx = -1
+compact_post = None
+compact_idx = -1
+for idx, raw in enumerate(tail.splitlines()):
     raw = raw.strip()
     if not raw:
         continue
@@ -71,21 +74,32 @@ for raw in tail.splitlines():
     u = msg.get("usage")
     if isinstance(u, dict) and msg.get("role") == "assistant":
         usage = u
-if not usage:
+        last_usage_idx = idx
+    # A compaction record carries no `usage` of its own.
+    cm = rec.get("compactMetadata")
+    if rec.get("isCompactSummary") and isinstance(cm, dict) and isinstance(cm.get("postTokens"), int):
+        compact_post = cm["postTokens"]
+        compact_idx = idx
+
+compacted = compact_post is not None and compact_idx > last_usage_idx
+if compacted:
+    occupancy = compact_post
+elif usage:
+    def n(key):
+        v = usage.get(key)
+        return v if isinstance(v, int) else 0
+
+    # Occupancy is everything the model was sent, cached or not. Counting
+    # only input_tokens reads a cache-warm turn as nearly empty, which is
+    # the opposite of true.
+    occupancy = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens")
+else:
     sys.exit(0)
-
-def n(key):
-    v = usage.get(key)
-    return v if isinstance(v, int) else 0
-
-# Occupancy is everything the model was sent, cached or not. Counting
-# only input_tokens reads a cache-warm turn as nearly empty, which is
-# the opposite of true.
-occupancy = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens")
 if occupancy <= 0:
     sys.exit(0)
 
 capacity = checkpoint = 0
+capacity_assumed = False
 try:
     out = subprocess.run(
         [sys.executable, str(pathlib.Path(os.environ["CB_PLUGIN_ROOT"]) / "scripts/context-budget")],
@@ -102,7 +116,7 @@ try:
     # not need to. A percentage above 100 is the tell that the
     # denominator was never real; the warning must carry the same label
     # its own source does.
-    window_assumed = bool(re.search(r"window:.*source: assumed", out))
+    capacity_assumed = bool(re.search(r"^\s*labelled:\s*assumed", out, re.MULTILINE))
 except Exception:
     pass
 if not capacity:
@@ -117,9 +131,11 @@ if cb:
     try:
         tel = pathlib.Path(cb) / "telemetry"
         tel.mkdir(parents=True, exist_ok=True)
-        line = "%s session=%s occupancy=%d capacity=%d pct=%s\n" % (
+        line = "%s session=%s occupancy=%d capacity=%d pct=%s compacted=%s capacity_source=%s\n" % (
             time.strftime("%Y-%m-%dT%H:%M:%S"), d.get("session_id") or "-",
-            occupancy, capacity, pct)
+            occupancy, capacity, pct,
+            "yes" if compacted else "no",
+            "assumed" if capacity_assumed else "measured")
         with open(tel / "context.log", "a", encoding="utf-8") as fh:
             fh.write(line)
     except Exception:
@@ -128,12 +144,15 @@ if cb:
 if not checkpoint or occupancy < checkpoint:
     sys.exit(0)
 
-if window_assumed:
+if capacity_assumed:
     note = ("Context monitor: %d input tokens used — about %s%% of an ASSUMED "
-            "capacity of %d, past the %d checkpoint. The window was never "
+            "capacity of %d, past the %d checkpoint. Capacity is the window "
+            "minus the output reserve and at least one of those was never "
             "measured, so treat the percentage as a guess and do not reshape "
-            "the work around it; set CLAUDE_CODE_AUTO_COMPACT_WINDOW to make "
-            "it real. Prefer digests over re-reading files." % (
+            "the work around it; run scripts/context-budget to see which half "
+            "is missing, then set CLAUDE_CODE_AUTO_COMPACT_WINDOW or "
+            "CLAUDE_CODE_MAX_OUTPUT_TOKENS. Prefer digests over re-reading "
+            "files." % (
                 occupancy, pct, capacity, checkpoint))
 else:
     note = ("Context monitor: %d of %d input tokens used (%s%% of capacity), past the "

@@ -99,11 +99,20 @@ union, §4 for relations closure, §4c for task-scoped skills.
    **Skills are resolved per task, never assumed.** At run start run
 `${CLAUDE_PLUGIN_ROOT}/scripts/detect-stack` once, then
 `${CLAUDE_PLUGIN_ROOT}/scripts/select-agents` with the changed paths,
-or `--text "<the request>"` when nothing has changed yet. Copy its
-`skills_required` block verbatim to
-`$CB_DIR/context/<run_id>/skills-required.yaml` and write each role's
-list into that role's Task Block. Exit 3 means unresolved: supply
-`--text` or name the surface. Never route on a silent default. the same tables the dispatch skill routes
+or `--text "<the request>"` when nothing has changed yet, and pass
+`--emit-floor` so the selector WRITES
+`$CB_DIR/context/<run_id>/skills-required.yaml` itself.
+
+   Do not restate the list in the Task Block. That file is the single
+source of truth: the subagent reads its own row from it, and the
+SubagentStop floor judges against the same rows. A hand-copied second
+list is a copy that can drift from the one the floor enforces, and the
+subagent would be judged on a list it was never shown.
+
+   The Task Block says instead: *"your required skills are in
+`context/<run_id>/skills-required.yaml`, under your role key — load
+them before reasoning."* Exit 3 means unresolved: supply `--text` or
+name the surface. Never route on a silent default. the same tables the dispatch skill routes
    by, so command-invoked and dispatch-invoked runs select identically.
    **File-mediated ACP, the context ledger.** Every subagent writes its
 full Response Block to `$CB_DIR/context/<run_id>/<task_id>.yaml`. It then returns a digest of at most ten lines, and nothing else.

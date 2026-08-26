@@ -1,41 +1,23 @@
 #!/usr/bin/env bash
-# RunGuardHook (Stop) — bounded, progress-aware continuation for
-# interrupted runs (CB-081; supersedes the single-nudge v1).
+# RunGuardHook (Stop) — bounded, progress-aware continuation.
 #
-# Problem: a workflow whose subagent result lands between turns leaves
-# the session silently idle. One nudge (v1) resumed it once — but a
-# multi-slice run on a weaker executor stalls repeatedly, and v1's
-# guard was already spent. Unbounded nudging, though, is a loop risk.
-#
-# v2 rule: nudge again ONLY while the run demonstrably progresses.
-#   - progress metric: Response Block count in the newest run dir
-#     (ledger files are the ground truth, not the conversation)
-#   - up to MAX_NUDGES total, and each nudge after the first requires
-#     block count to have GROWN since the previous nudge
+# A workflow whose subagent result lands between turns leaves the
+# session idle. This nudges it, but only while the run demonstrably
+# progresses:
+#   - progress metric: Response Block count in the pinned run dir
+#   - up to MAX_NUDGES, and each nudge after the first requires the
+#     count to have GROWN since the previous one
 #   - no growth, or cap reached -> disarm (rename to .nudged) and allow
-#     the stop: stagnation is a question for the user, not a loop
+#     the stop
 #
-# The message names three cases, and the reason is CB-144 (F-14). It
-# used to name one: "if you are intentionally waiting for the user,
-# remove flags/run-active first and ask." Measured against a real run,
-# that was wrong twice over. The conductor was not idle, it was waiting
-# on two live specialists — the normal state of a multi-agent run — and
-# there was no ledger to reconcile because the run had written no
-# plan.md. The remedy it offered was worse than the nudge: disarming
-# while specialists are out removes the floors that judge them when
-# they return.
-#
-# No host signal reports a live subagent, and inferring one from
-# undocumented task files would make this hook depend on an F-class
-# mechanism, which tasks may not do (BACKLOG rules, 05). So the fix is
-# not detection — it is that the message stops assuming which case it
-# is in, and attaches the disarm advice to the ONE case where disarming
-# is correct. Checker: scripts/test-hooks, run-guard message cases.
+# The message names three cases and attaches the disarm advice to the
+# one where disarming is correct. No host signal reports a live
+# subagent, so it must not assume which case it is in.
 #
 # Loop safety, in order:
 #   1. stop_hook_active true in stdin -> always allow the stop.
-#   2. State is keyed to the run dir: a stale state file from an older
-#      run never insta-disarms a fresh one.
+#   2. State is keyed to the run dir, so a stale file never
+#      insta-disarms a fresh run.
 #   3. Progress requirement is strictly monotonic; equal counts disarm.
 #   4. Hard cap MAX_NUDGES; then disarm.
 #   5. Fail open on every error path.
@@ -55,7 +37,10 @@ case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 NEWEST="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 BLOCKS=0; TASKS=0; PENDING=""
 if [ -n "$NEWEST" ]; then
-  BLOCKS=$(ls -1 "$NEWEST"*.yaml 2>/dev/null | wc -l | tr -cd '0-9'); BLOCKS=${BLOCKS:-0}
+  # Response Blocks only; the run's own inputs are not progress.
+  BLOCKS=$(ls -1 "$NEWEST"*.yaml 2>/dev/null \
+    | grep -Ev '/(skills-required|stack-profile|plan)\.yaml$' \
+    | wc -l | tr -cd '0-9'); BLOCKS=${BLOCKS:-0}
   if [ -f "$NEWEST/plan.md" ]; then
     TASKS=$(grep -c "task_id" "$NEWEST/plan.md" 2>/dev/null | tr -cd '0-9'); TASKS=${TASKS:-0}
     PENDING=" ($BLOCKS/$TASKS task blocks on disk in ${NEWEST#$CB_DIR/})"
