@@ -146,10 +146,9 @@ Armed without an id, they guess the newest directory.
 That guess is the F-31 defect (CB-147).
 The empty second argument holds the cb_dir slot.
 Remove it before ANY turn that ends awaiting the user.
-Complete it at final synthesis with `scripts/run-flag complete` — a
-finished run is handed off to `run-completed`, not stripped of its
-guard. Plain `disarm` is the PAUSE, and DelegationGuard tells the two
-apart: a removed flag over a warm ledger is its disarm-and-continue
-violation, which is what a conductor following the old wording hit.
+Complete it at final synthesis with `scripts/run-flag complete`.
+A finished run is handed off, not stripped of its guard.
+Plain `disarm` is the pause.
+DelegationGuard tells the two apart.
 Full lifecycle semantics live in `policies/run-discipline.md` §5.
 That is the authoritative copy. This section does not restate it.
