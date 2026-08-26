@@ -183,3 +183,4 @@ read.
 - [x] **CB-159** — The staleness gate was an instruction the linter never read
 - [x] **CB-160** — The skill floor was hand-copied to two places
 - [x] **CB-161** — The exec floor promised what it could not check
+- [x] **CB-162** — A contract could not name the path clients actually call

@@ -80,6 +80,35 @@ topics brought that to two.
 
 Gate levels were checked separately and did not move in any case.
 
+### Fixed — a contract may name the path clients actually call (CB-162, F-36)
+
+`contract-check` matched a channel by plain substring over the party's
+files. A framework that splits a route across annotations never spells
+the whole path anywhere:
+
+```java
+@RequestMapping("/api/users")   // class
+@PostMapping("/register")       // method
+```
+
+So a contract naming `POST /api/users/register` — the path a client
+actually calls — was reported as *"api never mentions channel"*, and the
+only way to satisfy the checker was to write `/register` in the
+contract. A checker that forces the artifact it protects to be written
+incorrectly is worse than one that misses.
+
+The script already knew this for migration rows: `path_token`'s own
+docstring says *"POST /api/x is matched on /api/x — the verb is not in
+the client's source"*. Channels were the one place that did not use it.
+
+Channels now match on the token, then on the longest trailing run of
+segments that appears. Measured, with controls: the real wire path
+matches, a channel for an endpoint that does not exist still reports,
+and a different route sharing a final segment (`/admin/register`) still
+matches — a false positive that could not be removed without refusing
+honest split routes. It is not silent: a partial match prints a note
+saying it is not proof of the same route.
+
 ### Fixed — the exec floor says what it can check (CB-161, F-33)
 
 The floor blocked with *"an unexecuted change carries an assumed label,

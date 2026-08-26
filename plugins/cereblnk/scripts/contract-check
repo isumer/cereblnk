@@ -100,6 +100,25 @@ def path_token(value):
     return max(toks, key=len) if toks else value.strip()
 
 
+def channel_match(ch, text):
+    """Where the channel is mentioned, or None.
+
+    The whole token when the source spells it out. Otherwise the longest
+    trailing run of segments that does appear: a framework may split one
+    route across a class-level prefix and a method-level suffix, so the
+    full path is never a literal anywhere in the file.
+    """
+    tok = path_token(ch)
+    if tok in text:
+        return tok
+    segs = [s for s in tok.split("/") if s]
+    for i in range(1, len(segs)):
+        cand = "/" + "/".join(segs[i:])
+        if cand in text:
+            return cand
+    return None
+
+
 def haystack(files):
     parts = []
     for f in files:
@@ -130,7 +149,7 @@ def main(argv):
     if not smap:
         return 3
 
-    findings = []
+    findings, notes = [], []
     for c in contracts:
         parties = [p for p in c["parties"] if not wanted or p in wanted]
         for party in parties:
@@ -143,9 +162,17 @@ def main(argv):
                 continue
             text = haystack(files)
             for ch in c["channels"]:
-                if ch not in text:
+                where = channel_match(ch, text)
+                if where is None:
                     findings.append("%s v%s: %s never mentions channel %s"
                                     % (c["name"], c["version"], party, ch))
+                elif where != path_token(ch):
+                    notes.append("%s v%s: %s matches channel %s only on %s. "
+                                 "A framework that splits a route across "
+                                 "annotations never spells the whole path, so "
+                                 "this is not silence — but it is not proof of "
+                                 "the same route either."
+                                 % (c["name"], c["version"], party, ch, where))
             for old, new, status in c["migration"]:
                 if status == "deferred":
                     continue
@@ -157,6 +184,8 @@ def main(argv):
 
     for f in findings:
         print(f)
+    for n in notes:
+        print("note: %s" % n, file=sys.stderr)
     return 1 if findings else 0
 
 
