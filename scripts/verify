@@ -48,6 +48,8 @@ unsupported paths where the tool has them):
                           contain, not plausible-looking strings (CB-098)
   check-discovery-claim   the cascade is advisory and both the map and
                           §4c still say so; no executor (CB-142)
+  ground-check ships     the doc:/G-2 checker ships with the package, not
+                          just the rule that names it
   test-leakage            the leakage checker's own failure paths (CB-108)
   leakage scan            reference strings in tracked files; SKIPs when
                           no wordlist is configured — a skip is never a
@@ -247,8 +249,12 @@ def main():
           and "F-1" in fm_bad.stdout and "F-3" in fm_bad.stdout,
           f"ok rc={fm_ok.returncode}, bad rc={fm_bad.returncode}")
 
-    g_ok = sh(["bash", str(S / "ground-check"), str(ROOT / "tests/fixtures/grounding/ok-block.yaml"), str(ROOT)])
-    g_bad = sh(["bash", str(S / "ground-check"), str(ROOT / "tests/fixtures/grounding/bad-block.yaml"), str(ROOT)])
+    if not (ROOT / "plugins/cereblnk/scripts/ground-check").is_file():
+        suite("ground-check ships", False, "not in the package")
+    else:
+        suite("ground-check ships", True, "")
+    g_ok = sh(["bash", str(PS / "ground-check"), str(ROOT / "tests/fixtures/grounding/ok-block.yaml"), str(ROOT)])
+    g_bad = sh(["bash", str(PS / "ground-check"), str(ROOT / "tests/fixtures/grounding/bad-block.yaml"), str(ROOT)])
     suite("ground-check fixtures", g_ok.returncode == 0 and g_bad.returncode == 1,
           f"ok rc={g_ok.returncode}, bad rc={g_bad.returncode}")
 

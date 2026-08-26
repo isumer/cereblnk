@@ -20,12 +20,10 @@
 #
 # Usage: ground-check <block.yaml> [repo-root]   Exit 0 ok / 1 dangling / 2 usage
 set -euo pipefail
-# cbenv lives with the plugin, not beside this script. The previous
-# `dirname/lib/cbenv.sh` never resolved, so the fallback below was the
-# only branch that ever ran and $CB_DIR was always empty — which is why
-# nothing here could resolve a doc: reference.
-_gc_env="$(cd "$(dirname "${BASH_SOURCE[0]}")/../plugins/cereblnk/scripts" && pwd)/lib/cbenv.sh"
-# shellcheck source=../plugins/cereblnk/scripts/lib/cbenv.sh
+# cbenv.sh sits beside this script; sourcing it is optional so file/line
+# checks still work standalone if $CB_DIR is never resolved.
+_gc_env="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+# shellcheck source=lib/cbenv.sh
 [ -f "$_gc_env" ] && . "$_gc_env" 2>/dev/null || true
 : "${PYBIN:=python3}"
 [ $# -ge 1 ] || { echo "usage: ground-check <block.yaml> [root]" >&2; exit 2; }
