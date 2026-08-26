@@ -9,6 +9,25 @@ recorded in their own Amendment Logs; this file records what shipped.
 
 ## [1.4.3] — The seventeen entry points the manifest stopped declaring
 
+### Also — the structural verbs could not route
+
+`refactor UserService` resolved to nothing. Two gaps, measured
+together:
+
+- No text rule mentioned `refactor`, `restructure`, `rewrite`,
+  `cleanup`, `simplify` or `extract` — nothing at all. Two of the
+  seventeen entry points hinge on those verbs, and `/cb-dispatch` rule 7
+  exists solely to disambiguate refactor from rewrite, a rule no text
+  signal could ever reach.
+- `\bservice\b` does not match inside `UserService`. The word boundary
+  makes the compound invisible, so the most common way to name a
+  service in Java or TypeScript matched the server-side rule not at all.
+
+A `restructure` rule now routes to `refactoring-agent`, and the
+server-side pattern admits camelCase compounds. Controls unchanged:
+"basalt tiles" and a weather question still resolve to nothing.
+
+
 CB-141 added a `skills` array to the manifest so the host could see the
 77 group skills under `skills/<group>/<name>/`. On Claude Code 2.1.92
 that declaration REPLACES the default scan rather than extending it, so
