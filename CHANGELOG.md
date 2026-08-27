@@ -7,6 +7,101 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.5.0] — An audit of the routing hint, and what else it turned up
+
+The routing hint was checked for what it actually told a reader: which
+rule fired, what the rule saw, and which tool the name it printed
+belonged to. Three defects turned up in that one hook. The same
+question — does this record what it claims to record? — kept finding
+more, in mechanisms nowhere near the hint.
+
+`context-monitor.sh` is the sharpest example. Compaction is written as
+two transcript records: a system record, then a separate
+`isCompactSummary` record. The detector required both fields on one
+record, so it matched nothing. Replayed against a real transcript, the
+monitor reported the pre-compact turn's 766762 tokens where the window
+actually held 38689 — twenty-fold over, in the direction that makes a
+conductor reshape work around a nearly-empty window it believes is
+nearly full.
+
+`ground-check` shipped the same way blind: named by three in-package
+files, built outside the package the manifest pulls in. An install
+carried G-2's rule and not its checker. `run-flag arm` reported success
+on a pin whose directory did not exist; `cb_run_dir()` discards a dead
+pin and falls back to the mtime guess it exists to replace, so five
+SubagentStop floors resolved nothing from an armed run. SubagentStop
+digests were validated for length and then kept nowhere, while the
+conducting conversation decides from them.
+
+Two more places demanded an honesty their own rules did not allow. The
+task template's acceptance line required every claim be Known or
+Derived. Its own paired worked answer carries a load-bearing Assumed
+fact, so no honest response could satisfy the line as written.
+`exec-floor` told an agent to fix everything the configured check
+reports, with no way to say a failure predates the change. And
+`run-discipline.md` stated the disarm rule more coarsely than
+`run-guard.sh` enforces it — a second copy, with room to drift from the
+first.
+
+Minor rather than patch: a new `discovery_fired` output field, two new
+Task Block fields (`discovery_watch` and its one-hop disclosure),
+`ground-check` newly shipping with the package, a changed `arm`
+contract that now refuses rather than silently pinning a dead run, and
+a new retained artifact for SubagentStop digests. Nothing already
+emitted changes shape.
+
+### Fixed
+
+- **The routing hint records what it routed on.** One line per routed
+  turn, alongside the context telemetry, so a wrong target traces back
+  to the text that produced it.
+- **Structural verbs reach the dispatch table.** `refactor`,
+  `restructure`, `cleanup`, `simplify`, `extract` matched no text rule,
+  so the commonest structural request fell to the architect fallback
+  with the hint silent. `rewrite` stays out of the new rule; the
+  existing rewrite/legacy rule already owns that verb.
+- **`\bservice\b` sees a camelCase compound.** The word boundary made
+  the most common way to name a service in Java or TypeScript invisible
+  to the server-side rule.
+- **The hint names agent roles, not skills.** It printed identifiers in
+  exactly the namespace shape a skill uses. A reader passed one to the
+  Skill tool and got `Unknown skill`. The note now says which tool
+  takes which, and that the Skill tool will reject an agent role.
+- **Compaction is detected across both records.** The system record and
+  the `isCompactSummary` record are read together. The ordering test
+  against the last assistant usage is unchanged.
+- **`ground-check` ships inside the package.** Moved alongside
+  `check-agent-skills` and `check-discovery-claim`, with a verify suite
+  in the same shape as those two.
+- **`run-flag arm` refuses a pin it cannot resolve.** It now creates
+  `context/<id>/` itself and exits 1 if it cannot, instead of reporting
+  success on an id that `cb_run_dir()` will later discard.
+- **`acp-task` acceptance admits a declared assumption.** A
+  load-bearing Estimated or Assumed claim passes when it is declared
+  and its unknown is recorded. An undeclared assumption still fails.
+- **`exec-floor` can name a pre-existing failure.** The carve-out
+  requires showing the check fails the same way with the change
+  reverted; a bare claim does not clear the floor.
+- **`run-guard.sh` is the single copy of the disarm rule.**
+  `run-discipline.md` §5 now states the principle and names the hook as
+  the operational authority, instead of a prose copy that had already
+  drifted from the three-case logic it enforces.
+
+### Added
+
+- **`discovery_watch` on the Task Block.** For each matched rule,
+  `select-agents` emits its trigger -> skill pairs under the roles that
+  own the rule, one hop from the match. `discovery_fired` on the
+  Response Block records what actually fired, with the file and line.
+  Nothing fires a trigger automatically; a specialist loads on evidence.
+  The one-hop limit is disclosed in the template itself, not only in
+  policy prose.
+- **SubagentStop digests are retained.** Written to
+  `run/digest.<agent>.<ts>.<pid>.txt` in the pinned run directory before
+  the cap check runs, so the text survives whether or not it triggers a
+  nudge. Writes are skipped silently when `cb_run_dir()` resolves no
+  run.
+
 ## [1.4.3] — The seventeen entry points the manifest stopped declaring
 
 CB-141 added a `skills` array to the manifest so the host could see the

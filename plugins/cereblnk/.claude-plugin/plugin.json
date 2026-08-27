@@ -2,7 +2,7 @@
   "name": "cereblnk",
   "displayName": "Cereblnk",
   "description": "Adaptive multi-agent engineering platform: runtime-orchestrated specialist agents, evidence-driven verification, and context budgeting.",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "author": {
     "name": "isumer"
   },
