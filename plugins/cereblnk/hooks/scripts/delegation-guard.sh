@@ -180,6 +180,13 @@ except Exception:
 $CB_SHELL_WRITES
 EOF
     [ -n "$_unowned" ] || exit 0          # every target is the conductor's own
+    if [ "$_unowned" = "!" ]; then
+      # shellwrite could not tokenise the command at all, so no write
+      # was ever determined — a different claim from a parsed write to
+      # an unowned target, and it gets its own message and next action.
+      echo "Cereblnk DelegationGuard: a run is active — this command could not be parsed, so whether it writes is unknown. NEXT ACTION: simplify or split the command so it can be parsed, then retry." >&2
+      exit 2
+    fi
     CB_BLOCKED_PATH="$_unowned"
     export CB_BLOCKED_PATH
     [ "$CB_BLOCKED_PATH" = "?" ] && CB_BLOCKED_PATH="" && export CB_BLOCKED_PATH
