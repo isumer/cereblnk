@@ -101,10 +101,10 @@ emitted changes shape.
   the cap check runs, so the text survives whether or not it triggers a
   nudge. Writes are skipped silently when `cb_run_dir()` resolves no
   run. The text retained, and the cap it feeds, is read from the
-  subagent's own transcript (`agent_transcript_path`, or the sibling
-  `subagents/agent-<id>.jsonl`) rather than the conducting session's;
-  when neither resolves to a file, nothing is measured or written and
-  the stop is allowed.
+  subagent's own transcript (`agent_transcript_path`, or the file at
+  `subagents/agent-<id>.jsonl` under the directory named for the
+  session) rather than the conducting session's; when neither resolves
+  to a file, nothing is measured or written and the stop is allowed.
 
 ## [1.4.3] — The seventeen entry points the manifest stopped declaring
 
