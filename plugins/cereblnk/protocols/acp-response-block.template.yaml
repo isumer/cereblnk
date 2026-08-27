@@ -60,6 +60,12 @@ skills_loaded: [java, spring-boot]   # every skill this agent loaded,
                                      # floor first, discovery additions after.
                                      # Verifier compares against the run's
                                      # skills-required.yaml.
+discovery_fired:                     # a discovery_watch trigger this agent
+                                     # actually saw, with what it saw it in.
+                                     # Absent when nothing fired; never a
+                                     # restatement of the watch list.
+  - trigger: "@Entity -> hibernate-jpa"
+    seen_at: src/main/java/com/example/Order.java#L14
 
 artifacts: []
 

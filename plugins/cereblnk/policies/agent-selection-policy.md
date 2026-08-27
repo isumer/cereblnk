@@ -184,41 +184,53 @@ Resolution order, per run:
 2. `scripts/select-agents` intersects the task signal (changed paths,
    or `--text` on the request when nothing has changed yet) with the
    stack profile, through `policies/skill-selection.yaml`. It emits
-   `skills_required` per role.
-3. The orchestrator copies that block to
-   `$CB_DIR/context/<run_id>/skills-required.yaml` and writes each
-   role's list into its Task Block.
-4. The specialist loads exactly those with the Skill tool and reports
-   every load in `skills_loaded`. If its own evidence fires a
-   `discovery` trigger it SHOULD load that skill too and record it —
-   a judgement the specialist makes, not a step the system performs.
+   `skills_required` per role, and `discovery_watch` per role for the
+   triggers no signal available here could resolve.
+3. The orchestrator copies `skills_required` to
+   `$CB_DIR/context/<run_id>/skills-required.yaml` — that file is the
+   floor `SkillFloorHook` reads — and writes both blocks into each
+   role's Task Block.
+4. The specialist loads the floor with the Skill tool and reports every
+   load in `skills_loaded`. While it reads, a `discovery_watch` trigger
+   that appears in a file is its cue to load that skill too and record
+   it with the file and line that fired it — a judgement the specialist
+   makes, not a step the system performs.
 
-**The cascade is advisory, and deliberately so (CB-142, F-08).** The
-map's `discovery` entries are read by two validators and executed by
-nothing: `check-agent-skills` A-5 proves each target resolves,
-`test-discovery` D-1..D-4 proves each token occurs in real files. The
-triggers are advisory: nothing in the tree resolves them.
+**The cascade is carried, not fired (CB-142, F-08).** `discovery` names
+what only a file can show. The floor above is everything the request
+text and the changed paths can justify before anything is read; these
+triggers are the rest, and they resolve inside the specialist's window
+or nowhere. So `select-agents` emits `discovery_watch`: for each rule
+that matched, its pairs, under each role that owns the rule, one hop.
+The trigger is in the Task Block before the specialist opens the first
+file. Whether it fires is the file's answer, and the load is the
+specialist's act. The pair is
+carried into the Task Block; loading remains an agent decision on evidence.
 
-A mechanism was designed and rejected on measurement, not taste. The
-only place one could observe "evidence inside the agent's window" is a
-`PostToolUse` scan of Read/Grep responses, and a response is text, not
-evidence — the scan cannot tell a stack from a mention of one. Measured
-on this tree: all 94 declared triggers occur in `skill-selection.yaml`
-itself and all 94 in `tests/fixtures/discovery/`, so one Read of the
-map or of its own corpus would demand all 37 target skills at once.
-Nor is that demand safe to raise: all 37 targets are group-nested
-skills, the exact set CB-141 has not yet confirmed loadable in a live
-host, and a floor demand that `Skill()` cannot satisfy is worse than an
-inert declaration. Selection is gated — `(path OR topic) AND stack
-token` — and a substring hit carries no stack gate at all; feeding one
-into `skills-required.yaml` would let `SkillFloorHook` block on a
-demand `select-agents` never sanctioned. The map keeps the triggers
-because they are useful to a reader; it does not pretend to run them.
+One hop, not the closure, and that is measured rather than preferred.
+Chained transitively from `java` the set reaches 29 pairs and wanders
+into React, Redux and `express()` through generic hubs like docker —
+the whole reachable graph, not a set about this task. One hop averages
+1.6 pairs and never exceeds 4, and every pair belongs to a rule that
+actually matched.
+
+Firing them automatically was designed and rejected on measurement, not
+taste. The only place one could observe "evidence inside the agent's
+window" is a `PostToolUse` scan of Read/Grep responses, and a response
+is text, not evidence — the scan cannot tell a stack from a mention of
+one. Measured on this tree: all 94 declared triggers occur in
+`skill-selection.yaml` itself and all 94 in `tests/fixtures/discovery/`,
+so one Read of the map or of its own corpus would demand all 37 target
+skills at once. Nor is that demand safe to raise: a substring hit
+carries no stack gate, so feeding one into `skills-required.yaml` would
+let `SkillFloorHook` block on a demand `select-agents` never sanctioned.
+Carrying the pair has neither cost: it adds no floor, blocks no stop,
+and leaves the judgement where the evidence is.
 
 `scripts/check-discovery-claim` holds this paragraph and the map header
-to the tree (C-1 no executor, C-2 the map says so, C-3 §4c says so).
-Build the executor and C-1 fails by name, which is the signal to revisit
-this section rather than leave it stale.
+to the tree (C-1 one emitter and no hook, C-2 the map says so, C-3 §4c
+says so). Make the load automatic and C-1 fails by name, which is the
+signal to revisit this section rather than leave it stale.
 
 **Checkers.** `SkillLedgerHook` records each load; `SkillFloorHook`
 blocks a SubagentStop whose floor is unmet; **VerifierAgent** compares

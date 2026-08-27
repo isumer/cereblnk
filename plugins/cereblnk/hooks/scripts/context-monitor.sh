@@ -75,9 +75,12 @@ for idx, raw in enumerate(tail.splitlines()):
     if isinstance(u, dict) and msg.get("role") == "assistant":
         usage = u
         last_usage_idx = idx
-    # A compaction record carries no `usage` of its own.
+    # A compaction record carries no `usage` of its own. It is also
+    # written as two records, not one: a `system` record holding
+    # compactMetadata, then a separate `user` record flagged
+    # isCompactSummary. Requiring both on one record matches nothing.
     cm = rec.get("compactMetadata")
-    if rec.get("isCompactSummary") and isinstance(cm, dict) and isinstance(cm.get("postTokens"), int):
+    if isinstance(cm, dict) and isinstance(cm.get("postTokens"), int):
         compact_post = cm["postTokens"]
         compact_idx = idx
 

@@ -50,9 +50,18 @@ SEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/select-agents"
 OUT="$(timeout 10 "$SEL" --text "$PROMPT" 2>/dev/null || true)"
 [ -n "$OUT" ] || exit 0
 
-# 4. Unresolved is silence, never a guess: `inferred: true` means no
-#    rule matched and the selector fell back.
-case "$OUT" in *"inferred: true"*) exit 0 ;; esac
+# 4. Unresolved is silence, never a guess: `unresolved: true` means no
+#    rule matched and the selector exits 3 with a roster, not a guess.
+case "$OUT" in *"unresolved: true"*) exit 0 ;; esac
+
+# What the hook routed on, so a wrong specialist can be traced to the
+# text that produced it rather than guessed at.
+if [ -n "${CB_DIR:-}" ]; then
+  mkdir -p "$CB_DIR/telemetry" 2>/dev/null || true
+  printf '%s\tprompt=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+    "$(printf '%s' "$PROMPT" | tr '\n\t' '  ' | cut -c1-300)" \
+    >> "$CB_DIR/telemetry/route-hint.log" 2>/dev/null || true
+fi
 
 # Heredoc, not -c: the parser below needs single quotes of its own, and
 # a -c block wrapped in them ends at the first one it contains.
@@ -68,11 +77,13 @@ gate = m.group(1) if m else "?"
 why = re.findall(r'"([^"]+)"', out.split("signals:", 1)[-1])[:3]
 
 note = (
-    "Cereblnk routing signal: this request resolves to %s at gate level %s"
-    "%s. This is the case cb-dispatch exists for — it owns the intent "
-    "table and this hook deliberately does not. Invoke it before editing "
-    "files yourself. If the request is a question rather than work on "
-    "the codebase, answer it directly and ignore this line."
+    "Cereblnk routing signal: this request resolves to the AGENT role(s) "
+    "%s at gate level %s%s. Those are agents, spawned with the Agent "
+    "tool — not skills; passing one to the Skill tool fails with "
+    "'Unknown skill'. This is the case cb-dispatch exists for: it owns "
+    "the intent table and this hook deliberately does not, so invoke it "
+    "before editing files yourself. If the request is a question rather "
+    "than work on the codebase, answer it directly and ignore this line."
 ) % (", ".join(specs), gate, (" (signals: %s)" % "; ".join(why)) if why else "")
 
 print(json.dumps({"hookSpecificOutput": {

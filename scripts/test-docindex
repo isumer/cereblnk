@@ -211,7 +211,7 @@ def main():
             b = pathlib.Path(td) / "block.yaml"
             b.write_text(block_text, encoding="utf-8")
             return subprocess.run(
-                ["bash", str(ROOT / "scripts/ground-check"), str(b), str(ROOT)],
+                ["bash", str(ROOT / "plugins/cereblnk/scripts/ground-check"), str(b), str(ROOT)],
                 capture_output=True, text=True, env=env, cwd=str(proj))
 
         did, n = cited["doc_id"], len(body)

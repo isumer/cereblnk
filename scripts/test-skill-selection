@@ -63,25 +63,24 @@ def main():
          r.returncode == 0 and "java" in r.stdout and "spring-boot" in r.stdout,
          r.stdout[-200:])
 
-    # ---- 3. unresolved is a default, and never a silent one ------------
-    # CB-133 reverses the exit. Refusing produced neither a stopped run
-    # nor a question to the user; twice it produced improvisation. The
-    # table is permanently incomplete, so the run proceeds — but the
-    # inference is on the record, which is the half that mattered.
+    # ---- 3. unresolved is a handoff, and never a silent guess ---------
+    # T-DISC-21 reverses CB-133's exit-0 default. Nothing matched, so
+    # the floor has nothing to force: the selector exits 3, names no
+    # guessed specialist, and hands the roster to the conductor.
     r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"])
-    case("unresolved: proceeds with an inferred specialist",
-         r.returncode == 0 and "architect-agent" in r.stdout,
-         "rc=%d" % r.returncode)
-    case("unresolved: the inference is marked in stdout",
-         "inferred: true" in r.stdout, r.stdout[:80])
-    case("unresolved: the inference reaches the signals",
-         "inferred, not routed" in r.stdout, r.stdout[-120:])
-    case("unresolved: stderr still says no rule matched",
-         "unresolved: true" in r.stderr, r.stderr[:80])
+    case("unresolved: exits 3 rather than guessing a specialist",
+         r.returncode == 3, "rc=%d" % r.returncode)
+    case("unresolved: the state is marked on stdout",
+         "unresolved: true" in r.stdout, r.stdout[:80])
+    case("unresolved: the roster is emitted in place of a guess",
+         "roster:" in r.stdout and "cereblnk:engineering:architect-agent:" in r.stdout,
+         r.stdout[-200:])
+    case("unresolved: no specialists block is printed",
+         "specialists:" not in r.stdout, r.stdout[:80])
     # the gap the risk gate would have existed for, closed at the rule
     r = sh(["bash", str(PS / "select-agents"), "--text", "rotate the secret"])
     case("secret rotation routes to security, not to the fallback",
-         "security-agent" in r.stdout and "inferred: true" not in r.stdout,
+         "security-agent" in r.stdout and "unresolved: true" not in r.stdout,
          r.stdout[:100])
 
     # ---- 4. stack gate -------------------------------------------------
@@ -206,12 +205,13 @@ def main():
              "java" not in r.stdout and "spring-boot" not in r.stdout,
              r.stdout[:200])
 
-        # the other bound: an unroutable request stays inferred with an
-        # empty floor — completion must not resurrect a silent default.
+        # the other bound: an unroutable request gets the roster, never
+        # a completed guess — stack completion must not resurrect a
+        # silent default under a new name.
         r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"],
                env=env)
-        case("F-07 bound: the inferred fallback gains no stack skills",
-             "inferred: true" in r.stdout and "java" not in r.stdout,
+        case("F-07 bound: the unresolved handoff gains no stack skills",
+             "unresolved: true" in r.stdout and "skills_required:" not in r.stdout,
              r.stdout[:200])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

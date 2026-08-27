@@ -26,10 +26,13 @@
 #        git diff --name-only main... | select-agents
 #        select-agents --text "add idempotency to the payment service"
 #        select-agents --text "<request>" -- <file>...
+#        select-agents --roster   # spawnable names + declared decision
+#                                  # domains; no selection is run
 # Output: YAML (specialists, gate_level, skills_required, signals).
 # Exit: 0 resolved · 2 usage error · 3 unresolved (no signal matched —
-#       the conductor must supply --text or name the surface; silently
-#       defaulting to one agent is how a run gets the wrong specialist).
+#       stdout carries `unresolved: true` and the roster in place of a
+#       specialist; the conductor picks a role from it and cites the
+#       roster line, rather than receiving a silent default).
 set -euo pipefail
 CB_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/cbenv.sh
@@ -40,6 +43,12 @@ CB_LIB="$CB_SCRIPTS/lib"
 CB_EMIT=""
 if [ "${1:-}" = "--emit-floor" ]; then CB_EMIT=1; shift; fi
 
+# --roster reads no diff and runs no rule: it lists what select-agents
+# already knows how to spawn, next to what each one decides, so a
+# conductor can match a job to a role without opening 27 agent files.
+CB_ROSTER=""
+if [ "${1:-}" = "--roster" ]; then CB_ROSTER=1; shift; fi
+
 CB_TEXT=""
 if [ "${1:-}" = "--text" ]; then
   [ $# -ge 2 ] || { echo "select-agents: --text needs a request string" >&2; exit 2; }
@@ -48,6 +57,7 @@ if [ "${1:-}" = "--text" ]; then
 fi
 if [ $# -ge 1 ]; then CB_PATHS="$(printf '%s\n' "$@")"
 elif [ -n "$CB_TEXT" ]; then CB_PATHS=""
+elif [ -n "$CB_ROSTER" ]; then CB_PATHS=""
 else CB_PATHS="$(cat)"; fi
 # The floor is what judges the subagent, so it is written only to a
 # PINNED run — cb_run_dir falls back to a newest-directory guess, and a
@@ -56,12 +66,86 @@ CB_RUN=""
 if [ -n "$CB_EMIT" ] && [ -n "${CB_DIR:-}" ] && [ -s "$CB_DIR/flags/run-active" ]; then
   CB_RUN="$(cb_run_dir)"
 fi
-export CB_PATHS CB_TEXT CB_LIB CB_EMIT CB_RUN
+export CB_PATHS CB_TEXT CB_LIB CB_EMIT CB_RUN CB_ROSTER
 $PYBIN << 'PY'
 import os, pathlib, re, sys
 
 sys.path.insert(0, os.environ["CB_LIB"])
 import cbmap  # noqa: E402
+
+
+# ---- roster: spawnable name -> declared decision domain, no rule runs ----
+# The frontmatter `description` on every agent file already states what
+# it decides; nothing before this read it. Carrying the whole field (27
+# agents, ~830 words together) on every invocation would flood a budget
+# that a conductor is watching, so only the opening sentence is kept —
+# in this codebase's descriptions that sentence states the decision
+# domain and everything after it is elaboration (an "Invoke when..."
+# clause, or worked examples) that a reader picks the role first and
+# reads later, from that role's own file.
+def _agent_description(path):
+    """First sentence of the frontmatter `description:`, or '' if none.
+
+    The value may fold across lines with no extra indent; those lines
+    are joined with spaces before the first sentence is taken.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if not text.startswith("---"):
+        return ""
+    end = text.find("\n---", 3)
+    fm = text[3:end] if end != -1 else text[3:]
+    desc_lines, capture = [], False
+    for line in fm.splitlines():
+        if capture:
+            if re.match(r'^[A-Za-z_][\w-]*:\s', line):
+                break
+            desc_lines.append(line)
+            continue
+        m = re.match(r'^description:\s*(.*)$', line)
+        if m:
+            capture = True
+            desc_lines.append(m.group(1))
+    desc = " ".join(d.strip() for d in desc_lines).strip()
+    if not desc:
+        return ""
+    cut = desc.find(". ")
+    return desc[:cut + 1] if cut != -1 else desc
+
+
+def _build_roster():
+    """[(stem, qualified_name, decision_domain), ...], sorted by stem.
+
+    Shared by --roster and the unresolved path below: both hand the
+    conductor what select-agents already knows how to spawn, next to
+    what each role decides, so a job is matched to a role without
+    opening 27 agent files.
+    """
+    agent_dir = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
+    roster = []
+    if agent_dir.is_dir():
+        for f in agent_dir.rglob("*-agent.md"):
+            qname = "cereblnk:%s:%s" % (f.parent.name, f.stem)
+            desc = _agent_description(f) or "(no description declared in frontmatter)"
+            roster.append((f.stem, qname, desc))
+    return sorted(roster)
+
+
+def _print_roster():
+    print("roster:")
+    for _stem, _qname, _desc in _build_roster():
+        _esc = _desc.replace("\\", "\\\\").replace('"', '\\"')
+        print('  %s: "%s"' % (_qname, _esc))
+
+
+if os.environ.get("CB_ROSTER"):
+    print("# select-agents --roster — spawnable name and declared decision "
+          "domain, no selection performed")
+    _print_roster()
+    raise SystemExit(0)
+
 
 RULES = [
     # (name, path regex, agents, gate floor)
@@ -130,12 +214,6 @@ AUTHORED = _rx("authored documentation")
 
 # Signals a path cannot carry. Text RAISES the floor, never lowers it —
 # "just a small expiry bump" is still auth.
-# When nothing matches, this is the specialist the run gets. architect
-# because a request that names no code surface is, by elimination,
-# about structure, boundaries or setup — the architect's declared
-# domain — and because it decides rather than implements, so an
-# inferred choice does the least damage if it is wrong.
-FALLBACK_AGENT = "architect-agent"
 
 TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
@@ -171,12 +249,15 @@ TEXT_RULES = [
     # the repository is configuration, not persistence, and CB-132
     # already paid for routing that case wrongly.
     ("server-side behavior",
-     r'(?i)(endpoint|\bhandler\b|controller|\bservice\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
+     r'(?i)(endpoint|\bhandler\b|controller|[A-Za-z]*[Ss]ervices?\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
      ["backend-agent"], 2),
     ("infrastructure", r'(?i)(deploy|cluster|container|pipeline|terraform|helm|kubernetes)',
      ["infra-agent"], 2),
     ("performance",    r'(?i)(slow|latency|throughput|performance)',
      ["performance-agent"], 2),
+    ("restructure",    r'(?i)(refactor|restructur|clean\s*up|\bcleanup\b'
+                       r'|simplif|extract\s+(a\s+)?(method|class|function|module))',
+     ["refactoring-agent"], 1),
     ("tests",          r'(?i)(\btests?\b|\btesting\b|coverage|regression)',
      ["qa-agent"], 1),
     ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
@@ -245,6 +326,21 @@ if errors:
     raise SystemExit(2)
 
 skills, skill_why = {}, []
+# role -> [(trigger, skill)], one hop from the rules that actually matched.
+# Not the transitive closure: chasing it from `java` yields 29 pairs that
+# reach React, Redux and express() through generic hubs like docker, which
+# is the whole graph rather than a set about this task.
+watch = {}
+
+
+def watch_add(rule):
+    for role in rule["roles"]:
+        seen = watch.setdefault(role, [])
+        for pair in cbmap.discovery_pairs(rule):
+            if pair not in seen:
+                seen.append(pair)
+
+
 for r in rules:
     if stack is not None and r["stack"] and r["stack"] not in stack:
         continue                      # declared for a stack this project does not have
@@ -273,6 +369,7 @@ for r in rules:
         if r["skill"] not in skills[role]:
             skills[role].append(r["skill"])
     skill_why.append("%s <- %s" % (r["skill"], hit))
+    watch_add(r)
 
 # ---- bounded stack completion (CB-143 / F-07) -------------------------
 # In the loop above a declared stack token is a veto: it can only ever
@@ -296,10 +393,8 @@ for r in rules:
 #      unaffected; an absent profile (stack is None) disables it
 #      entirely, so the "no stack gate, never a wrong guess" rule above
 #      still holds.
-#   3. it runs BEFORE the unresolved branch fills `agents` with the
-#      inferred fallback, so an unroutable request still gets an empty
-#      floor and stays visibly `inferred: true`. Completion must not
-#      dress a guess up as a routed answer.
+#   3. it runs BEFORE the unresolved branch below, so an unroutable
+#      request still gets nothing rather than a completed guess.
 #
 # What this buys is the §3b guarantee in mechanism rather than in prose:
 # the specialist that owns the surface is selected, and it is selected
@@ -316,62 +411,34 @@ if stack:
                 skills[role].append(r["skill"])
                 skill_why.append("%s <- stack token '%s' in profile, for %s"
                                  % (r["skill"], r["stack"], role))
+                watch_add(r)
 
-inferred = False
 if not agents:
-    print("# select-agents — UNRESOLVED (inferred)", file=sys.stderr)
-    # The advice differs by what was already tried (CB-124): answering a
-    # --text call by asking for a --text call is a loop, and a run that
-    # got that sentence twice abandoned the selector.
+    # The mechanical floor has nothing left to force: no path rule and
+    # no text rule matched. Say so on the first line, emit no guessed
+    # specialist, and hand the roster to the conductor so it picks a
+    # role by the job it owns and cites the roster line that justifies
+    # it. A selection without that citation is an assertion, not a
+    # routing.
     #
-    # CB-132 removes the second half of that fix. The message also said
-    # reading the policy by hand "is not the fallback", which closed the
-    # only route a caller had left. The route it offered instead — pass
-    # a repository path — does not exist for every surface: a request to
-    # restructure `.claude/` or CLAUDE.md names configuration, and the
-    # rule table has no configuration surface, so no path resolves. A
-    # refusal that forbids the remaining option without opening another
-    # is worse than the loop it replaced. Observed as minutes of a run
-    # cycling through candidate agents and reaching none.
-    #
-    # So: say what does not match, name the path route as the better
-    # one, and stop forbidding the fallback. Choosing by hand stays
-    # visibly worse without being blocked, which is the honest state —
-    # a wrong specialist chosen out loud is correctable, a run that
-    # cannot proceed at all is not.
-    # CB-133: a default, recorded. Refusing produced neither a stopped
-    # run nor a question to the user — twice it produced improvisation:
-    # once a specialist invented out of a project's skills directory,
-    # once minutes of cycling through candidates. The table will always
-    # be incomplete, so the case this refusal fires on is permanent, and
-    # an unrecorded guess is what the refusal was meant to prevent.
-    #
-    # A risk gate was considered and dropped as dead code: payment,
-    # auth, migration and deploy all resolve through TEXT_RULES already,
-    # so a high-risk request never reaches this branch. The one that did
-    # — secret rotation — was a missing word in the auth rule, fixed
-    # above rather than caught by a second mechanism.
-    #
-    # What survives is the part that mattered: the choice is not silent.
-    # `inferred: true` reaches the Response Block, the Verifier and the
-    # ledger, so a wrong default is visible and correctable — which a
-    # model choosing quietly never was.
-    print("unresolved: true   # no rule matched; the specialist below is inferred",
-          file=sys.stderr)
+    # This branch runs only when `agents` is still empty here — every
+    # rule above that DID match already added its agents and raised the
+    # floor, so nothing mandatory (auth, schema/migration, terraform
+    # state, money, deletion) is ever routed through this branch: those
+    # all match through RULES or TEXT_RULES before this point, or they
+    # do not appear in the request at all.
+    print("unresolved: true   # no rule matched")
     if text:
         print("reason: --text was supplied and no rule matched it — the "
-              "request names no surface", file=sys.stderr)
+              "request names no surface")
     else:
-        print("reason: no path rule matched", file=sys.stderr)
-    print("next: if the request names a symbol, class or file, resolve it "
-          "to a repository path and re-run (`select-agents <path>`) — a "
-          "path carries the surface a verb cannot, and a routed choice "
-          "beats an inferred one. Otherwise proceed with the inferred "
-          "specialist and leave `inferred: true` in the plan.",
-          file=sys.stderr)
-    agents = [FALLBACK_AGENT]
-    inferred = True
-    signals.append("no rule matched — %s inferred, not routed" % FALLBACK_AGENT)
+        print("reason: no path rule matched")
+    print("next: name a repository path and re-run (select-agents <path>) "
+          "if the request has one — a path carries the surface a verb "
+          "cannot. Otherwise pick a role from the roster below and record "
+          "the roster line your choice rests on.")
+    _print_roster()
+    raise SystemExit(3)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
 # ---- spawnable names (CB-132) ----
@@ -408,8 +475,6 @@ def qualify(name):
     return _QUALIFIED.get(name, name)
 
 
-if inferred:
-    print("inferred: true")
 print("specialists:")
 for a in agents:
     print("  - %s" % qualify(a))
@@ -450,6 +515,22 @@ if os.environ.get("CB_EMIT"):
                   "has nothing to read and will not run." % (dest, e),
                   file=sys.stderr)
             raise SystemExit(1)
+# The floor above is everything the request text and the file paths can
+# justify before anything is read. These are the triggers that only become
+# visible once the specialist opens a file, so they travel into its Task
+# Block instead of being resolved here.
+watch_lines = []
+for role in agents:
+    got = watch.get(role) or []
+    if got:
+        watch_lines.append("  %s:" % qualify(role))
+        for tok, tgt in got:
+            watch_lines.append("    - \"%s -> %s\"" % (tok, tgt))
+if watch_lines:
+    print("discovery_watch:   # one hop from the matched rule, not the full cascade; seen while reading -> load that skill")
+    for line in watch_lines:
+        print(line)
+
 print("signals:")
 for s in signals:
     print("  - \"%s\"" % s)

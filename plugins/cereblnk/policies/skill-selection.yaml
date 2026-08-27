@@ -13,16 +13,18 @@
 #               skill to be selectable at all (omitted = always)
 #   topics:     literal phrases matched against the request text
 #   discovery:  evidence seen INSIDE the agent window -> next skill.
-#               ADVISORY (CB-142, F-08): nothing in the tree resolves
-#               them. Two validators read these entries to judge them —
+#               These name what only a file can show, so they are
+#               carried rather than matched (CB-142, F-08).
+#               select-agents copies the pairs of the rules that matched
+#               into discovery_watch, one hop, under each role that owns
+#               them, so the trigger reaches the specialist before it
+#               starts reading. Two validators judge the entries —
 #               check-agent-skills A-5 proves the target resolves,
 #               test-discovery D-1..D-4 proves the token occurs in real
-#               files — and no hook or script acts on one. A specialist
-#               that reads this map SHOULD follow a trigger its own
-#               evidence fires, and record the load in skills_loaded;
-#               that judgement is the agent's, not a mechanism's.
-#               These triggers are
-#               advisory: nothing in the tree resolves them.
+#               files — and no hook watches for a token. A specialist
+#               whose own evidence fires a trigger loads that skill and
+#               records it in skills_loaded: the pair is
+#               carried into the Task Block; loading remains an agent decision on evidence.
 #               scripts/check-discovery-claim fails if that stops being
 #               true here or in agent-selection-policy.md §4c.
 #
