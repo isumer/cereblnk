@@ -9,13 +9,13 @@
 #
 # The measurement exists: the subagent's OWN transcript holds its
 # final assistant message, which IS what the conductor receives. That
-# transcript is a sibling of the main session transcript, named by
-# this agent's id: <dir of transcript_path>/subagents/agent-<id>.jsonl.
-# The payload may also hand that path back directly as
-# agent_transcript_path; either way it is read, counted, and the stop
-# is blocked when the count exceeds the cap. SubagentStop blocks on
-# exit 2 — the subagent does not stop, it reads stderr and returns a
-# digest instead.
+# transcript lives under a directory named for the session — the main
+# transcript's filename with its .jsonl suffix removed — at
+# <that session directory>/subagents/agent-<id>.jsonl. The payload may
+# also hand that path back directly as agent_transcript_path; either
+# way it is read, counted, and the stop is blocked when the count
+# exceeds the cap. SubagentStop blocks on exit 2 — the subagent does
+# not stop, it reads stderr and returns a digest instead.
 #
 # The cap comes from scripts/context-budget (digest_lines_max), never
 # from a number written here. CB-094's whole point is that figures are
@@ -66,11 +66,14 @@ def existing_file(v):
     return p if p.is_file() else None
 
 # transcript_path on this payload is the CONDUCTING session, not this
-# subagent — reading it measures the wrong author. The subagent has
-# its own transcript, a sibling file named by its id:
-# <dir of transcript_path>/subagents/agent-<agent_id>.jsonl. Prefer
-# agent_transcript_path when the payload supplies it directly; fall
-# back to building the sibling path from agent_id, never from a
+# subagent — reading it measures the wrong author. Measured on a real
+# session: the subagent transcript is not beside the main file, it is
+# under a directory named for the session, i.e. the main filename with
+# its .jsonl suffix removed:
+#   main:     <projects dir>/<session-id>.jsonl
+#   subagent: <projects dir>/<session-id>/subagents/agent-<id>.jsonl
+# Prefer agent_transcript_path when the payload supplies it directly;
+# fall back to building that path from agent_id, never from a
 # directory scan (CB-147, F-31 — identity must be carried, not
 # guessed). Either candidate is trusted only once confirmed to exist.
 tp = existing_file(d.get("agent_transcript_path"))
@@ -80,7 +83,9 @@ if tp is None:
         main_tp = os.path.expanduser(main_tp)
     agent_id = d.get("agent_id") or ""
     if main_tp and agent_id and re.fullmatch(r"[A-Za-z0-9_-]+", agent_id):
-        candidate = pathlib.Path(main_tp).parent / "subagents" / f"agent-{agent_id}.jsonl"
+        main_path = pathlib.Path(main_tp)
+        session_dir = main_path.with_name(main_path.stem)
+        candidate = session_dir / "subagents" / f"agent-{agent_id}.jsonl"
         tp = existing_file(str(candidate))
 
 # Its own transcript cannot be identified: measuring the conductor

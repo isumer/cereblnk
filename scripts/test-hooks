@@ -294,9 +294,13 @@ def main():
             if path == "":
                 return json.dumps({"agent_type": agent, "agent_id": aid,
                                    "transcript_path": ""})
+            # Real layout: main.jsonl next to a directory named for the
+            # session (main.jsonl minus its suffix), holding subagents/.
             main_tp = path if path is not None else transcript(main_text)
-            sub_dir = pathlib.Path(main_tp).parent / "subagents"
-            sub_dir.mkdir(exist_ok=True)
+            main_path = pathlib.Path(main_tp)
+            session_dir = main_path.with_name(main_path.stem)
+            sub_dir = session_dir / "subagents"
+            sub_dir.mkdir(parents=True, exist_ok=True)
             if not missing_sub:
                 (sub_dir / f"agent-{aid}.jsonl").write_text(
                     json.dumps({"message": {"role": "assistant",
