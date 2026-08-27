@@ -137,9 +137,43 @@ def main():
             ("boundary flag via literal path",
              'echo "src/" > .claude/cereblnk/flags/boundary'),
             ("boundary flag via $CB_DIR", 'echo "src/" > $CB_DIR/flags/boundary'),
+            # [[ ... ]] is bash's own comparison operator, not test(1):
+            # > and < are string comparisons there, never redirection.
+            ("double-bracket comparison", "[[ a > b ]]"),
         ):
             case(f"delegation: shell {label} -> allow", "delegation-guard.sh",
                  bash(cmd), 0)
+
+        # a single-bracket/test comparison keeps its residual false
+        # positive: after shlex, an unescaped > cannot be told apart
+        # from an escaped one, and [ ... ] has no [[ ]]-style grammar
+        # to narrow against, so it still reads as a genuine redirect.
+        case("delegation: shell single-bracket comparison -> block (known residual)",
+             "delegation-guard.sh", bash("[ a > b ]"), 2,
+             "the same edit under another tool")
+
+        # a command shlex cannot tokenise at all is a stronger claim
+        # than a parsed write to an unnamed target: the guard must not
+        # assert a write it never determined, or send the model to
+        # spawn a specialist for a command that may not write at all.
+        for label, cmd in (
+            ("odd quote inside a substitution",
+             """echo "$(echo 'a"b')\""""),
+            ("read-only command with the same quoting shape",
+             """printf "%s" "$(grep -o '"version": *"[^"]*"' f.json)\""""),
+        ):
+            r = run("delegation-guard.sh", bash(cmd), proj)
+            ran += 1
+            msg = r.stderr + r.stdout
+            if r.returncode != 2:
+                fails.append(f"delegation: shell {label} -> parse-block: "
+                             f"rc={r.returncode}, want 2")
+            elif "could not be parsed" not in msg or "whether it writes is unknown" not in msg:
+                fails.append(f"delegation: shell {label} -> parse-block: "
+                             f"missing the parse-failure message ({msg[:120]!r})")
+            elif "surface specialist" in msg or "spawn" in msg:
+                fails.append(f"delegation: shell {label} -> parse-block: "
+                             f"wrongly told to spawn a specialist ({msg[:120]!r})")
 
         for label, cmd in (
             ("heredoc into a Response Block",
