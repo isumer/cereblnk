@@ -7,9 +7,13 @@
 # the violation was invisible until the run died — which is the
 # failure budget-policy rule 4 was written after, twice.
 #
-# The measurement exists: the subagent's transcript holds its final
-# assistant message, which IS what the conductor receives. This reads
-# that message, counts its lines, and blocks the stop when the count
+# The measurement exists: the subagent's OWN transcript holds its
+# final assistant message, which IS what the conductor receives. That
+# transcript lives under a directory named for the session — the main
+# transcript's filename with its .jsonl suffix removed — at
+# <that session directory>/subagents/agent-<id>.jsonl. The payload may
+# also hand that path back directly as agent_transcript_path; either
+# way it is read, counted, and the stop is blocked when the count
 # exceeds the cap. SubagentStop blocks on exit 2 — the subagent does
 # not stop, it reads stderr and returns a digest instead.
 #
@@ -53,11 +57,42 @@ agent = d.get("agent_type") or d.get("agent_id") or ""
 if not agent:
     sys.exit(0)
 
-# Known upstream caveat: transcript_path can arrive empty. Fail open.
-tp = d.get("transcript_path") or ""
-if tp.startswith("~/"):
-    tp = os.path.expanduser(tp)
-if not tp or not pathlib.Path(tp).is_file():
+def existing_file(v):
+    if not isinstance(v, str) or not v:
+        return None
+    if v.startswith("~/"):
+        v = os.path.expanduser(v)
+    p = pathlib.Path(v)
+    return p if p.is_file() else None
+
+# transcript_path on this payload is the CONDUCTING session, not this
+# subagent — reading it measures the wrong author. Measured on a real
+# session: the subagent transcript is not beside the main file, it is
+# under a directory named for the session, i.e. the main filename with
+# its .jsonl suffix removed:
+#   main:     <projects dir>/<session-id>.jsonl
+#   subagent: <projects dir>/<session-id>/subagents/agent-<id>.jsonl
+# Prefer agent_transcript_path when the payload supplies it directly;
+# fall back to building that path from agent_id, never from a
+# directory scan (CB-147, F-31 — identity must be carried, not
+# guessed). Either candidate is trusted only once confirmed to exist.
+tp = existing_file(d.get("agent_transcript_path"))
+if tp is None:
+    main_tp = d.get("transcript_path") or ""
+    if main_tp.startswith("~/"):
+        main_tp = os.path.expanduser(main_tp)
+    agent_id = d.get("agent_id") or ""
+    if main_tp and agent_id and re.fullmatch(r"[A-Za-z0-9_-]+", agent_id):
+        main_path = pathlib.Path(main_tp)
+        session_dir = main_path.with_name(main_path.stem)
+        candidate = session_dir / "subagents" / f"agent-{agent_id}.jsonl"
+        tp = existing_file(str(candidate))
+
+# Its own transcript cannot be identified: measuring the conductor
+# instead is the defect this hook exists to fix, so silence beats a
+# wrong measurement. Count nothing, write nothing, allow the
+# stop.
+if tp is None:
     sys.exit(0)
 
 # The cap is computed, never written here (CB-094).
