@@ -11,8 +11,11 @@ Reads a PreToolUse hook payload on stdin. Emits, on stdout:
                 guard lets it through
     <path>...   one candidate target per line, checked against the
                 same conductor-ownership table the edit path uses
-    ?           write intent whose target cannot be resolved — the
-                guard treats it as a conductor edit and blocks
+    ?           the command was read, and it writes somewhere this
+                walk cannot name — the guard treats it as a
+                conductor edit and blocks
+    !           the command itself could not be tokenised — whether
+                it writes at all is unknown, not merely unresolved
 
 WHAT THIS IS NOT. It is a floor, not a proof. A command can write a
 file in ways no token walk will see: a script that redirects
@@ -105,28 +108,33 @@ OPEN_WRITE = re.compile(
 SEPARATORS = {"|", "||", "&&", ";", "&", "|&", "(", ")", "{", "}", "\n"}
 
 UNRESOLVED = "?"
+UNPARSEABLE = "!"
 
 
 def _looks_like_flag(tok):
     return tok.startswith("-") and tok != "-"
 
 
-def targets(command, in_place=False):
-    """Yield write targets for a shell command, or UNRESOLVED.
+def targets(command, in_place=False, _top=True):
+    """Yield write targets for a shell command, UNRESOLVED, or UNPARSEABLE.
 
     With in_place=True, only the commands that rewrite an existing file
-    are reported; see MODES in the module docstring.
+    are reported; see MODES in the module docstring. UNPARSEABLE is
+    reported only for the outermost call (_top) of the default mode: a
+    nested command string (see NESTED_SHELL below), and every --in-place
+    call, keep reporting UNRESOLVED, their established shape.
     """
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
         toks = list(lexer)
     except ValueError:
-        # Unbalanced quoting: the command cannot be read, so its writes
-        # cannot be ruled out. Same posture as unparseable hook input.
-        return [UNRESOLVED]
+        # Unbalanced quoting: the command cannot be read at all, so
+        # whether it writes anywhere is unknown — a stronger claim than
+        # "read, and its target cannot be resolved".
+        return [UNPARSEABLE if (_top and not in_place) else UNRESOLVED]
 
-    found, head, operands, i = [], None, [], 0
+    found, head, operands, i, in_test = [], None, [], 0, False
 
     def flush():
         if head in LAST_OPERAND:
@@ -151,7 +159,7 @@ def targets(command, in_place=False):
         elif head in NESTED_SHELL:
             for j, o in enumerate(operands):
                 if o in INLINE_FLAGS and j + 1 < len(operands):
-                    found.extend(targets(operands[j + 1], in_place))
+                    found.extend(targets(operands[j + 1], in_place, _top=False))
                     break
         elif head in INLINE:
             if in_place:
@@ -172,7 +180,14 @@ def targets(command, in_place=False):
 
     while i < len(toks):
         tok = toks[i]
-        if tok in WRITE_REDIR:
+        if tok == "[[":
+            in_test = True
+        elif tok == "]]":
+            in_test = False
+        # Inside [[ ... ]], > and < are string comparisons, never
+        # redirection — [ ... ]/test has no such construct, so this
+        # narrowing does not reach it.
+        if tok in WRITE_REDIR and not in_test:
             if in_place:
                 # a redirection replaces or extends whole-file content,
                 # which is what Write does; it is not an Edit
