@@ -7,6 +7,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.5.1] — The cap that was counting the wrong conversation
+
+1.5.0 began retaining each subagent's digest under the pinned run. The
+first live run under that retention showed what the line cap had
+actually been measuring all along.
+
+`digest-cap` never receives the subagent's reply directly. It reads
+`transcript_path` from the payload and takes the last assistant text
+block there. That path belongs to the conducting session, not the
+subagent. The retained file held a paragraph the conductor had written
+two turns earlier — different author, different content — while the
+subagent that had just stopped had answered in two lines.
+
+The cap has counted the conductor for as long as it has existed.
+Retention did not introduce this; it is the first thing that could
+expose it, because before 1.5.0 the measured text was discarded and
+left no trace.
+
+### Fixed
+
+- **`digest-cap` reads the subagent's own transcript.** The hook now
+  resolves `agent_transcript_path` when the payload supplies it, or
+  otherwise derives the subagent's session directory from the main
+  transcript path with its suffix removed, plus the per-agent file
+  beneath it. When neither resolves, it writes nothing, counts
+  nothing, and allows the stop. Silence beats measuring the wrong
+  author. Resolution is never a directory scan: identity is carried,
+  not guessed (CB-147, F-31).
+
+A first attempt at this fix passed its own tests and still measured
+the wrong transcript. Its fallback treated the subagent's transcript
+as a sibling of the main one, when it actually lives inside a
+directory named for the session. Both defects passed synthetic tests,
+because a synthetic payload lets the test's author choose the
+transcript path, and it always points where the test wants. Only a
+real session layout exposes the difference.
+
+Patch, not minor: no new capability, no interface change. A hook now
+measures the text it was always meant to measure.
+
 ## [1.5.0] — An audit of the routing hint, and what else it turned up
 
 The routing hint was checked for what it actually told a reader: which
