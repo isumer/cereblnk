@@ -276,18 +276,33 @@ def main():
 
         # DigestCapHook (CB-094). The cap is a contract; these assert the
         # paths that matter: a return that fits, one that does not, the
-        # nudge ceiling, and every fail-open route. A guard that blocks
-        # when it cannot measure is worse than one that does not run, so
-        # the fail-open cases are not filler.
-        def transcript(text):
-            t = proj / "t.jsonl"
+        # nudge ceiling, identity resolution to the subagent's own
+        # transcript rather than the conducting session's, and every
+        # fail-open route. A guard that blocks when it cannot measure is
+        # worse than one that does not run, so the fail-open cases are
+        # not filler.
+        def transcript(text, path=None):
+            t = pathlib.Path(path) if path else proj / "t.jsonl"
             t.write_text(json.dumps({"message": {"role": "assistant",
                                                  "content": [{"type": "text", "text": text}]}}) + "\n")
             return str(t)
 
-        def digest_input(text, agent="backend-agent", path=None):
-            return json.dumps({"agent_type": agent,
-                               "transcript_path": path if path is not None else transcript(text)})
+        def digest_input(text, agent="backend-agent", agent_id=None,
+                         missing_sub=False, path=None,
+                         main_text="conducting session text, never measured"):
+            aid = agent_id or f"id-{agent}"
+            if path == "":
+                return json.dumps({"agent_type": agent, "agent_id": aid,
+                                   "transcript_path": ""})
+            main_tp = path if path is not None else transcript(main_text)
+            sub_dir = pathlib.Path(main_tp).parent / "subagents"
+            sub_dir.mkdir(exist_ok=True)
+            if not missing_sub:
+                (sub_dir / f"agent-{aid}.jsonl").write_text(
+                    json.dumps({"message": {"role": "assistant",
+                                            "content": [{"type": "text", "text": text}]}}) + "\n")
+            return json.dumps({"agent_type": agent, "agent_id": aid,
+                               "transcript_path": main_tp})
 
         short = "\n".join(f"line {i}" for i in range(1, 9))
         long_ = "\n".join(f"line {i}" for i in range(1, 26))
@@ -295,6 +310,13 @@ def main():
         case("digest-cap: within cap -> allow", "digest-cap.sh", digest_input(short), 0)
         case("digest-cap: over cap -> block", "digest-cap.sh", digest_input(long_), 2,
              "the cap is 10")
+        # The defect this hook exists to fix: transcript_path names the
+        # CONDUCTING session, not this subagent. A conductor fixture
+        # carrying the long, over-cap text must not sway the decision —
+        # only the sibling subagent transcript may.
+        case("digest-cap: measures the subagent, not the conducting session",
+             "digest-cap.sh",
+             digest_input(short, agent="frontend-agent", main_text=long_), 0)
         # F-25: the target path was `{run}<task_id>.yaml` — a literal
         # placeholder with no separator before it, resolving outside any
         # run directory. Two specialists received it and both declined
@@ -310,8 +332,11 @@ def main():
              digest_input("\n\n".join(f"line {i}" for i in range(1, 10))), 0)
         case("digest-cap: stop_hook_active -> allow", "digest-cap.sh",
              json.dumps({"agent_type": "backend-agent", "stop_hook_active": True}), 0)
-        case("digest-cap: missing transcript -> fail open", "digest-cap.sh",
-             digest_input(long_, agent="docs-agent", path=""), 0)
+        case("digest-cap: subagent transcript unresolved -> fail open, silent",
+             "digest-cap.sh",
+             digest_input(long_, agent="docs-agent", missing_sub=True), 0)
+        case("digest-cap: empty transcript_path -> fail open", "digest-cap.sh",
+             digest_input(long_, agent="docs-agent2", path=""), 0)
         case("digest-cap: unparseable input -> fail open", "digest-cap.sh", "not-json", 0)
         case("digest-cap: no agent in input -> fail open", "digest-cap.sh",
              json.dumps({"transcript_path": transcript(long_)}), 0)
