@@ -89,7 +89,9 @@ Rules:
    `select-agents --emit-floor --text "<the request>"`, which writes the
    skill floor to `context/<run_id>/skills-required.yaml`. Task Blocks
    point at that file; they never restate the list. Exit 3 is
-   unresolved, never a reason to guess one agent.
+   unresolved: no specialist is printed, only the roster. Pick a
+   role from it and record the roster line your choice rests on.
+   Never guess one agent.
 
 ## Step 4 — When NOT to dispatch
 Pure knowledge questions. Single-fact lookups. Conversations touching

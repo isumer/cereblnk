@@ -30,8 +30,9 @@
 #                                  # domains; no selection is run
 # Output: YAML (specialists, gate_level, skills_required, signals).
 # Exit: 0 resolved · 2 usage error · 3 unresolved (no signal matched —
-#       the conductor must supply --text or name the surface; silently
-#       defaulting to one agent is how a run gets the wrong specialist).
+#       stdout carries `unresolved: true` and the roster in place of a
+#       specialist; the conductor picks a role from it and cites the
+#       roster line, rather than receiving a silent default).
 set -euo pipefail
 CB_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/cbenv.sh
@@ -114,20 +115,35 @@ def _agent_description(path):
     return desc[:cut + 1] if cut != -1 else desc
 
 
-if os.environ.get("CB_ROSTER"):
-    _agent_dir = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
-    _roster = []
-    if _agent_dir.is_dir():
-        for _f in _agent_dir.rglob("*-agent.md"):
-            _qname = "cereblnk:%s:%s" % (_f.parent.name, _f.stem)
-            _desc = _agent_description(_f) or "(no description declared in frontmatter)"
-            _roster.append((_f.stem, _qname, _desc))
-    print("# select-agents --roster — spawnable name and declared decision "
-          "domain, no selection performed")
+def _build_roster():
+    """[(stem, qualified_name, decision_domain), ...], sorted by stem.
+
+    Shared by --roster and the unresolved path below: both hand the
+    conductor what select-agents already knows how to spawn, next to
+    what each role decides, so a job is matched to a role without
+    opening 27 agent files.
+    """
+    agent_dir = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
+    roster = []
+    if agent_dir.is_dir():
+        for f in agent_dir.rglob("*-agent.md"):
+            qname = "cereblnk:%s:%s" % (f.parent.name, f.stem)
+            desc = _agent_description(f) or "(no description declared in frontmatter)"
+            roster.append((f.stem, qname, desc))
+    return sorted(roster)
+
+
+def _print_roster():
     print("roster:")
-    for _stem, _qname, _desc in sorted(_roster):
+    for _stem, _qname, _desc in _build_roster():
         _esc = _desc.replace("\\", "\\\\").replace('"', '\\"')
         print('  %s: "%s"' % (_qname, _esc))
+
+
+if os.environ.get("CB_ROSTER"):
+    print("# select-agents --roster — spawnable name and declared decision "
+          "domain, no selection performed")
+    _print_roster()
     raise SystemExit(0)
 
 
@@ -198,12 +214,6 @@ AUTHORED = _rx("authored documentation")
 
 # Signals a path cannot carry. Text RAISES the floor, never lowers it —
 # "just a small expiry bump" is still auth.
-# When nothing matches, this is the specialist the run gets. architect
-# because a request that names no code surface is, by elimination,
-# about structure, boundaries or setup — the architect's declared
-# domain — and because it decides rather than implements, so an
-# inferred choice does the least damage if it is wrong.
-FALLBACK_AGENT = "architect-agent"
 
 TEXT_RULES = [
     ("money/payment",  r'(?i)(payment|billing|invoic|charge|refund|checkout)',
@@ -383,10 +393,8 @@ for r in rules:
 #      unaffected; an absent profile (stack is None) disables it
 #      entirely, so the "no stack gate, never a wrong guess" rule above
 #      still holds.
-#   3. it runs BEFORE the unresolved branch fills `agents` with the
-#      inferred fallback, so an unroutable request still gets an empty
-#      floor and stays visibly `inferred: true`. Completion must not
-#      dress a guess up as a routed answer.
+#   3. it runs BEFORE the unresolved branch below, so an unroutable
+#      request still gets nothing rather than a completed guess.
 #
 # What this buys is the §3b guarantee in mechanism rather than in prose:
 # the specialist that owns the surface is selected, and it is selected
@@ -405,61 +413,32 @@ if stack:
                                  % (r["skill"], r["stack"], role))
                 watch_add(r)
 
-inferred = False
 if not agents:
-    print("# select-agents — UNRESOLVED (inferred)", file=sys.stderr)
-    # The advice differs by what was already tried (CB-124): answering a
-    # --text call by asking for a --text call is a loop, and a run that
-    # got that sentence twice abandoned the selector.
+    # The mechanical floor has nothing left to force: no path rule and
+    # no text rule matched. Say so on the first line, emit no guessed
+    # specialist, and hand the roster to the conductor so it picks a
+    # role by the job it owns and cites the roster line that justifies
+    # it. A selection without that citation is an assertion, not a
+    # routing.
     #
-    # CB-132 removes the second half of that fix. The message also said
-    # reading the policy by hand "is not the fallback", which closed the
-    # only route a caller had left. The route it offered instead — pass
-    # a repository path — does not exist for every surface: a request to
-    # restructure `.claude/` or CLAUDE.md names configuration, and the
-    # rule table has no configuration surface, so no path resolves. A
-    # refusal that forbids the remaining option without opening another
-    # is worse than the loop it replaced. Observed as minutes of a run
-    # cycling through candidate agents and reaching none.
-    #
-    # So: say what does not match, name the path route as the better
-    # one, and stop forbidding the fallback. Choosing by hand stays
-    # visibly worse without being blocked, which is the honest state —
-    # a wrong specialist chosen out loud is correctable, a run that
-    # cannot proceed at all is not.
-    # CB-133: a default, recorded. Refusing produced neither a stopped
-    # run nor a question to the user — twice it produced improvisation:
-    # once a specialist invented out of a project's skills directory,
-    # once minutes of cycling through candidates. The table will always
-    # be incomplete, so the case this refusal fires on is permanent, and
-    # an unrecorded guess is what the refusal was meant to prevent.
-    #
-    # A risk gate was considered and dropped as dead code: payment,
-    # auth, migration and deploy all resolve through TEXT_RULES already,
-    # so a high-risk request never reaches this branch. The one that did
-    # — secret rotation — was a missing word in the auth rule, fixed
-    # above rather than caught by a second mechanism.
-    #
-    # What survives is the part that mattered: the choice is not silent.
-    # `inferred: true` reaches the Response Block, the Verifier and the
-    # ledger, so a wrong default is visible and correctable — which a
-    # model choosing quietly never was.
-    print("unresolved: true   # no rule matched; the specialist below is inferred",
-          file=sys.stderr)
+    # This branch runs only when `agents` is still empty here — every
+    # rule above that DID match already added its agents and raised the
+    # floor, so nothing mandatory (auth, schema/migration, terraform
+    # state, money, deletion) is ever routed through this branch: those
+    # all match through RULES or TEXT_RULES before this point, or they
+    # do not appear in the request at all.
+    print("unresolved: true   # no rule matched")
     if text:
         print("reason: --text was supplied and no rule matched it — the "
-              "request names no surface", file=sys.stderr)
+              "request names no surface")
     else:
-        print("reason: no path rule matched", file=sys.stderr)
-    print("next: if the request names a symbol, class or file, resolve it "
-          "to a repository path and re-run (`select-agents <path>`) — a "
-          "path carries the surface a verb cannot, and a routed choice "
-          "beats an inferred one. Otherwise proceed with the inferred "
-          "specialist and leave `inferred: true` in the plan.",
-          file=sys.stderr)
-    agents = [FALLBACK_AGENT]
-    inferred = True
-    signals.append("no rule matched — %s inferred, not routed" % FALLBACK_AGENT)
+        print("reason: no path rule matched")
+    print("next: name a repository path and re-run (select-agents <path>) "
+          "if the request has one — a path carries the surface a verb "
+          "cannot. Otherwise pick a role from the roster below and record "
+          "the roster line your choice rests on.")
+    _print_roster()
+    raise SystemExit(3)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
 # ---- spawnable names (CB-132) ----
@@ -496,8 +475,6 @@ def qualify(name):
     return _QUALIFIED.get(name, name)
 
 
-if inferred:
-    print("inferred: true")
 print("specialists:")
 for a in agents:
     print("  - %s" % qualify(a))
