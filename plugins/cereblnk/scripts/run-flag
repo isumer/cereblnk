@@ -138,6 +138,21 @@ case "$CMD" in
       echo "run-flag: the hook that reads this file will find nothing and pass everything through. Do not report the protection as enabled." >&2
       exit 1
     fi
+    # CB-147/F-31: cb_run_dir only accepts a pin whose context/<id>/
+    # directory exists; a dead pin is discarded and the resolver falls
+    # back to the mtime guess this flag exists to replace. The run's
+    # ledger and Response Blocks land under that same directory
+    # regardless, so create it now — the same verified-outcome
+    # discipline as the flag file above, applied to what makes the
+    # pin resolve rather than just land on disk.
+    if [ "$NAME" = "run-active" ] && [ -n "$CONTENT" ]; then
+      mkdir -p "$DIR/context/$CONTENT" 2>/dev/null || true
+      if [ ! -d "$DIR/context/$CONTENT" ]; then
+        echo "run-flag: could not create $DIR/context/$CONTENT — the pin will not resolve." >&2
+        echo "run-flag: cb_run_dir treats a pin with no matching context directory as dead and falls back to guessing. Do not report this run as guarded." >&2
+        exit 1
+      fi
+    fi
     echo "run-flag: armed ($FLAG)"
     # Scaffold what run-status reads. Created only when absent; the
     # conductor owns the contents afterwards.
