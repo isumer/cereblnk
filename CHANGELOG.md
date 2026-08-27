@@ -7,6 +7,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.5.2] — A guard that named a write it never found
+
+Two commands reached DelegationGuard through the shell path CB-123
+added, and both were misjudged for the same underlying reason: the
+guard trusted a classification shellwrite had not actually reached.
+
+The first was an unparseable command. `shlex` has no `$(...)`
+awareness, so an embedded single-quoted literal containing an odd
+number of double quotes closes the outer quote early and the lexer
+raises at end of input. shellwrite already caught that and returned
+its UNRESOLVED sentinel, correctly, to keep the guard failing closed
+on a command it could not read. But the guard then ran that sentinel
+through the same ownership loop as a resolved path, found it unowned,
+and told the model its command "writes" and to spawn a specialist for
+the file — a write it never established, and a remedy that cost four
+attempts on a line that may not have written at all.
+
+The second was `[[ a > b ]]`. Inside `[[ ... ]]`, `>` and `<` are
+string comparisons, never redirection; shellwrite classified by token
+identity alone and reported a write to `b`.
+
+### Fixed
+
+- **shellwrite reports a genuine tokenising failure under its own
+  sentinel**, distinct from a parsed command whose target it cannot
+  name. DelegationGuard now says only what it knows: a command it
+  could not read is told to simplify or split, not to delegate. A
+  parsed write to an unowned path keeps its message and its handoff
+  exactly as before — under-blocking, not over-claiming, is still the
+  wrong direction to correct here, so the block stands; only the claim
+  behind it changed.
+- **`[[ ... ]]` no longer misreads its own comparison operators as
+  redirection.** `[ ... ]`/`test` is left untouched: after `shlex`, an
+  escaped `>` cannot be told apart from a real one there, so narrowing
+  it would trade a known false positive for a possible false negative.
+  That residual stays, on purpose, and is not this fix's to close.
+
+Patch, not minor: no new capability, no interface change. A guard now
+says only what it knows.
+
 ## [1.5.1] — The cap that was counting the wrong conversation
 
 1.5.0 began retaining each subagent's digest under the pinned run. The
