@@ -41,7 +41,8 @@ case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 
 REASON="$(printf '%s' "$INPUT" | CB_RUN="$RUN" CB_MAX="${CB_DIGEST_NUDGES:-2}" \
   CB_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" $PYBIN -c '
-import json, os, pathlib, re, subprocess, sys
+import json, os, pathlib, re, subprocess, sys, time
+from datetime import datetime, timezone
 
 try:
     d = json.load(sys.stdin)
@@ -101,12 +102,32 @@ except Exception:
 if last is None:
     sys.exit(0)
 
+run = pathlib.Path(os.environ["CB_RUN"])
+safe = re.sub(r"[^A-Za-z0-9._-]", "_", agent)
+
+# Retain a copy of the digest regardless of cap outcome, one file per
+# digest rather than an appended log: a concurrent SubagentStop from a
+# different agent can never interleave mid-write, and a later scan for
+# a citation opens a file named for its agent and moment instead of
+# locating an offset inside a shared log. Best-effort and silent: a
+# failure here must never affect the stop decision below.
+try:
+    digest_file = run / (
+        "digest." + safe + "."
+        + str(int(time.time() * 1_000_000)) + "." + str(os.getpid()) + ".txt"
+    )
+    digest_file.write_text(
+        "agent: " + agent + "\n"
+        "timestamp: " + datetime.now(timezone.utc).isoformat() + "\n"
+        "---\n" + last + "\n",
+        encoding="utf-8")
+except Exception:
+    pass
+
 lines = [l for l in last.strip().splitlines() if l.strip()]
 if len(lines) <= cap:
     sys.exit(0)
 
-run = pathlib.Path(os.environ["CB_RUN"])
-safe = re.sub(r"[^A-Za-z0-9._-]", "_", agent)
 state = run / ("digest-cap." + safe + ".state")
 try:
     seen = int(state.read_text(encoding="utf-8").strip() or 0)
