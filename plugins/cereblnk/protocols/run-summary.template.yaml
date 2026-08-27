@@ -67,4 +67,4 @@ protocol_violations: []      # e.g. "T-016: unlabeled claim — block discarded,
 fast_path_abort: null
 
 synthesis_confidence: 0.78
-ledger_blocks_written: 0   # must equal tasks executed (budget-policy rule 4)
+ledger_blocks_written: 3   # must equal tasks executed (budget-policy rule 4)
