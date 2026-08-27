@@ -9,7 +9,11 @@
 # - budget_tokens:       from policies/budget-policy.md; agent must report usage
 # - context_refs:        CTX-* bundles from the Context OS — never raw repo paths
 # - acceptance:          must be testable; a task with an untestable acceptance
-#                        criterion is rejected by the PlannerAgent
+#                        criterion is rejected by the PlannerAgent. A
+#                        criterion must admit a declared, evidence-linked
+#                        Known/Derived chain plus a load-bearing Estimated
+#                        or Assumed claim, so long as its unknown is
+#                        recorded. An undeclared assumption still fails.
 # - acceptance_cmd:      OPTIONAL but strongly preferred wherever the criterion
 #                        is commandable (test invocation, grep, build step).
 #                        A weak executor cannot judge a sentence; it CAN run a
@@ -47,6 +51,8 @@ discovery_watch:                     # the same role's discovery_watch lines,
                                      # this hop, not that the task has no
                                      # further skill cascade.
 acceptance: >
-  A pass/fail conclusion on auth bypass with every supporting claim
-  labeled Known or Derived and linked to evidence.
+  A pass/fail conclusion on auth bypass. Every Known or Derived claim
+  is linked to evidence. A load-bearing Estimated or Assumed claim is
+  admissible if it is labeled as such and its unknown is recorded.
+  An undeclared assumption behind the conclusion fails this task.
 acceptance_cmd: "grep -n 'validateExpiry' src/main/java/**/AuthFilter.java"
