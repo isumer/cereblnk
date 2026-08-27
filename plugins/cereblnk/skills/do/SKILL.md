@@ -43,7 +43,9 @@ Take `specialists` and `gate_level`. `--emit-floor` writes the skill
 floor to `context/<run_id>/skills-required.yaml`, which is the single
 source of truth — the Task Block points at it rather than restating it,
 because a second copy can drift from the one the floor enforces. Exit 3
-means unresolved: name the surface, or ask. Never guess one agent.
+means unresolved: the output is the roster, not a specialist. Pick
+a role from it and cite the roster line your choice rests on.
+Never guess one agent.
 
 ## Step 3 — Stop only where the work is irreversible
 

@@ -400,30 +400,28 @@ def main():
         if "refactoring-agent" in r.stdout:
             ok = False; why.append(text[:24] + " (refactoring-agent selected)")
 
-    # CB-124 asserted this branch exits 3 and does not repeat the step
-    # just taken. CB-133 keeps the second half and drops the first: the
-    # branch now infers a specialist and exits 0, because refusing
-    # produced improvisation rather than a question. What must not come
-    # back is the loop — advice that asks for the call already made —
-    # and what must never be lost is the mark on the inference.
+    # T-DISC-21: unresolved now means HANDOFF. Nothing matched, so the
+    # mechanical floor has nothing to force — the selector exits 3,
+    # names no guessed specialist, and emits the roster so the
+    # conductor can choose a role and cite the line it rests on.
     r_txt = sh(["bash", str(PS / "select-agents"), "--text",
                 "review the OrderValidator class"])
-    if r_txt.returncode != 0:
-        ok = False; why.append("unresolved --text no longer proceeds")
-    if "inferred: true" not in r_txt.stdout:
+    if r_txt.returncode != 3:
+        ok = False; why.append("unresolved --text does not exit 3")
+    if "unresolved: true" not in r_txt.stdout:
         ok = False; why.append("the inference is not marked")
-    if "re-run with --text" in r_txt.stderr:
-        ok = False; why.append("unresolved --text still asks for --text")
-    if "select-agents <path>" not in r_txt.stderr:
+    if "specialists:" in r_txt.stdout:
+        ok = False; why.append("a guessed specialist rides along with the handoff")
+    if "roster:" not in r_txt.stdout:
+        ok = False; why.append("the roster is not emitted on the unresolved path")
+    if "select-agents <path>" not in r_txt.stdout:
         ok = False; why.append("unresolved --text does not name the path route")
-    if "not the fallback" in r_txt.stderr:
-        ok = False; why.append("the refusal that had no way out is back")
     r_resolved = sh(["bash", str(PS / "select-agents"),
                      "src/main/java/com/x/OrderValidator.java"])
     if r_resolved.returncode != 0 or "backend-agent" not in r_resolved.stdout:
         ok = False; why.append("the path route the message names does not resolve")
-    if "inferred: true" in r_resolved.stdout:
-        ok = False; why.append("a routed choice was marked as inferred")
+    if "unresolved: true" in r_resolved.stdout:
+        ok = False; why.append("a routed choice was marked unresolved")
 
     # CB-132: the routing table must name something the spawn API
     # accepts. It emitted `docs-agent`; the platform wants

@@ -50,9 +50,9 @@ SEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/select-agents"
 OUT="$(timeout 10 "$SEL" --text "$PROMPT" 2>/dev/null || true)"
 [ -n "$OUT" ] || exit 0
 
-# 4. Unresolved is silence, never a guess: `inferred: true` means no
-#    rule matched and the selector fell back.
-case "$OUT" in *"inferred: true"*) exit 0 ;; esac
+# 4. Unresolved is silence, never a guess: `unresolved: true` means no
+#    rule matched and the selector exits 3 with a roster, not a guess.
+case "$OUT" in *"unresolved: true"*) exit 0 ;; esac
 
 # What the hook routed on, so a wrong specialist can be traced to the
 # text that produced it rather than guessed at.
