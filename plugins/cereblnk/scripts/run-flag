@@ -1,69 +1,27 @@
 #!/usr/bin/env bash
 # run-flag (CB-131) — the run flag is set by a mechanism, not by prose.
-#
-# Eleven files told the conductor to arm the run with a raw command:
-#
-#   mkdir -p "$CB_DIR/flags" && touch "$CB_DIR/flags/run-active"
-#
-# A raw command carries no environment. `$CB_DIR` is exported by
-# lib/cbenv.sh, which that command never sources, so an unresolved
-# variable made the target `/flags` — the root of the filesystem. The
-# run observed died there with `mkdir: cannot create directory
-# '/flags': Permission denied`, and nothing noticed.
-#
-# Nothing noticed is the part that matters. DelegationGuard, RunGuard
-# and every check built on them read `$CB_DIR/flags/run-active` and
-# treat its absence as "no run in progress". A failed arm does not
-# weaken the delegation boundary; it removes it. That session then ran
-# a full rewrite workflow inline — zero Task Blocks on disk, the whole
-# rule payload, the source and a Maven failure in one window, and a
-# context-length error at 96001 tokens. From the outside, a run whose
-# flag never landed and a session that is not a run are the same thing.
-#
-# So this script does three things the prose could not:
-#
-#   1. Sources cbenv, so $CB_DIR is resolved the way run-status and
-#      plan-status resolve it.
-#   2. Verifies. After touch, the file is stat'ed. If it is not there,
-#      exit 1 with the reason on stderr. Silent success was the bug.
-#   3. Presents one stable command string. A host that remembers a
-#      permission decision remembers it per command; eleven improvised
-#      spellings meant the decision never matched the next run.
-#
-# CB-134 generalises it. `careful` and `boundary` — the two protections
-# a user turns on by hand — were armed by the skills with a RELATIVE
-# path, `.claude/cereblnk/flags/...`, which lands wherever the shell
-# happens to be. The hooks read $CB_DIR. Measured in a controlled
-# experiment: the same recursive delete ran when the flag sat where the
-# skill wrote it and was blocked when it sat where the hook looks. Both
-# skills report the protection as enabled either way, so the system
-# announces a guarantee it does not hold — worse than no protection,
-# because the user then takes more risk.
-#
-# F-17 adds the direction to the same principle. `/cb-careful` rendered
-# its argument into the instruction as `<argument> = on, or empty`, so
-# invoking it with anything but a bare `on`/`off` — "careful mode
-# please", "turn it on for this repo" — left the branch to model
-# judgment. A toggle whose direction is guessed is not a toggle, and
-# this one controls whether irreversible commands are blocked. The flag
-# subcommand therefore accepts `on`/`off` as literal synonyms of
-# arm/disarm and rejects everything else with usage and exit 2. The
-# skill passes the user's argument through verbatim; an argument that is
-# not one of the four accepted words changes nothing and says so.
-#
-# Usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]
+# CB-131: eleven raw arms resolved unset $CB_DIR to /flags and failed silently.
+# The missing flag removed every run floor; one rewrite then ran inline to a context error.
+# CB-134: relative careful/boundary flags claimed protection in a tree hooks never read.
+# F-17: flag direction accepts exact words only; guessing controls for irreversible work is unsafe.
+# Usage: run-flag arm|disarm|abandon|complete|status [cb_dir] [run_id]
+#        run-flag complete [cb_dir] [run_id] [--decision <text>] [--gate <text>]
 #   disarm   = pause; the run may resume
-#   complete = final synthesis; hands off to run-completed (§5)
+#   abandon  = retire a crashed/stale run without a completed handoff
+#   complete = accepted synthesis; hands off and archives (§5)
 #        run-flag flag <name> arm|on|disarm|off|status [cb_dir] [content]
 # Exit:  0 the flag is in the requested state (verified on disk)
 #        1 it is not, and stderr says why
 #        2 usage
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/run-lifecycle.sh"
 
 CMD="${1:-}"
 NAME="run-active"
 CONTENT=""
+DECISION=""
+GATE=""
 if [ "$CMD" = "flag" ]; then
   NAME="${2:-}"
   CMD="${3:-}"
@@ -85,32 +43,74 @@ if [ "$CMD" = "flag" ]; then
       exit 2 ;;
   esac
 else
-  DIR="${2:-${CB_DIR:-}}"
-  # CB-147 / F-31: the run flag now carries the run's identity, so the
-  # hooks stop inferring it from directory mtimes. `arm` takes the run
-  # id as its third positional (the second stays the cb_dir override,
-  # passed as "" when only the id is being set — the shape
-  # `flag boundary arm "" <path>` already uses).
-  #
-  # Validated here as well as in cb_run_dir. The resolver is what makes
-  # a bad value harmless; this is what makes it visible. A caller that
-  # passes something that is not a run id gets exit 2 and an unchanged
-  # flag, rather than an arm that silently pins nothing.
-  CONTENT="${3:-}"
+  if [ "$CMD" = "complete" ]; then
+    # CB-169: completion metadata is optional, but when present its value is
+    # opaque. Parse only the two flag names here; do not interpret their text.
+    shift
+    if [ "$#" -gt 0 ]; then
+      case "$1" in
+        --decision|--gate) DIR="${CB_DIR:-}" ;;
+        *) DIR="${1:-${CB_DIR:-}}"; shift ;;
+      esac
+    else
+      DIR="${CB_DIR:-}"
+    fi
+    if [ "$#" -gt 0 ]; then
+      case "$1" in
+        --decision|--gate) ;;
+        --*)
+          echo "run-flag: unknown complete option '$1'." >&2
+          echo "usage: run-flag complete [cb_dir] [run_id] [--decision <text>] [--gate <text>]" >&2
+          exit 2
+          ;;
+        *) CONTENT="$1"; shift ;;
+      esac
+    fi
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --decision|--gate)
+          _metadata_flag="$1"
+          shift
+          if [ "$#" -eq 0 ]; then
+            echo "run-flag: $_metadata_flag requires a value." >&2
+            echo "usage: run-flag complete [cb_dir] [run_id] [--decision <text>] [--gate <text>]" >&2
+            exit 2
+          fi
+          if [ "$_metadata_flag" = "--decision" ]; then
+            DECISION="$1"
+          else
+            GATE="$1"
+          fi
+          shift
+          ;;
+        *)
+          echo "run-flag: unknown complete option '$1'." >&2
+          echo "usage: run-flag complete [cb_dir] [run_id] [--decision <text>] [--gate <text>]" >&2
+          exit 2
+          ;;
+      esac
+    done
+    unset _metadata_flag
+  else
+    DIR="${2:-${CB_DIR:-}}"
+    CONTENT="${3:-}"
+  fi
+  # CB-147/F-31: the third argument carries run identity instead of relying on mtimes.
+  # Validate here for a visible refusal; cb_run_dir validates again for safety.
   if [ -n "$CONTENT" ]; then
     case "$CONTENT" in
       .* | *[!A-Za-z0-9._-]*)
         echo "run-flag: '$CONTENT' is not a run id. Expected a bare directory name under context/, e.g. R-2026-08-25-001." >&2
         echo "run-flag: nothing was changed — the run-active flag is still whatever it was." >&2
-        echo "usage: run-flag arm|disarm|complete|status [cb_dir] [run_id]" >&2
+        echo "usage: run-flag arm|disarm|abandon|complete|status [cb_dir] [run_id]" >&2
         exit 2 ;;
     esac
   fi
 fi
 
 case "$CMD" in
-  arm|disarm|complete|status) ;;
-  *) echo "usage: run-flag [flag <name>] arm|disarm|complete|status [cb_dir] [run_id]" >&2; exit 2 ;;
+  arm|disarm|abandon|complete|status) ;;
+  *) echo "usage: run-flag [flag <name>] arm|disarm|abandon|complete|status [cb_dir] [run_id]" >&2; exit 2 ;;
 esac
 
 if [ -z "$DIR" ]; then
@@ -120,6 +120,81 @@ if [ -z "$DIR" ]; then
 fi
 
 FLAG="$DIR/flags/$NAME"
+
+# CB-171: replacing a live pin requires an explicit transition; re-arming it is idempotent.
+# Empty, malformed, or dead pins may be replaced with an announced repair.
+if [ "$CMD" = "arm" ] && [ "$NAME" = "run-active" ] && \
+   [ -n "$CONTENT" ] && [ -f "$FLAG" ]; then
+  _existing_run="$(head -n 1 "$FLAG" 2>/dev/null | tr -d ' \t\r\n' || true)"
+  _existing_pin=""
+  case "$_existing_run" in
+    "" | .* | *[!A-Za-z0-9._-]*) ;;
+    *)
+      if [ -d "$DIR/context/$_existing_run" ]; then
+        _existing_pin="$_existing_run"
+      fi
+      ;;
+  esac
+  if [ "$_existing_pin" = "$CONTENT" ]; then
+    unset _existing_run _existing_pin
+    exit 0
+  fi
+  if [ -n "$_existing_pin" ]; then
+    echo "run-flag: refusing to arm $CONTENT — run-active already pins $_existing_pin." >&2
+    echo "run-flag: use /cb-resume, 'run-flag disarm', 'run-flag complete', or 'run-flag abandon' for $_existing_pin before arming $CONTENT." >&2
+    unset _existing_run _existing_pin
+    exit 1
+  fi
+  echo "run-flag: warning: the existing run-active flag is unpinned or invalid; replacing it with $CONTENT." >&2
+  unset _existing_run _existing_pin
+fi
+
+# CB-166: resolve the validated pin before lifecycle transitions remove it.
+_contract_baseline=""
+_completion_run_id="$CONTENT"
+_active_run_id=""
+if [ "$NAME" = "run-active" ] && [ -f "$FLAG" ]; then
+  _pinned_run="$(head -n 1 "$FLAG" 2>/dev/null | tr -d ' \t\r\n')"
+  case "$_pinned_run" in
+    "" | .* | *[!A-Za-z0-9._-]*) ;;
+    *)
+      if [ -d "$DIR/context/$_pinned_run" ]; then
+        _active_run_id="$_pinned_run"
+        _contract_baseline="$DIR/context/$_pinned_run/contract-baseline.txt"
+        if { [ "$CMD" = "complete" ] || [ "$CMD" = "abandon" ]; } && \
+           [ -z "$_completion_run_id" ]; then
+          _completion_run_id="$_pinned_run"
+        fi
+      fi
+      ;;
+  esac
+  unset _pinned_run
+fi
+if { [ "$CMD" = "complete" ] || [ "$CMD" = "abandon" ]; } && \
+   [ -n "$CONTENT" ] && [ -n "$_active_run_id" ] && \
+   [ "$CONTENT" != "$_active_run_id" ]; then
+  echo "run-flag: refusing to $CMD $CONTENT — run-active pins $_active_run_id." >&2
+  echo "run-flag: nothing was changed; resume, complete, or abandon the pinned run first." >&2
+  exit 1
+fi
+# Preserve the historical unpinned fallback, but resolve it before complete
+# removes run-active. The explicit id and a valid pin always win over mtime.
+if { [ "$CMD" = "complete" ] || [ "$CMD" = "abandon" ]; } && \
+   [ -z "$_completion_run_id" ]; then
+  _completion_run_dir="$(ls -1dt "$DIR"/context/*/ 2>/dev/null | head -n 1 || true)"
+  _completion_run_dir="${_completion_run_dir%/}"
+  [ -z "$_completion_run_dir" ] || _completion_run_id="${_completion_run_dir##*/}"
+  unset _completion_run_dir
+fi
+if { [ "$CMD" = "complete" ] || [ "$CMD" = "abandon" ]; } && \
+   [ -n "$_completion_run_id" ] && \
+   [ -d "$DIR/context/$_completion_run_id" ]; then
+  _contract_baseline="$DIR/context/$_completion_run_id/contract-baseline.txt"
+fi
+if { [ "$CMD" = "complete" ] || [ "$CMD" = "abandon" ]; } && \
+   [ -n "$_completion_run_id" ]; then
+  _archive_preflight
+fi
 
 case "$CMD" in
   status)
@@ -138,13 +213,7 @@ case "$CMD" in
       echo "run-flag: the hook that reads this file will find nothing and pass everything through. Do not report the protection as enabled." >&2
       exit 1
     fi
-    # CB-147/F-31: cb_run_dir only accepts a pin whose context/<id>/
-    # directory exists; a dead pin is discarded and the resolver falls
-    # back to the mtime guess this flag exists to replace. The run's
-    # ledger and Response Blocks land under that same directory
-    # regardless, so create it now — the same verified-outcome
-    # discipline as the flag file above, applied to what makes the
-    # pin resolve rather than just land on disk.
+    # CB-147/F-31: create context/<id> now or the resolver discards the pin as dead.
     if [ "$NAME" = "run-active" ] && [ -n "$CONTENT" ]; then
       mkdir -p "$DIR/context/$CONTENT" 2>/dev/null || true
       if [ ! -d "$DIR/context/$CONTENT" ]; then
@@ -152,6 +221,32 @@ case "$CMD" in
         echo "run-flag: cb_run_dir treats a pin with no matching context directory as dead and falls back to guessing. Do not report this run as guarded." >&2
         exit 1
       fi
+      # Exit 3 records an empty baseline; execution/write failure leaves it absent so floors fail open.
+      _contract_baseline="$DIR/context/$CONTENT/contract-baseline.txt"
+      _contract_check="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/contract-check"
+      _project_root="$(dirname "$(dirname "$DIR")")"
+      _baseline_tmp="$_contract_baseline.$$"
+      _baseline_rc=127
+      if [ -n "${PYBIN:-}" ] && [ -f "$_contract_check" ]; then
+        set +e
+        $PYBIN "$_contract_check" "$_project_root" 2>/dev/null \
+          | LC_ALL=C sort -u > "$_baseline_tmp"
+        _baseline_rc=${PIPESTATUS[0]}
+        set -e
+      fi
+      case "$_baseline_rc" in
+        0|1|3)
+          if ! mv -f "$_baseline_tmp" "$_contract_baseline" 2>/dev/null; then
+            rm -f "$_baseline_tmp" 2>/dev/null || true
+            rm -f "$_contract_baseline" 2>/dev/null || true
+          fi
+          ;;
+        *)
+          rm -f "$_baseline_tmp" 2>/dev/null || true
+          rm -f "$_contract_baseline" 2>/dev/null || true
+          ;;
+      esac
+      unset _contract_check _project_root _baseline_tmp _baseline_rc
     fi
     echo "run-flag: armed ($FLAG)"
     # Scaffold what run-status reads. Created only when absent; the
@@ -192,10 +287,7 @@ case "$CMD" in
         } > "$_inbox" 2>/dev/null || true
       fi
     fi
-    # F-23: stat answers "is the file there", not "is it in the tree the
-    # hooks read". Under a split root the arm reported success while the
-    # hooks saw nothing — the same silent-unguarded outcome this script
-    # was written to end, reached from the other side.
+    # F-23: a split-root arm existed but hooks saw another tree; warn via CB_ROOT_HINT.
     if [ -n "${CB_ROOT_HINT:-}" ]; then
       echo "run-flag: note — the session root is $CB_ROOT_HINT and this armed under $DIR." >&2
       echo "run-flag: hooks resolving to the session root will not see this flag." >&2
@@ -210,6 +302,11 @@ case "$CMD" in
     # The nudge counter covers one uninterrupted armed period.
     if [ "$NAME" = "run-active" ]; then
       rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
+      [ -z "$_contract_baseline" ] || rm -f "$_contract_baseline" 2>/dev/null || true
+      if [ -n "$_contract_baseline" ] && [ -f "$_contract_baseline" ]; then
+        echo "run-flag: could not remove $_contract_baseline — the run baseline is stale." >&2
+        exit 1
+      fi
     fi
     echo "run-flag: disarmed"
     if [ "$NAME" = "run-active" ] && [ ! -f "$DIR/flags/run-completed" ]; then
@@ -219,6 +316,39 @@ case "$CMD" in
       echo "run-flag: run that ENDED rather than one whose guard was removed." >&2
     fi
     ;;
+  abandon)
+    # Never undo durable-memory touches; a later run may already depend on them.
+    if [ -z "$_completion_run_id" ] || \
+       [ ! -d "$DIR/context/$_completion_run_id" ]; then
+      echo "run-flag: no live run context resolved to abandon." >&2
+      exit 1
+    fi
+    _abandon_context="$DIR/context/$_completion_run_id"
+    _abandon_root="$(dirname "$(dirname "$DIR")")"
+    _abandon_memory="$(_memory_touch_list "$_abandon_context" "$_abandon_root")"
+    echo "run-flag: memory touches for $_completion_run_id (review only; never reverted):"
+    if [ -n "$_abandon_memory" ]; then
+      while IFS= read -r _memory_path; do
+        [ -n "$_memory_path" ] && printf '  %s\n' "$_memory_path"
+      done <<< "$_abandon_memory"
+    else
+      echo "  none"
+    fi
+    _clear_run_transients "$_abandon_context"
+    rm -f "$FLAG" "$DIR/flags/run-active.state" \
+          "$DIR/flags/run-active.nudged" "$DIR/flags/run-active.witness" \
+          "$DIR/flags/run-completed" 2>/dev/null || true
+    for _stale in run-active run-active.state run-active.nudged \
+                  run-active.witness run-completed; do
+      if [ -f "$DIR/flags/$_stale" ]; then
+        echo "run-flag: could not remove $DIR/flags/$_stale — abandonment stopped." >&2
+        exit 1
+      fi
+    done
+    _archive_run_context
+    echo "run-flag: abandoned (no run-completed handoff)"
+    unset _abandon_context _abandon_root _abandon_memory _memory_path
+    ;;
   complete)
     # Final-synthesis handoff (run-discipline §5): clears the run
     # flag and its siblings, then writes run-completed.
@@ -226,6 +356,7 @@ case "$CMD" in
     rm -f "$DIR/flags/run-active.state" 2>/dev/null || true
     rm -f "$DIR/flags/run-active.nudged" 2>/dev/null || true
     rm -f "$DIR/flags/run-active.witness" 2>/dev/null || true
+    [ -z "$_contract_baseline" ] || rm -f "$_contract_baseline" 2>/dev/null || true
     mkdir -p "$DIR/flags" 2>/dev/null || true
     : > "$DIR/flags/run-completed" 2>/dev/null || true
     if [ ! -f "$DIR/flags/run-completed" ]; then
@@ -240,6 +371,18 @@ case "$CMD" in
         exit 1
       fi
     done
+    if [ -n "$_contract_baseline" ] && [ -f "$_contract_baseline" ]; then
+      echo "run-flag: could not remove $_contract_baseline — the run baseline is stale." >&2
+      exit 1
+    fi
+    _append_completion_telemetry
+    if [ -n "$_completion_run_id" ] && \
+       [ -d "$DIR/context/$_completion_run_id" ]; then
+      _clear_run_transients "$DIR/context/$_completion_run_id"
+      _archive_run_context
+    else
+      echo "run-flag: no live context was archived." >&2
+    fi
     echo "run-flag: completed (handed off to run-completed)"
     ;;
 esac

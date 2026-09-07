@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# SecretGuardHook — ALWAYS ON, fail-closed on detection.
-# Blocks Write/Edit content that contains likely credentials before the
-# artifact is written.
+# SecretGuardHook (PreToolUse: Write|Edit|MultiEdit|NotebookEdit|Bash) — always on; likely credentials exit 2.
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project
@@ -18,7 +16,8 @@ try:
 except json.JSONDecodeError:
     data = {}
 ti = data.get("tool_input") or {}
-content = " ".join(str(ti.get(k, "")) for k in ("content", "new_string", "new_str", "new_source"))
+content = " ".join(str(ti.get(k, "")) for k in
+                   ("content", "new_string", "new_str", "new_source", "command"))
 if not content.strip():
     sys.exit(0)
 patterns = [

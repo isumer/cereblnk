@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# PostEditTestHook — policy-driven: active when gate level 3 work
-# is flagged ($CB_DIR/flags/gate3) AND a test command is configured
-# ($CB_DIR/config/test-command, single line). Runs the configured test
-# subset after edits; a failure is reported back (exit 2 → stderr to Claude).
+# PostEditTestHook runs config/test-command after gate3 edits.
+# Failure exits 2 and reports the last 30 output lines to the host.
+
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project

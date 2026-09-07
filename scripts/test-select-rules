@@ -1,25 +1,6 @@
 #!/usr/bin/env python3
 """test-select-rules (CB-109) — the gate must subtract only what it can prove.
 
-A glob answers what kind of file this is. It cannot answer whether the
-framework is part of the project, and for 102 of the tree's rule files
-that second question already had an answer nobody read.
-
-The cases that matter are the two directions of being wrong. Gating too
-little leaves the old behaviour. Gating too much drops a real
-constraint, which is the worse failure and the reason the absent-profile
-path returns everything.
-
-Asserts:
-  S-1  no profile -> every glob match is returned, gate not applied
-  S-2  a framework absent from the profile is gated out
-  S-3  a framework present in the profile survives
-  S-4  language and format rules are never gated — a .sql file means
-       SQL is present and there is nothing further to prove
-  S-5  cross-cutting rules directly under a category are never gated
-  S-6  common/ is always returned, whatever the profile says
-  S-7  --explain names the token each dropped rule was waiting for
-
 Exit: 0 all pass · 1 any case failed
 """
 import pathlib
@@ -61,13 +42,7 @@ def main():
               r.stdout[:120])
         baseline = r.stdout.count("\n  - ")
 
-        # CB-128: this fixture wrote the profile to
-        # .claude/cereblnk/stack-profile.yaml, which is where the old
-        # select-rules looked and is not where detect-stack writes.
-        # Test and code agreed with each other and both disagreed with
-        # the runtime, so every gate case here passed while the gate had
-        # never applied to a real repository once. The fixture now
-        # writes where detect-stack does.
+        # CB-128: test and code once shared the wrong path, hiding that the real gate never applied.
         gated = pathlib.Path(td) / "gated"
         (gated / ".claude/cereblnk/context").mkdir(parents=True)
         (gated / ".claude/cereblnk/context/stack-profile.yaml").write_text(

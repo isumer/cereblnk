@@ -27,7 +27,27 @@ validation does not exist for this rewrite. Say which case holds in
 the contract's first line. A rewrite may proceed either way. It may
 not proceed silently.
 
-## Agent topology
+## Stage 1 — Arm the run flag (RunGuardHook wiring)
+
+Arm at execution start, passing this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
+It resolves `$CB_DIR` and verifies the flag landed.
+A non-zero exit means the run is not guarded.
+Do not proceed as though it were.
+The id is not decoration.
+Nine hooks resolve the run from this flag.
+Armed without an id, they guess the newest directory.
+That guess is the F-31 defect (CB-147).
+The empty second argument holds the cb_dir slot.
+Remove it before ANY turn that ends awaiting the user.
+Do not complete it at first synthesis; the acceptance gate below decides.
+A finished run is handed off, not stripped of its guard.
+Plain `disarm` is the pause.
+DelegationGuard tells the two apart.
+Full lifecycle semantics live in `policies/run-discipline.md` §5.
+That is the authoritative copy. This section does not restate it.
+
+## Stage 2 — Select the agent topology
 
 ```
 Orchestrator → legacy-analyst-agent  (per module; code → behavior rows,
@@ -113,28 +133,16 @@ results per row, and which rows had no oracle) → REASONING → RISK
 (rows still `derived`, deferred rows, unreached branches) →
 CONFIDENCE.
 
+## Post-synthesis acceptance
+
+After every synthesis, disarm before asking the operator: **Anything to
+improve or fix?** A yes keeps `context/<run_id>/` live: re-arm the same
+id, run the improvement through the workflow and its gates, synthesize,
+then ask again. Only a no calls `scripts/run-flag complete`; completion
+hands off `run-completed` and archives the run.
+
 ## Execution discipline
 
 `policies/run-discipline.md` binds this run in full. Ledger and
 digests, conductor-context budget, synchronous stages, path anchoring,
 flag lifecycle, context-error recovery.
-
-## Run flag (RunGuardHook wiring)
-
-Arm at execution start, passing this run's id:
-`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
-It resolves `$CB_DIR` and verifies the flag landed.
-A non-zero exit means the run is not guarded.
-Do not proceed as though it were.
-The id is not decoration.
-Eight hooks resolve the run from this flag.
-Armed without an id, they guess the newest directory.
-That guess is the F-31 defect (CB-147).
-The empty second argument holds the cb_dir slot.
-Remove it before ANY turn that ends awaiting the user.
-Complete it at final synthesis with `scripts/run-flag complete`.
-A finished run is handed off, not stripped of its guard.
-Plain `disarm` is the pause.
-DelegationGuard tells the two apart.
-Full lifecycle semantics live in `policies/run-discipline.md` §5.
-That is the authoritative copy. This section does not restate it.

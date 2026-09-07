@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # ensure-gitignore (CB-086) — .claude/ stays out of the repo, once.
-#
-# Idempotent: uses `git check-ignore` (respects existing patterns and
-# global gitignore) so an already-covered repo is never touched.
+# Uses `git check-ignore`; an already-covered repo is never touched.
+
 # Opt-out for teams that commit .claude/ deliberately:
 #   touch $CB_DIR/flags/no-gitignore
-#
+
 # Usage: ensure-gitignore [project_root]   (default: cbenv CB_ROOT)
 # Exit:  0 always (guard, not gate) · 2 usage-only
 set -euo pipefail

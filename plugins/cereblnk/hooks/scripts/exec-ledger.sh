@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
-# ExecLedgerHook (PostToolUse: Write|Edit|MultiEdit|NotebookEdit|Bash)
-# — CB-113, observation only.
-#
-# Two facts, one ledger:
-#   edit <surface>   a specialist changed code on that surface
-#   exec <surface>   a specialist ran that surface's configured check
-#
-# This is the evidence ExecFloorHook checks at SubagentStop. Without it
-# "the code works" is a claim about a program nobody ran — unfalsifiable
-# rather than verified, which is the failure this task exists to close.
-#
-# Never blocks. A recording hook that can fail a tool call would trade a
-# verification record for a broken session — skill-ledger.sh's rule, and
-# for the same reason.
+# ExecLedgerHook records per-surface edit/exec evidence for ExecFloorHook (CB-113).
+# Observation only; it never blocks.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -25,7 +13,7 @@ LIBDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib"
 
 INPUT="$(cat 2>/dev/null || true)"
 printf '%s' "$INPUT" | CB_RUN="$RUN" CB_LIB="$LIBDIR" CB_CFG="$CB_DIR/config" $PYBIN -c '
-import json, os, pathlib, re, sys, time
+import json, os, pathlib, re, shlex, sys, time
 
 try:
     d = json.load(sys.stdin)
@@ -64,27 +52,112 @@ except Exception:
     _surfaces = None
 
 _SMAP = _surfaces.load() if _surfaces else {}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+OPERATORS = re.compile(r"^[|&;()\n]+$")
+TRANSPARENT = {"sudo", "env", "nohup", "timeout", "nice", "command", "exec"}
+OPTION_VALUES = {
+    "sudo": {"-C", "--close-from", "-g", "--group", "-h", "--host", "-p",
+             "--prompt", "-r", "--role", "-t", "--type", "-T",
+             "--command-timeout", "-u", "--user"},
+    "env": {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"},
+    "timeout": {"-k", "--kill-after", "-s", "--signal"},
+    "nice": {"-n", "--adjustment"},
+    "exec": {"-a"},
+}
 
 
 def surface_of(path):
     return _surfaces.surface_of(path, _SMAP) if _surfaces else ""
 
 
+def command_segments(command):
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="|&;()\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return []
+    result, current = [], []
+    for token in tokens:
+        if OPERATORS.fullmatch(token):
+            if current:
+                result.append(current)
+                current = []
+        else:
+            current.append(token)
+    if current:
+        result.append(current)
+    return result
+
+
+def executable_segment(words):
+    words = list(words)
+    while words:
+        if ASSIGNMENT.match(words[0]):
+            words.pop(0)
+            continue
+        wrapper = os.path.basename(words[0])
+        if wrapper not in TRANSPARENT:
+            break
+        words.pop(0)
+        while words and words[0].startswith("-"):
+            option = words.pop(0)
+            name = option.split("=", 1)[0]
+            if name in OPTION_VALUES.get(wrapper, set()) and "=" not in option and words:
+                words.pop(0)
+        if wrapper == "timeout" and words:
+            words.pop(0)
+    return " ".join(words)
+
+
+def failed_result(payload):
+    # Claude PostToolUse puts the Bash result in tool_response; absent status stays fail-open.
+    if "tool_response" not in payload:
+        return False
+    response = payload["tool_response"]
+    if isinstance(response, str):
+        match = re.match(r"\s*(?:Error:\s*)?Exit code\s+(-?\d+)\b", response, re.I)
+        if match:
+            return int(match.group(1)) != 0
+        return response.lstrip().lower().startswith("error:")
+    if not isinstance(response, dict):
+        return False
+    if response.get("is_error") is True or response.get("success") is False:
+        return True
+    if response.get("interrupted") is True or response.get("error"):
+        return True
+    for key in ("exit_code", "exitCode", "status", "code"):
+        value = response.get(key)
+        if isinstance(value, bool) or value is None:
+            continue
+        try:
+            if int(value) != 0:
+                return True
+        except (TypeError, ValueError):
+            if str(value).lower() in {"error", "failed", "failure"}:
+                return True
+    return False
+
+
 if tool == "Bash":
     cmd = ti.get("command")
     if not isinstance(cmd, str) or not cmd.strip():
         sys.exit(0)
+    if failed_result(d):
+        sys.exit(0)
     cfg = pathlib.Path(os.environ["CB_CFG"])
     if not cfg.is_dir():
         sys.exit(0)
-    norm = " ".join(cmd.split())
+    segments = [executable_segment(s) for s in command_segments(cmd)]
     for f in sorted(cfg.glob("check-command.*")):
         surface = f.name.split(".", 1)[1]
         try:
-            want = " ".join(f.read_text(encoding="utf-8").splitlines()[0].split())
-        except (OSError, IndexError):
+            configured = f.read_text(encoding="utf-8").splitlines()[0]
+            want = " ".join(shlex.split(configured))
+        except (OSError, IndexError, ValueError):
             continue
-        if want and want in norm:
+        if want and any(seg == want or seg.startswith(want + " ") for seg in segments):
             record("exec", surface)
     sys.exit(0)
 

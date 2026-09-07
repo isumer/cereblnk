@@ -1,13 +1,6 @@
 """surfaces — reader for policies/surface-map.yaml (CB-113, shared CB-116).
 
-Parses the restricted schema documented at the top of the map file, not
-general YAML: no dependency may be added to a plugin the user installs,
-and stdlib carries no YAML reader.
-
-Shared by ExecLedgerHook and scripts/contract-check for cbmap's reason:
-a checker that reads the map differently from the recorder will disagree
-with it eventually, and the disagreement will look like a bug in the
-project being checked rather than in Cereblnk.
+Shared parsing keeps the recorder and checker on one interpretation.
 """
 import os
 import pathlib

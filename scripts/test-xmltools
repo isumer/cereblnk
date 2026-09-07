@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """test-xmltools — repeatable acceptance run for the xmltools scripts.
 
-Replaces the one-shot, build-time verification of CB-067 with a check
-anyone (and CI) can re-run. Each case asserts BOTH the exit code and a
-required substring of the output, so a tool that fails silently or
-succeeds for the wrong reason still fails the run.
-
 Usage: scripts/test-xmltools
 Exit: 0 all pass · 1 any failure
 """

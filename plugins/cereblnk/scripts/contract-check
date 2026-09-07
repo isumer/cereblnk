@@ -1,42 +1,7 @@
 #!/usr/bin/env python3
 """contract-check — does this surface actually speak the contract.
 
-A migration fails in a place no single-surface gate can see. Each leg is
-internally correct, each leg runs clean, and they disagree with each
-other: the client subscribes to a destination the server never
-publishes, or the server moved and the client kept the old call. Both
-specialists report complete and the system does not work.
-
-The fix is not a stricter review. It is a contract that exists as an
-object rather than as prose scattered through two sets of specs, and a
-check that compares each side against it.
-
-Parallelism is preserved deliberately. A surface is judged only on its
-own files: the UI is asked whether the UI carries every channel, not
-whether the backend is finished. Two developers, or two agents, work at
-the same time and neither waits for the other. What neither may do is
-CLOSE while its own side is silent about a channel the contract names.
-
-Contract format, under .claude/cereblnk/memory/contracts/*.md:
-
-    contract: chat-stomp
-    version: 1
-    parties: ui, api
-
-    ## Channels
-    | channel | direction | payload |
-    | --- | --- | --- |
-    | /topic/messages | server->client | MessageDto |
-
-    ## Migration
-    | old | new | status |
-    | --- | --- | --- |
-    | POST /api/messages | /app/send | replaced |
-
-Channels must appear in every listed party's own files. Migration rows
-whose status is not `deferred` must have their old path GONE from every
-party. The two directions are duals: presence of the new and absence of
-the old. Checking only one lets a half-done migration pass.
+Each party is judged only on its own files so parallel work need not serialize.
 
 Usage: contract-check <project-root> [surface ...]
 Exit:  0 clean · 1 findings printed · 3 nothing to check
@@ -87,7 +52,8 @@ def parse_contract(path):
         "name": head["contract"],
         "version": head.get("version", "0"),
         "parties": parties,
-        "channels": [r[0] for r in rows("Channels") if r[0]],
+        "channels": [(r[0], (r[3] if len(r) > 3 else "").lower())
+                     for r in rows("Channels") if r[0]],
         "migration": [(r[0], r[1] if len(r) > 1 else "",
                        (r[2] if len(r) > 2 else "").lower()) for r in rows("Migration")],
     }
@@ -101,13 +67,7 @@ def path_token(value):
 
 
 def channel_match(ch, text):
-    """Where the channel is mentioned, or None.
-
-    The whole token when the source spells it out. Otherwise the longest
-    trailing run of segments that does appear: a framework may split one
-    route across a class-level prefix and a method-level suffix, so the
-    full path is never a literal anywhere in the file.
-    """
+    """Find a whole channel or its longest suffix when frameworks split route prefixes."""
     tok = path_token(ch)
     if tok in text:
         return tok
@@ -161,7 +121,9 @@ def main(argv):
                                 "this contract" % (c["name"], c["version"], party))
                 continue
             text = haystack(files)
-            for ch in c["channels"]:
+            for ch, status in c["channels"]:
+                if status == "deferred":
+                    continue
                 where = channel_match(ch, text)
                 if where is None:
                     findings.append("%s v%s: %s never mentions channel %s"

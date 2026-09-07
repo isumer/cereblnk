@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """test-docparse — golden-file acceptance run for the docparse scripts.
 
-Every content fixture under tests/fixtures/docparse/ is parsed with
-docparse.py --format md and compared byte-for-byte against its
-committed .golden.md. Path cases assert BOTH the exit code and a
-required stderr substring (a tool that fails silently, or succeeds for
-the wrong reason, still fails the run). Exit codes are read from the
-subprocess directly — never through a shell pipe.
-
 Usage: scripts/test-docparse [--bless]
   --bless  regenerate all goldens from current parser output
            (review the diff before committing — a bless IS a claim)

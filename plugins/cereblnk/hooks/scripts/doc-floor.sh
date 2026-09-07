@@ -1,25 +1,6 @@
 #!/usr/bin/env bash
-# DocFloorHook (PreToolUse:Read) — CB-112.
-#
-# `docindex` writes the extracted text next to a map of it. The map only
-# helps if something stops the agent walking past it: an unbounded Read
-# of a 200-page contract spends the window on the way to the one clause
-# that was asked about, and every later turn re-processes it.
-#
-# So: an indexed document may be read in slices, not whole. The block
-# message carries the computed handoff — doc_id, section count, and the
-# largest sections with their line ranges — so the next call is a
-# bounded Read rather than a search for one. It does NOT name the way
-# around itself. A guard that prints its own bypass has taught the agent
-# to take it (CB-099).
-#
-# Two nudges per document, then allow — the digest-cap idiom. Reading a
-# short indexed document whole is sometimes right, and a guard that can
-# never be satisfied stops being a guard.
-#
-# Fail-open everywhere: no root, no interpreter, no manifest,
-# unparseable input, unindexed path. A large read is expensive; a
-# blocked legitimate read is worse.
+# DocFloorHook (PreToolUse: Read) — CB-112. Exit 2 redirects large indexed docs to slices.
+# CB-099 hides the bypass; two nudges then allow, while missing metadata fails open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -45,8 +26,6 @@ raw = ti.get("file_path") or ""
 if not raw:
     sys.exit(0)
 
-# A bounded read is the behaviour this hook exists to produce. Never
-# interfere with one.
 if ti.get("offset") or ti.get("limit"):
     sys.exit(0)
 

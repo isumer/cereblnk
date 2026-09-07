@@ -1,28 +1,8 @@
 #!/usr/bin/env bash
-# ContractFloorHook (SubagentStop) — CB-116, hard enforcement.
-#
-# CB-113 asks whether a changed surface was run. CB-114 asks whether new
-# code is reached. Both are single-surface questions, and the failure
-# that costs a migration is not: each leg is internally correct, each
-# runs clean, and they disagree with each other.
-#
-# This asks the cross-surface question at the only moment it is cheap —
-# before the specialist closes — and asks it of the specialist's OWN
-# surface only. The UI is asked whether the UI carries every channel the
-# contract names, never whether the backend is finished. Two developers
-# or two agents work in parallel and neither waits for the other. What
-# neither may do is close while its own side is silent about a channel.
-#
-# This is a closing gate on purpose. A starting gate — refusing to let
-# the UI begin until the contract exists — would serialise the work and
-# is the wrong trade: the failure was never that a leg started early, it
-# was that a leg finished unmatched.
-#
-# No contract, no floor. A project that has not written one is not in
-# scope, and a hook that demanded contracts of every task would be a
-# tax on single-surface work.
-#
-# Loop safety and fail-open in skill-floor.sh's shape.
+# ContractFloorHook (SubagentStop) — CB-116 gates cross-surface agreement at close.
+# Parallel starts survive; no contract/errors fail open and re-entry is bounded.
+
+# CB-113/CB-114 cover execution and reachability, not cross-surface agreement.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -40,7 +20,7 @@ case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 CHECK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/contract-check"
 [ -f "$CHECK" ] || exit 0
 
-REASON="$(printf '%s' "$INPUT" | CB_RUN="$RUN" CB_ROOT="$CB_ROOT" CB_CHECK="$CHECK" \
+RESULT="$(printf '%s' "$INPUT" | CB_RUN="$RUN" CB_ROOT="$CB_ROOT" CB_CHECK="$CHECK" \
   CB_PY="$PYBIN" CB_MAX="${CB_CONTRACT_NUDGES:-2}" $PYBIN -c '
 import json, os, pathlib, subprocess, sys
 
@@ -69,7 +49,34 @@ except Exception:
     sys.exit(0)
 if r.returncode != 1 or not r.stdout.strip():
     sys.exit(0)
-findings = [l for l in r.stdout.strip().splitlines() if l.strip()][:10]
+findings = sorted(set(l.strip() for l in r.stdout.splitlines() if l.strip()))
+
+baseline_path = run / "contract-baseline.txt"
+try:
+    baseline = set(l.strip() for l in baseline_path.read_text(
+        encoding="utf-8").splitlines() if l.strip())
+except (OSError, UnicodeError):
+    shown = findings[:10]
+    print("NOTE\nContract-floor could not compare this run with its starting "
+          "state because contract-baseline.txt is missing or unreadable. "
+          "Failing open; current contract risk:\n  %s"
+          % "\n  ".join(shown))
+    sys.exit(0)
+
+preexisting = [f for f in findings if f in baseline]
+new = [f for f in findings if f not in baseline]
+
+def risk_note(rows):
+    if not rows:
+        return ""
+    return ("Pre-existing contract risk (present when this run was armed; "
+            "reported, not blocking):\n  %s" % "\n  ".join(rows[:10]))
+
+note = risk_note(preexisting)
+if not new:
+    if note:
+        print("NOTE\n" + note)
+    sys.exit(0)
 
 state = run / ("contract-floor.%s.state" % agent)
 count = 0
@@ -79,20 +86,26 @@ if state.exists():
     except ValueError:
         count = 0
 if count >= int(os.environ["CB_MAX"]):
+    if note:
+        print("NOTE\n" + note)
     sys.exit(0)
 state.write_text(str(count + 1), encoding="utf-8")
 
-print("%s is closing a surface that does not match its contract:\n  %s\n"
+message = ("%s is closing a surface that introduced contract findings "
+      "during this run:\n  %s\n"
       "Each line names one side and one channel. Carry the missing channel "
       "on this surface, or remove the path the contract replaced. If a row "
       "is genuinely later work, mark its migration status deferred in the "
       "contract and say why in your Response Block — an unmatched surface "
       "is not a finished change, it is a change the other leg cannot meet."
-      % (agent, "\n  ".join(findings)))
+      % (agent, "\n  ".join(new[:10])))
+if note:
+    message += "\n\n" + note
+print("BLOCK\n" + message)
 ' 2>/dev/null || true)"
 
-if [ -n "$REASON" ]; then
-  echo "$REASON" >&2
-  exit 2
-fi
+case "$RESULT" in
+  BLOCK$'\n'*) printf '%s\n' "${RESULT#*$'\n'}" >&2; exit 2 ;;
+  NOTE$'\n'*)  printf '%s\n' "${RESULT#*$'\n'}" >&2 ;;
+esac
 exit 0

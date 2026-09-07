@@ -1,32 +1,6 @@
 #!/usr/bin/env python3
 """select-rules (CB-109) — which constraints a file actually pulls.
 
-The rules layer matched on globs alone. A glob answers "what kind of
-file is this"; it cannot answer "is this framework part of the
-project". So a lone `.tsx` in a service that never depends on Next.js
-still pulled the Next.js ruleset, because `**/app/**/*.tsx` matched.
-
-The missing half was already computed. `scripts/detect-stack` writes a
-stack profile, and `policies/skill-selection.yaml` already carries the
-`stack:` token for each skill. 102 of the tree's rule files belong to a
-skill with such a token; nothing consumed it on the rules side.
-
-So the gate is both halves together:
-
-    glob matches the file  AND  the owning skill's stack token is
-    present in the profile
-
-Language and format rules carry no stack token and are never gated —
-a `.sql` file means SQL is present, and there is nothing further to
-prove. The same is true of the cross-cutting rules that sit directly
-under a category rather than in a skill directory.
-
-Absent profile means no gate, never a wrong guess: if detect-stack has
-not run, every glob match is returned, which is the behaviour this
-script replaces. Reducing the set on missing evidence would drop real
-constraints silently, and a missing constraint is worse than an extra
-one.
-
 Usage:
   select-rules <path>...     rule files to read for these paths
   select-rules --explain <path>   also show what each gate decided
@@ -64,16 +38,9 @@ def globs_of(path):
 
 
 def stack_tokens():
-    """Tokens detect-stack found. Empty means the gate does not apply.
+    """Return detected tokens; empty disables the gate.
 
-    The path used to be spelled here, and it was spelled wrong:
-    `.claude/cereblnk/stack-profile.yaml`, without the `context/`
-    segment detect-stack actually writes to. The file was never found,
-    so the gate never applied and every glob match was returned — the
-    behaviour CB-109 replaced, still running. `select-agents` read the
-    same cache correctly from `$CB_DIR/context/`, which is why the
-    agent side of the gate worked and the rules side did not.
-    Resolution now lives in lib/cbpaths so there is one answer.
+    CB-128: this once omitted `context/`, silently disabling only the rules-side gate.
     """
     p = cbpaths.stack_profile() if cbpaths else None
     if p is None:
@@ -123,6 +90,8 @@ def main():
                        for g in globs_of(f)):
                 continue
             gate = gate_of(f)
+            # No profile means no gate, never a guess: a missing constraint
+            # is worse than an extra one.
             if gate and tokens and gate not in tokens:
                 dropped.append((f, gate))
                 continue

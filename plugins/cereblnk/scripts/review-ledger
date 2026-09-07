@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""List and acknowledge entries in Cereblnk's review ledger.
+"""
+
+import os
+import pathlib
+import sys
+
+
+SEPARATOR = b" \xc2\xb7 "
+UNREVIEWED = b"reviewed=no"
+REVIEWED = b"reviewed=yes"
+
+
+def usage():
+    print(
+        "usage: review-ledger list --unreviewed | review-ledger mark <run_id>",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def runtime_dir():
+    configured = os.environ.get("CB_DIR")
+    if configured:
+        return pathlib.Path(configured)
+
+    cwd = pathlib.Path.cwd().resolve()
+    project = os.environ.get("CLAUDE_PROJECT_DIR")
+    boundary = pathlib.Path(project).resolve() if project else None
+    root = None
+    for candidate in (cwd, *cwd.parents):
+        if boundary is not None:
+            try:
+                candidate.relative_to(boundary)
+            except ValueError:
+                break
+        if (candidate / ".git").exists() or (candidate / ".claude").is_dir():
+            root = candidate
+            break
+        if boundary is not None and candidate == boundary:
+            break
+    if root is None:
+        root = boundary or cwd
+    return root / ".claude" / "cereblnk"
+
+
+def split_ending(line):
+    if line.endswith(b"\r\n"):
+        return line[:-2], b"\r\n"
+    if line.endswith((b"\n", b"\r")):
+        return line[:-1], line[-1:]
+    return line, b""
+
+
+def fields(line):
+    body, ending = split_ending(line)
+    return body.split(SEPARATOR, 4), ending
+
+
+def list_unreviewed(ledger):
+    if not ledger.is_file():
+        return 0
+    for line in ledger.read_bytes().splitlines(keepends=True):
+        parts, _ = fields(line)
+        if len(parts) == 5 and parts[2] == UNREVIEWED:
+            sys.stdout.buffer.write(line)
+    return 0
+
+
+def mark(ledger, run_id):
+    if not ledger.is_file():
+        print(f"review-ledger: ledger not found: {ledger}", file=sys.stderr)
+        return 1
+
+    wanted = run_id.encode("utf-8")
+    lines = ledger.read_bytes().splitlines(keepends=True)
+    matches = []
+    already_reviewed = False
+    for index, line in enumerate(lines):
+        parts, _ = fields(line)
+        if len(parts) != 5 or parts[1] != wanted:
+            continue
+        if parts[2] == UNREVIEWED:
+            matches.append(index)
+        elif parts[2] == REVIEWED:
+            already_reviewed = True
+
+    if not matches:
+        if already_reviewed:
+            print(f"review-ledger: {run_id} is already reviewed")
+            return 0
+        print(f"review-ledger: unreviewed run not found: {run_id}", file=sys.stderr)
+        return 1
+    if len(matches) != 1:
+        print(
+            f"review-ledger: {run_id} has {len(matches)} unreviewed entries; "
+            "refusing to change more than one line",
+            file=sys.stderr,
+        )
+        return 1
+
+    index = matches[0]
+    parts, ending = fields(lines[index])
+    parts[2] = REVIEWED
+    lines[index] = SEPARATOR.join(parts) + ending
+    ledger.write_bytes(b"".join(lines))
+    print(f"review-ledger: marked {run_id} reviewed")
+    return 0
+
+
+def main(argv):
+    ledger = runtime_dir() / "telemetry" / "review-ledger.log"
+    if argv == ["list", "--unreviewed"]:
+        return list_unreviewed(ledger)
+    if len(argv) == 2 and argv[0] == "mark" and argv[1]:
+        return mark(ledger, argv[1])
+    return usage()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

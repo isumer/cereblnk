@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
-"""
-ocr_image.py — OCR fallback for scanned documents.
+"""ocr_image.py — OCR fallback for scanned documents.
 
-OCR requires a system OCR engine or a large ML model, neither of which
-can be vendored dependency-free. This script therefore uses the system
-`tesseract` binary IF it is installed, and otherwise reports clearly
-that OCR is unavailable and how to enable it — it never returns silent
-empty output.
+Requires system Tesseract; it never returns silent empty output when unavailable.
 
 Usage: ocr_image.py <image-or-pdf> [--lang eng] [--out PATH]
 Exit: 0 ok · 2 usage · 4 OCR engine unavailable

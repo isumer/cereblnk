@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""
-docparse.py — unified entry: route a document to the right extractor.
+"""docparse.py — unified entry: route a document to the right extractor.
 
-  .docx/.xlsx/.pptx → parse_office.py   (stdlib-only, offline)
-  .pdf              → parse_pdf.py      (original, stdlib-only, offline)
-                       └ on no-text-layer, suggests OCR
-  images/.pdf scan  → ocr_image.py      (system tesseract, if present)
-
-All extraction of text-based Office and PDF files is fully offline and
-dependency-free. OCR is the only path that needs a system engine.
+Office and text-layer PDF extraction is offline; only OCR needs a system engine.
 
 Usage: docparse.py <file> [--format md|txt] [--out PATH] [--ocr]
 """

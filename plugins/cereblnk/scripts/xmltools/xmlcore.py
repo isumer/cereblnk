@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """xmlcore — minimal line-aware, namespace-aware XML tree for xmltools.
 
-Original parser built on the stdlib expat bindings only. Every node
-carries its source line so downstream findings are traceable
-(evidence-reference discipline). No third-party libraries.
+Every node retains source lines for traceable findings; no third-party parser.
 """
 import xml.parsers.expat as expat
 

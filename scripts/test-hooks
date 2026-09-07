@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """test-hooks — repeatable acceptance run for the four testable guards.
 
-Drives delegation-guard, secret-guard, edit-boundary, and run-guard
-with synthetic hook input in a throwaway project (CLAUDE_PROJECT_DIR),
-asserting BOTH the exit code and, for blocks, a stderr/stdout
-substring. Covers success, block, bypass, and stale-state paths.
-Requires bash + python3 on PATH (the hooks' own runtime contract).
-
 Usage: scripts/test-hooks        Exit: 0 all pass · 1 any failure
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile, time
@@ -14,15 +8,8 @@ import json, os, pathlib, shutil, subprocess, sys, tempfile, time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 H = ROOT / "plugins/cereblnk/hooks/scripts"
 
-# The budget variables decide what context-monitor reports. Inheriting
-# them made four cases pass or fail according to the shell that started
-# the suite: `plugins/cereblnk/README.md` tells an operator to export
-# them, so a contributor who follows the setup instructions could not
-# run the suite that guards the code they were contributing to, and CI
-# never saw it because Actions sets neither (F-30).
-#
-# A test constructs the environment it tests. These are stripped here and
-# handed back explicitly by the cases that care which path they exercise.
+# F-30: inherited budget variables made four cases depend on the caller's shell.
+# Strip them here; cases that need them supply them explicitly.
 BUDGET_VARS = ("CLAUDE_CODE_AUTO_COMPACT_WINDOW",
                "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
                "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
@@ -45,7 +32,9 @@ def main():
         proj = pathlib.Path(td) / "proj"
         flags = proj / ".claude/cereblnk/flags"; flags.mkdir(parents=True)
         runctx = proj / ".claude/cereblnk/context/R-T"; runctx.mkdir(parents=True)
-        (runctx / "plan.md").write_text("task_id: T-1\ntask_id: T-2\n")
+        (runctx / "plan.md").write_text(
+            "task_id: metadata-is-not-a-plan-task\n"
+            "- [ ] T-1\n- [x] T-2\n- [ ] T-3\n- [x] T-4\n- [ ] T-5\n")
         conductor = json.dumps({"tool_input": {"file_path": "a.md", "content": "x"}})
         bypass_try = json.dumps({"tool_input": {"file_path": "a.md",
                                  "content": 'docs mention "agent_id" and "agent_type"'}})
@@ -66,14 +55,13 @@ def main():
         case("delegation: content-bypass attempt -> block", "delegation-guard.sh", bypass_try, 2, "surface specialist")
         case("delegation: subagent -> allow", "delegation-guard.sh", subagent, 0)
 
-        # CB-106: the conductor owns its own control surface. Blocking it
-        # from writing the plan told it to delegate the plan — a category
-        # error the block message contradicted in its own sentence
-        # ("the conductor holds plan, digests, and verdicts only").
+        # CB-106: blocking conductor-owned plans wrongly told it to delegate them.
         def edit(path):
             return json.dumps({"tool_name": "Edit", "tool_input": {"file_path": path}})
 
         cbd = proj / ".claude/cereblnk"
+        case("delegation: ARMED .claude backlog Write -> allow",
+             "delegation-guard.sh", edit(str(proj / ".claude/BACKLOG.md")), 0)
         owned = [
             ("plan.md", str(cbd / "context/implement-2026-08-03/plan.md")),
             ("plan.md on Windows",
@@ -81,15 +69,10 @@ def main():
             ("state.md", str(cbd / "state.md")),
             ("run flag", str(cbd / "flags/run-active")),
             ("telemetry", str(cbd / "telemetry/context.log")),
-            # agent-selection-policy §3: the orchestrator copies the
-            # selector's block here. Absent from the table, this write
-            # was blocked mid-run and told to delegate the routing
-            # decision the conductor had just made.
+            # Policy §3 requires the conductor to copy the selector block here.
             ("skills-required.yaml",
              str(cbd / "context/implement-2026-08-03/skills-required.yaml")),
-            # F-06: the block message says the conductor holds verdicts;
-            # the table had no path for one. A run journal is a verdict
-            # and no surface specialist owns it.
+            # F-06: run journals are conductor-held verdicts with no surface owner.
             ("run journal",
              str(cbd / "context/implement-2026-08-03/FINDINGS.md")),
         ]
@@ -97,13 +80,8 @@ def main():
             case(f"delegation: conductor owns {label} -> allow",
                  "delegation-guard.sh", edit(path), 0)
 
-        # The exemption must not become a hole. A Response Block is a
-        # subagent's output; a conductor writing one fabricates it.
-        # CB-122: the flags exemption granted the conductor the one flag
-        # it does not own. Blocked from a Response Block, a run wrote
-        # conductor-override instead and the guard allowed it; nothing
-        # but ScratchGuard — which nudges twice, then allows — stood in
-        # the way. The hatch costs a human act or it is not a hatch.
+        # CB-122: a run self-armed conductor-override through the blanket flags exemption.
+        # Response Blocks stay specialist-owned and the override stays human-owned.
         for label, path in (
             ("task ledger block", str(cbd / "context/implement-2026-08-03/T-3.yaml")),
             # still blocked: memory/specs is the technical writer's
@@ -118,12 +96,13 @@ def main():
                  "delegation-guard.sh", edit(path), 2, "surface specialist")
         case("delegation: unparseable while armed -> block", "delegation-guard.sh", "not-json", 2)
 
-        # CB-123: the shell reaches the same files. The boundary has to
-        # hold under a redirection without stopping the scripts
-        # run-discipline requires the conductor to run.
+        # CB-123: shell redirection shares the edit boundary without blocking required scripts.
         def bash(cmd, **extra):
             return json.dumps(dict({"tool_name": "Bash",
                                     "tool_input": {"command": cmd}}, **extra))
+
+        case("delegation: ARMED .claude backlog Bash -> allow",
+             "delegation-guard.sh", bash("printf x > .claude/BACKLOG.md"), 0)
 
         for label, cmd in (
             ("git read", "git diff --name-only main..."),
@@ -144,18 +123,12 @@ def main():
             case(f"delegation: shell {label} -> allow", "delegation-guard.sh",
                  bash(cmd), 0)
 
-        # a single-bracket/test comparison keeps its residual false
-        # positive: after shlex, an unescaped > cannot be told apart
-        # from an escaped one, and [ ... ] has no [[ ]]-style grammar
-        # to narrow against, so it still reads as a genuine redirect.
+        # Known limit: shlex cannot distinguish test(1)'s `>` from redirection.
         case("delegation: shell single-bracket comparison -> block (known residual)",
              "delegation-guard.sh", bash("[ a > b ]"), 2,
              "the same edit under another tool")
 
-        # a command shlex cannot tokenise at all is a stronger claim
-        # than a parsed write to an unnamed target: the guard must not
-        # assert a write it never determined, or send the model to
-        # spawn a specialist for a command that may not write at all.
+        # An unparseable command must not be mislabeled as a confirmed write.
         for label, cmd in (
             ("odd quote inside a substitution",
              """echo "$(echo 'a"b')\""""),
@@ -197,16 +170,15 @@ def main():
         case("delegation: shell subagent -> allow", "delegation-guard.sh",
              bash("sed -i 's/a/b/' src/Main.java", agent_id="abc"), 0)
 
-        # CB-099: staleness bounds. An aged flag whose run ledger is also
-        # cold is a dead run, and must not brick editing forever.
+        # CB-168 removed inferred dead runs; flag presence now agrees with run-flag.
         stale = time.time() - 9 * 3600
         os.utime(flags / "run-active", (stale, stale))
         case("delegation: aged flag but live ledger -> block",
              "delegation-guard.sh", conductor, 2, "surface specialist")
         for q in (runctx / "plan.md", runctx, runctx.parent):
             os.utime(q, (stale, stale))
-        case("delegation: aged flag, cold ledger -> allow (never bricks)",
-             "delegation-guard.sh", conductor, 0)
+        case("delegation: aged flag, cold ledger is still ARMED",
+             "delegation-guard.sh", conductor, 2, "surface specialist")
         now = time.time()
         for q in (runctx / "plan.md", runctx, runctx.parent):
             os.utime(q, (now, now))
@@ -223,11 +195,12 @@ def main():
         if "Remove" in msg or "run-active" in msg.split("NEXT ACTION")[0]:
             fails.append("delegation: block still advertises its own bypass")
 
-        # disarm-and-continue: deleting the flag mid-run does not free the
-        # conductor, because a run does not end by disarming its guard
+        # A deleted flag is IDLE, exactly as run-flag status reports. The
+        # witness is evidence, not a fourth spelling of active state.
         (flags / "run-active").unlink()
-        case("delegation: flag deleted while ledger live -> still block",
-             "delegation-guard.sh", conductor, 2, "was removed while the run ledger")
+        case("delegation: flag deleted while ledger live -> IDLE allow",
+             "delegation-guard.sh", conductor, 0)
+        (flags / "run-active").touch()
         (flags / "conductor-override").touch()
         case("delegation: explicit human override -> allow",
              "delegation-guard.sh", conductor, 0)
@@ -235,28 +208,59 @@ def main():
         (flags / "run-active.witness").unlink()
         (flags / "run-active").touch()
 
-        # the nudged variant arms the guard too, and ages the same way
+        # A nudged marker is not run-active; status and the guard agree.
         (flags / "run-active").rename(flags / "run-active.nudged")
-        case("delegation: nudged flag with live ledger -> block",
-             "delegation-guard.sh", conductor, 2, "surface specialist")
+        case("delegation: nudged marker alone -> IDLE allow",
+             "delegation-guard.sh", conductor, 0)
         (flags / "run-active.nudged").unlink()
 
-        # Follow-up window (CB-087): run-completed keeps the guard armed
+        # CB-168: completion is never ARMED; follow-up routing covers only repository source.
         (flags / "run-completed").touch()
-        case("delegation: follow-up window -> block", "delegation-guard.sh", conductor, 2, "re-enter routing")
+        completed_source = edit(str(proj / "src/Main.java"))
+        case("delegation: COMPLETED Write source -> route",
+             "delegation-guard.sh", completed_source, 2, "re-enter routing")
+        case("delegation: COMPLETED Bash source -> same route",
+             "delegation-guard.sh", bash("printf x > src/Main.java"), 2,
+             "re-enter routing")
+        for label, path in (
+            (".claude backlog", str(proj / ".claude/BACKLOG.md")),
+            ("run context note", str(runctx / "notes.md")),
+            ("outside scratch", str(pathlib.Path(tempfile.gettempdir()) /
+                                    "cb-168-notes.md")),
+        ):
+            case(f"delegation: COMPLETED Write {label} -> allow",
+                 "delegation-guard.sh", edit(path), 0)
+            case(f"delegation: COMPLETED Bash {label} -> allow",
+                 "delegation-guard.sh", bash(f"printf x > {path}"), 0)
         case("delegation: subagent in window -> allow", "delegation-guard.sh", subagent, 0)
-        # TTL-bounded: an aged flag is ignored (fail-open, never bricks)
+        # Sentinel presence, rather than a private hook TTL, is the shared
+        # state contract used by run-flag status and both tool paths.
         old = time.time() - 9 * 3600
         os.utime(flags / "run-completed", (old, old))
-        case("delegation: stale completed flag -> allow", "delegation-guard.sh", conductor, 0)
+        case("delegation: aged completed sentinel remains COMPLETED",
+             "delegation-guard.sh", conductor, 2, "re-enter routing")
         (flags / "run-completed").unlink()
+        case("delegation: IDLE Write source -> allow",
+             "delegation-guard.sh", completed_source, 0)
+        case("delegation: IDLE Bash source -> allow",
+             "delegation-guard.sh", bash("printf x > src/Main.java"), 0)
 
         # SecretGuard (always on)
         secret = json.dumps({"tool_input": {"notebook_path": "n.ipynb",
                              "new_source": 'pat = "github_pat_11ABCDEFGH0123456789abcdefghij"'}})
         case("secret: PAT in notebook cell -> block", "secret-guard.sh", secret, 2, "likely secret")
+        case("secret: AWS key in shell redirection -> block", "secret-guard.sh",
+             bash("echo AWS_KEY=AKIAIOSFODNN7EXAMPLE > .env"), 2, "likely secret")
+        case("secret: clean shell command -> allow", "secret-guard.sh",
+             bash("printf '%s\\n' ready"), 0)
         case("secret: clean content -> allow", "secret-guard.sh",
              json.dumps({"tool_input": {"content": "const x = 1;"}}), 0)
+        manifest = json.loads((ROOT / "plugins/cereblnk/hooks/hooks.json").read_text())
+        bash_hooks = next(h["hooks"] for h in manifest["hooks"]["PreToolUse"]
+                          if h.get("matcher") == "Bash")
+        ran += 1
+        if not any("secret-guard.sh" in h.get("command", "") for h in bash_hooks):
+            fails.append("secret: Bash matcher does not register secret-guard")
 
         # EditBoundary
         (flags / "boundary").write_text("src\n")
@@ -267,26 +271,86 @@ def main():
         case("boundary: notebook outside -> block", "edit-boundary.sh", outside, 2, "outside the declared")
         (flags / "boundary").unlink()
 
-        # RunGuard v2 (progress-aware, bounded)
+        # RunGuard counts stagnant Stops, not ledger growth or unrelated YAML.
         (flags / "run-active").touch()   # re-arm: CB-087 block above disarmed it
-        (runctx / "T-1.yaml").touch()
-        case("run-guard: nudge 1 with progress", "run-guard.sh", "{}", 0, '"decision":"block"')
-        (runctx / "T-2.yaml").touch()
-        case("run-guard: nudge 2 after growth", "run-guard.sh", "{}", 0, "nudge 2/3")
-        r = run("run-guard.sh", "{}", proj); ran += 1   # no growth -> disarm, no block json
+        (runctx / "request.yaml").write_text("kind: task\n")
+        (runctx / "agents-required.yaml").write_text(
+            "agents_required:\n"
+            "  - agent: cereblnk:engineering:backend-agent\n"
+            "    domain: \"server-side implementation\"\n"
+            "  - agent: cereblnk:quality:qa-agent\n"
+            "    domain: \"behavioral verification\"\n")
+        (runctx / "T-1.yaml").write_text("kind: response\nrole: BackendAgent\n")
+        r = run("run-guard.sh", "{}", proj); ran += 1
+        if ('"decision":"block"' not in r.stdout or "nudge 1/3" not in r.stdout
+                or "1/5 plan tasks have a response block" not in r.stdout
+                or "mandated agents with no response or verification block: qa-agent" not in r.stdout):
+            fails.append("run-guard: first nudge does not report one real "
+                         "Response Block against five checklist tasks or the "
+                         "mandated specialist still absent from the ledger")
+
+        # More than MAX_NUDGES Stops are legitimate when each one observes a
+        # new Response Block. They must all retain the same counter value.
+        for task in range(2, 6):
+            role = "QAAgent" if task == 2 else "BackendAgent"
+            (runctx / f"T-{task}.yaml").write_text(
+                f"kind: response\nrole: {role}\n")
+            r = run("run-guard.sh", "{}", proj); ran += 1
+            if (f"{task}/5 plan tasks have a response block" not in r.stdout
+                    or "nudge 1/3" not in r.stdout
+                    or "mandated agents with no response or verification block" in r.stdout):
+                fails.append("run-guard: ledger growth advanced the stagnant-Stop "
+                             f"counter, miscounted artifacts, or missed a responder at T-{task}")
+
+        (runctx / "agents-required.yaml").write_text(
+            (runctx / "agents-required.yaml").read_text()
+            + "  - agent: cereblnk:core:verifier-agent\n"
+              "    domain: \"independent verification\"\n")
+        (runctx / "GATE-V.yaml").write_text(
+            "kind: verification\n"
+            "role: cereblnk:core:verifier-agent\n"
+            "gate_verdict: pass-with-risk\n")
+        r = run("run-guard.sh", "{}", proj); ran += 1
+        if ("5/5 plan tasks have a response block" not in r.stdout
+                or "nudge 1/3" not in r.stdout
+                or "verifier-agent" in r.stdout):
+            fails.append("run-guard: a mandated gate Verification Block was "
+                         "not credited, did not count as ledger progress, or "
+                         "inflated the Response Block task count")
+
+        case("run-guard: first stagnant Stop advances to nudge 2",
+             "run-guard.sh", "{}", 0, "nudge 2/3")
+        case("run-guard: second stagnant Stop advances to nudge 3",
+             "run-guard.sh", "{}", 0, "nudge 3/3")
+        r = run("run-guard.sh", "{}", proj); ran += 1
         if '"decision":"block"' in r.stdout or (flags / "run-active").exists():
-            fails.append("run-guard: stagnation should disarm and allow the stop")
+            fails.append("run-guard: repeated stagnation should hit the cap, "
+                         "disarm, and allow the stop")
+
+        # Without plan.md the message reports only the real Response Block
+        # count; it must never manufacture the old N/0 denominator.
+        (runctx / "plan.md").unlink()
+        (runctx / "agents-required.yaml").write_text(
+            (runctx / "agents-required.yaml").read_text()
+            + "  - agent: cereblnk:security:security-agent\n"
+              "    domain: \"security review\"\n")
+        (flags / "run-active").touch()
+        r = run("run-guard.sh", "{}", proj); ran += 1
+        if ("5 response blocks in context/R-T/" not in r.stdout
+                or "/0" in r.stdout
+                or "mandated agents with no response or verification block: security-agent" not in r.stdout):
+            fails.append("run-guard: absent plan.md should report only the "
+                         "Response Block count and missing mandated responders")
         case("run-guard: stop_hook_active bypass", "run-guard.sh",
              json.dumps({"stop_hook_active": True}), 0)
 
-        # CB-144 (F-14): the message used to name one case — waiting on the
-        # user — and prescribe disarming for it. Measured against a real run
-        # it fired at a conductor waiting on two live specialists, where
-        # disarming removes the floors that judge them when they return. No
-        # host signal reports a live subagent, so the message must stop
-        # assuming which case it is in.
+        # CB-144/F-14: disarm advice fired while two specialists were live, removing their return floors.
+        # The host exposes no live-subagent signal, so the message cannot infer that case.
+        for f in ("run-active", "run-active.nudged", "run-active.state"):
+            (flags / f).unlink(missing_ok=True)
+        (runctx / "run-guard.last-progress").unlink(missing_ok=True)
         (flags / "run-active").touch()
-        (runctx / "T-3.yaml").touch()
+        (runctx / "T-6.yaml").touch()
         r = run("run-guard.sh", "{}", proj); ran += 1
         msg = r.stdout
         for phrase, why in (
@@ -296,9 +360,7 @@ def main():
             if phrase not in msg:
                 fails.append(f"run-guard: {why} — CB-144 requires the nudge to "
                              f"distinguish waiting from stalling")
-        # The disarm advice must be attached to the user case, never offered
-        # unconditionally: a run whose specialists are still out must not be
-        # told to remove the flag.
+        # Offer disarm only for the explicit user-wait case, never unconditionally.
         head = msg.split("WAITING ON THE USER")[0]
         if "disarm" in head.lower() and "do NOT disarm" not in head:
             fails.append("run-guard: disarm is advised before the case that "
@@ -306,15 +368,27 @@ def main():
                          "enforcement is still needed")
         for f in ("run-active", "run-active.nudged"):
             (flags / f).unlink(missing_ok=True)
-        (runctx / "run-guard.state").unlink(missing_ok=True)
+        (flags / "run-active.state").unlink(missing_ok=True)
+        (runctx / "run-guard.last-progress").unlink(missing_ok=True)
 
-        # DigestCapHook (CB-094). The cap is a contract; these assert the
-        # paths that matter: a return that fits, one that does not, the
-        # nudge ceiling, identity resolution to the subagent's own
-        # transcript rather than the conducting session's, and every
-        # fail-open route. A guard that blocks when it cannot measure is
-        # worse than one that does not run, so the fail-open cases are
-        # not filler.
+        # CB-094: DigestCap resolves the subagent transcript and fails open when unmeasurable.
+        hook_manifest = json.loads(
+            (ROOT / "plugins/cereblnk/hooks/hooks.json").read_text())
+        stop_commands = [h["command"] for h in
+                         hook_manifest["hooks"]["SubagentStop"][0]["hooks"]]
+        ran += 1
+        try:
+            digest_pos = next(i for i, cmd in enumerate(stop_commands)
+                              if "digest-cap.sh" in cmd)
+            ground_pos = next(i for i, cmd in enumerate(stop_commands)
+                              if "ground-floor.sh" in cmd)
+            if digest_pos >= ground_pos:
+                fails.append("digest-cap: persistence runs after ground-floor, "
+                             "so recovered blocks miss same-stop grounding")
+        except StopIteration:
+            fails.append("digest-cap: SubagentStop manifest is missing the "
+                         "digest or grounding hook")
+
         def transcript(text, path=None):
             t = pathlib.Path(path) if path else proj / "t.jsonl"
             t.write_text(json.dumps({"message": {"role": "assistant",
@@ -345,25 +419,75 @@ def main():
         short = "\n".join(f"line {i}" for i in range(1, 9))
         long_ = "\n".join(f"line {i}" for i in range(1, 26))
 
+        # CB-181: SubagentStop creates a missing task ledger only from an isolatable ACP block.
+        # Agent-authored files always win.
+        clean_acp = (
+            'acp_version: "1.0"\n'
+            "kind: response\n"
+            "task_id: T-9\n"
+            "role: APIDesignAgent\n"
+            "status: completed\n"
+            "decision: API review completed\n"
+            "confidence: 0.9"
+        )
+        digests_before = set(runctx.glob("digest.*.txt"))
+        r = run("digest-cap.sh", digest_input(clean_acp,
+                agent="apidesign-agent"), proj); ran += 1
+        persisted = runctx / "T-9.yaml"
+        if (r.returncode != 0 or not persisted.is_file()
+                or persisted.read_text() != clean_acp + "\n"):
+            fails.append("digest-cap: clean ACP response was not persisted "
+                         "as its task-id YAML body")
+        if len(set(runctx.glob("digest.*.txt")) - digests_before) != 1:
+            fails.append("digest-cap: ACP persistence changed digest retention")
+
+        authored = runctx / "T-10.yaml"
+        authored.write_text("agent-authored: true\n")
+        no_clobber = clean_acp.replace("task_id: T-9", "task_id: T-10")
+        r = run("digest-cap.sh", digest_input(no_clobber,
+                agent="backend-owner-agent"), proj); ran += 1
+        if r.returncode != 0 or authored.read_text() != "agent-authored: true\n":
+            fails.append("digest-cap: existing agent-authored block was overwritten")
+
+        yaml_before = set(runctx.glob("*.yaml"))
+        digests_before = set(runctx.glob("digest.*.txt"))
+        r = run("digest-cap.sh", digest_input(
+                "Review completed; no ACP block was returned.",
+                agent="prose-agent"), proj); ran += 1
+        if r.returncode != 0 or set(runctx.glob("*.yaml")) != yaml_before:
+            fails.append("digest-cap: plain prose created a YAML ledger file")
+        if len(set(runctx.glob("digest.*.txt")) - digests_before) != 1:
+            fails.append("digest-cap: plain prose was not retained as a digest")
+
+        malformed = "kind: response\ntask_id: T-12\ntrailing prose is not YAML"
+        digests_before = set(runctx.glob("digest.*.txt"))
+        r = run("digest-cap.sh", digest_input(malformed,
+                agent="malformed-agent"), proj); ran += 1
+        if r.returncode != 0 or (runctx / "T-12.yaml").exists():
+            fails.append("digest-cap: non-isolatable ACP-like text created YAML")
+        if len(set(runctx.glob("digest.*.txt")) - digests_before) != 1:
+            fails.append("digest-cap: malformed ACP-like text lost its digest")
+
+        wrapped_body = clean_acp.replace("task_id: T-9", "task_id: T-11")
+        wrapped = "Digest:\n```yaml\n" + wrapped_body + "\n```"
+        r = run("digest-cap.sh", digest_input(wrapped,
+                agent="wrapped-agent"), proj); ran += 1
+        wrapped_file = runctx / "T-11.yaml"
+        if (r.returncode != 0 or not wrapped_file.is_file()
+                or wrapped_file.read_text() != wrapped_body + "\n"):
+            fails.append("digest-cap: fenced ACP block did not strip its "
+                         "Digest preamble and Markdown fences")
+
         case("digest-cap: within cap -> allow", "digest-cap.sh", digest_input(short), 0)
         case("digest-cap: over cap -> block", "digest-cap.sh", digest_input(long_), 2,
              "the cap is 10")
-        # The defect this hook exists to fix: transcript_path names the
-        # CONDUCTING session, not this subagent. A conductor fixture
-        # carrying the long, over-cap text must not sway the decision —
-        # only the sibling subagent transcript may.
+        # transcript_path names the conductor; only the sibling subagent transcript decides the cap.
         case("digest-cap: measures the subagent, not the conducting session",
              "digest-cap.sh",
              digest_input(short, agent="frontend-agent", main_text=long_), 0)
-        # F-25: the target path was `{run}<task_id>.yaml` — a literal
-        # placeholder with no separator before it, resolving outside any
-        # run directory. Two specialists received it and both declined
-        # to follow it, which is the right call made for the wrong
-        # reason: the protocol should not need overriding.
+        # F-25: `{run}<task_id>.yaml` lacked a separator and resolved outside the run directory.
 
-        # F-25 rides on this case rather than adding a call: the nudge
-        # counter is stateful, and a fourth invocation exhausts it
-        # before the "nudge 2 still blocks" case runs.
+        # Reuse this stateful call so an extra invocation does not exhaust the nudge counter.
         case("digest-cap: block names an actionable path", "digest-cap.sh",
              digest_input(long_, agent="qa-agent"), 2, "/<its task_id>.yaml")
         case("digest-cap: blank lines do not count", "digest-cap.sh",
@@ -379,17 +503,12 @@ def main():
         case("digest-cap: no agent in input -> fail open", "digest-cap.sh",
              json.dumps({"transcript_path": transcript(long_)}), 0)
 
-        # Nudge ceiling: backend-agent was blocked once above. A second
-        # block is allowed, the third must let the stop through — an agent
-        # that will not shorten is a question for the user, not a loop.
+        # After two blocks the stop passes; further shortening needs the user, not a loop.
         case("digest-cap: nudge 2 still blocks", "digest-cap.sh", digest_input(long_), 2)
         case("digest-cap: nudge ceiling reached -> allow", "digest-cap.sh",
              digest_input(long_), 0)
 
-        # ContextMonitorHook (CB-102). The hook turns an assumed number
-        # into a measured one, so the cases that matter are the arithmetic
-        # and the silence: never block, never speak below the checkpoint,
-        # and count cached tokens as occupancy.
+        # CB-102: ContextMonitor never blocks, stays quiet below threshold, and counts cached tokens.
         def check(name, ok, detail=""):
             nonlocal ran; ran += 1
             if not ok:
@@ -431,22 +550,14 @@ def main():
         check("context-monitor: warns via additionalContext, never blocks",
               r.returncode == 0 and "additionalContext" in r.stdout,
               f"rc={r.returncode} out={r.stdout[:80]!r}")
-        # F-13: context-budget calls this window `source: assumed`; the
-        # warning printed the derived percentage as fact. A session
-        # reshaped its work around 101.8% of a denominator that was
-        # never measured.
+        # F-13: a session acted on 101.8% from an assumed denominator presented as fact.
         check("context-monitor: an assumed window says so",
               "ASSUMED" in r.stdout and "guess" in r.stdout, r.stdout[:160])
-        # The other half of F-13: once the window IS measured, the hedge
-        # must go. A warning that cries `ASSUMED` at a figure the operator
-        # supplied teaches the reader to ignore the word — which is how the
-        # unmeasured case stops being heard.
+        # A measured operator-supplied window must not retain the ASSUMED hedge.
         r_measured = mon(usage_transcript(input_tokens=1200,
                                           cache_read_input_tokens=130000),
                          session="S-2",
-        # Window chosen so the same 131200-token turn sits ABOVE the
-        # checkpoint: 180000 - 32000 = 148000 capacity, 70% = 103600.
-        # A warning that never fires cannot be inspected for its hedge.
+        # This window puts 131200 above its 103600 checkpoint so the warning is inspectable.
                          extra_env={"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "180000",
                                     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"})
         check("context-monitor: a measured window drops the hedge",
@@ -461,10 +572,7 @@ def main():
                   r.returncode == 0 and r.stdout.strip() == "",
                   f"rc={r.returncode} out={r.stdout[:60]!r}")
 
-        # HistoryArchiveHook (CB-105). Runtime state belongs under CB_DIR
-        # with everything else; this wrote beside it for one release. The
-        # migration case matters more than the happy path — a user with
-        # archives must not silently lose track of them.
+        # CB-105: archives wrote beside CB_DIR for one release; migration must retain them.
         def archive(project, tpath):
             return run("history-archive.sh",
                        json.dumps({"transcript_path": tpath, "trigger": "auto",
@@ -499,9 +607,91 @@ def main():
         check("history-archive: missing transcript never blocks compaction",
               archive(proj, "").returncode == 0, "non-zero exit on a missing transcript")
 
-        # ScratchGuardHook (CB-107). A run left debug.txt, debug2.txt and
-        # medium.txt at the repository root. The signal is shape, not
-        # name — a pattern list would have caught two of the three.
+        # CB-171: stale-run may warn, but never infer another run, mutate the flag, or block startup.
+        def stale_project(name, plan_body=None, hours_old=13,
+                          pin="R-2026-08-31-001"):
+            project = pathlib.Path(td) / name
+            cbdir = project / ".claude/cereblnk"
+            flagdir = cbdir / "flags"
+            run_dir = cbdir / "context" / pin
+            flagdir.mkdir(parents=True)
+            run_dir.mkdir(parents=True)
+            flag = flagdir / "run-active"
+            flag.write_text(pin + "\n", encoding="utf-8")
+            stamp = time.time() - hours_old * 3600
+            if plan_body is None:
+                os.utime(run_dir, (stamp, stamp))
+            else:
+                plan = run_dir / "plan.md"
+                plan.write_text(plan_body, encoding="utf-8")
+                os.utime(plan, (stamp, stamp))
+            return project, flag, run_dir
+
+        def stale(project, hours=None):
+            extra = {"CB_STALE_RUN_HOURS": "12" if hours is None else str(hours)}
+            return run("stale-run.sh", "", project, extra_env=extra)
+
+        sp, stale_flag, _ = stale_project("stale-no-plan")
+        before = (stale_flag.read_bytes(), stale_flag.stat().st_mtime_ns)
+        r = stale(sp)
+        lines = r.stderr.splitlines()
+        check("stale-run: old pinned run without a plan prints one line",
+              r.returncode == 0 and not r.stdout and len(lines) == 1,
+              f"rc={r.returncode} stdout={r.stdout!r} stderr={r.stderr!r}")
+        check("stale-run: notice names pin, date, and both cleanup commands",
+              lines and lines[0].startswith(
+                  "cereblnk: run-active pins R-2026-08-31-001 from ")
+              and "ledger cold and no task closed" in lines[0]
+              and "`/cb-resume`" in lines[0]
+              and "`run-flag abandon \"\" R-2026-08-31-001`" in lines[0],
+              r.stderr[:240])
+        check("stale-run: notice never touches the flag",
+              before == (stale_flag.read_bytes(), stale_flag.stat().st_mtime_ns),
+              "flag content or timestamp changed")
+
+        sp, _, _ = stale_project(
+            "stale-open-plan", "# Plan\n\n- [ ] T-1\n- [ ] T-2\n")
+        r = stale(sp)
+        check("stale-run: old plan with no closed task is reported",
+              r.returncode == 0 and len(r.stderr.splitlines()) == 1,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+
+        sp, _, _ = stale_project(
+            "stale-closed-plan", "# Plan\n\n- [ ] T-1\n- [x] T-2\n")
+        r = stale(sp)
+        check("stale-run: any closed plan task suppresses the notice",
+              r.returncode == 0 and not r.stdout and not r.stderr,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+
+        sp, _, old_dir = stale_project(
+            "fresh-plan", "# Plan\n\n- [ ] T-1\n", hours_old=1)
+        # The directory can be old while plan.md is fresh; plan activity is
+        # the more precise timestamp when the ledger exists.
+        old_stamp = time.time() - 24 * 3600
+        os.utime(old_dir, (old_stamp, old_stamp))
+        r = stale(sp)
+        check("stale-run: fresh plan mtime wins over an old directory",
+              r.returncode == 0 and not r.stdout and not r.stderr,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+
+        sp, _, _ = stale_project("threshold-override", hours_old=13)
+        r = stale(sp, hours=24)
+        check("stale-run: threshold override suppresses a younger run",
+              r.returncode == 0 and not r.stdout and not r.stderr,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+        r = stale(sp, hours="not-a-number")
+        check("stale-run: invalid threshold fails open and silent",
+              r.returncode == 0 and not r.stdout and not r.stderr,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+
+        sp, bad_flag, _ = stale_project("garbage-pin")
+        bad_flag.write_text("../../etc\n", encoding="utf-8")
+        r = stale(sp)
+        check("stale-run: invalid pin fails open and silent",
+              r.returncode == 0 and not r.stdout and not r.stderr,
+              f"rc={r.returncode} stderr={r.stderr!r}")
+
+        # CB-107: one run left three root scratch files; path shape, not filename, is the signal.
         def write_to(path, project=None):
             return run("scratch-guard.sh",
                        json.dumps({"tool_name": "Write",
@@ -534,14 +724,8 @@ def main():
         check("scratch-guard: nudge ceiling releases",
               write_to(str(proj / "debug9.txt")).returncode == 0, "guard never yields")
 
-        # DestructiveCommandHook (F-18, F-19). The hook had no suite at
-        # all, which is how a pattern matching DATA inside the command
-        # string survived: a heredoc that only DOCUMENTED destructive
-        # commands was blocked, and with it every findings file, fixture
-        # and log a security project writes. The two anchors of this
-        # section are the false positive and the true positive — remove
-        # the stripper and the first block fails; loosen it into a
-        # bypass and the second block fails.
+        # F-18/F-19: destructive words inside heredoc data once blocked findings, fixtures, and logs.
+        # Both false-positive and true-positive anchors protect the stripper from drift.
         careful = flags / "careful"
 
         def dc(cmd):
@@ -595,9 +779,24 @@ def main():
             check(f"destructive: {label} -> block",
                   r.returncode == 2, f"NOT blocked (bypass): {cmd}")
 
-        # F-19: the escape the block message prescribes must not be
-        # blocked by the same hook. Both halves are asserted: the
-        # message names the working route, and the route works.
+        for label, cmd in (
+            ("allowed build then recursive delete", "rm -rf build && rm -rf /var/data"),
+            ("allowed dist then recursive delete", "rm -rf dist ; rm -rf /var/data"),
+            ("allowed node_modules then root delete", "rm -rf node_modules && rm -rf /"),
+            ("allowed target or docker volume delete", "rm -rf target || docker volume rm pgdata"),
+        ):
+            check(f"destructive: {label} -> block",
+                  dc(cmd).returncode == 2, f"allowlisted segment laundered a destructive one: {cmd}")
+
+        for label, cmd in (
+            ("single allowlisted delete", "rm -rf build"),
+            ("two allowlisted delete segments", "rm -rf node_modules && rm -rf dist"),
+            ("multiple operands in one allowlisted delete", "rm -rf node_modules dist"),
+        ):
+            check(f"destructive: {label} -> allow",
+                  dc(cmd).returncode == 0, f"allowlisted delete was blocked: {cmd}")
+
+        # F-19: the escape named by the block message must work through the same hook.
         r = dc("rm -rf /var/data")
         msg = r.stderr + r.stdout
         check("destructive: block names /cb-careful off",
@@ -640,15 +839,17 @@ def main():
               "on, off, arm, disarm, status" in (r.stderr + r.stdout), r.stderr[:120])
         careful.unlink()
 
-        # ToolFloorHook (F-24). `disallowedTools` closes the tools it
-        # names and not the shell, and the shell reaches the same
-        # files: architect-agent, denied the edit tools, authored four
-        # spec sections through `cat > file <<EOF`. The definition half
-        # of that finding is fixed in the frontmatter (checker:
-        # check-agent-skills A-7); this is the half that remains, the
-        # in-place edit under a tool the denial never named.
-        def floor(cmd, agent=None, tool="Bash"):
-            payload = {"tool_name": tool, "tool_input": {"command": cmd}}
+        # F-24: an architect denied edit tools still authored four spec sections through shell writes.
+        # This tests in-place edits; check-agent-skills A-7 checks the definition half.
+        def floor(cmd, agent=None):
+            payload = {"tool_name": "Bash", "tool_input": {"command": cmd}}
+            if agent:
+                payload["agent_type"] = agent
+            return run("tool-floor.sh", json.dumps(payload), proj)
+
+        def floor_write(path, agent=None):
+            payload = {"tool_name": "Write",
+                       "tool_input": {"file_path": str(path), "content": "replacement"}}
             if agent:
                 payload["agent_type"] = agent
             return run("tool-floor.sh", json.dumps(payload), proj)
@@ -666,10 +867,7 @@ def main():
               floor("patch -p1 < d.diff",
                     "cereblnk:engineering:architect-agent").returncode == 2,
               "qualified identity did not resolve to the definition")
-        # A write is not an edit: these agents hold Write, because
-        # run-discipline SS1 makes every one of them write a Response
-        # Block. Blocking `>` would be stricter than the grant, and a
-        # guard that false-blocks is one the model routes around.
+        # SS1 grants Write for Response Blocks, so blocking redirection would exceed the tool denial.
         check("tool-floor: a redirection is Write-shaped, not blocked",
               floor("cat > spec.md <<EOF\nx\nEOF", ARCH).returncode == 0,
               "a whole-file write was blocked")
@@ -689,8 +887,53 @@ def main():
                               "tool_input": {"command": "sed -i s/a/b/ f"}}),
                   proj).returncode == 0,
               "blocked on an id it cannot resolve")
-        check("tool-floor: a non-Bash payload is not its event",
-              floor("x", ARCH, tool="Write").returncode == 0, "read a Write payload")
+        memory_plan = proj / ".claude/cereblnk/memory/plans/x.md"
+        memory_plan.parent.mkdir(parents=True)
+        memory_plan.write_text("existing plan\n")
+        source = proj / "src/Main.java"
+        source.write_text("class Main {}\n")
+        outside = pathlib.Path(td) / "outside.md"
+        outside.write_text("scratch\n")
+
+        check("tool-floor: planner may replace existing run plan",
+              floor_write(".claude/cereblnk/context/R-T/plan.md",
+                          "planner-agent").returncode == 0,
+              "blocked the planner acceptance case")
+        check("tool-floor: planner may replace existing memory plan",
+              floor_write(".claude/cereblnk/memory/plans/x.md",
+                          "planner-agent").returncode == 0,
+              "blocked a legitimate memory write")
+        verifier_write = floor_write("src/Main.java", "verifier-agent")
+        check("tool-floor: verifier may not replace existing source",
+              verifier_write.returncode == 2, f"rc={verifier_write.returncode}")
+        qa_write = floor_write("src/Main.java", "qa-agent")
+        check("tool-floor: qa may not replace existing source",
+              qa_write.returncode == 2, f"rc={qa_write.returncode}")
+        check("tool-floor: architect may create a new ADR",
+              floor_write("docs/adr/0001-x.md", "architect-agent").returncode == 0,
+              "blocked a new source file")
+        check("tool-floor: unrestricted backend may replace existing source",
+              floor_write("src/Main.java", "backend-agent").returncode == 0,
+              "blocked an agent that denies no edit tool")
+        check("tool-floor: conductor may replace existing source",
+              floor_write("src/Main.java").returncode == 0,
+              "took DelegationGuard's case")
+        check("tool-floor: denied role may replace existing outside file",
+              floor_write(outside, "verifier-agent").returncode == 0,
+              "blocked scratch space outside the repository")
+        check("tool-floor: Write block names the role and file",
+              "verifier-agent" in verifier_write.stderr and
+              "src/Main.java" in verifier_write.stderr,
+              verifier_write.stderr[:160])
+
+        editor_hooks = next(h["hooks"] for h in manifest["hooks"]["PreToolUse"]
+                            if h.get("matcher") == "Write|Edit|MultiEdit|NotebookEdit")
+        check("tool-floor: editor matcher registers tool-floor",
+              any("tool-floor.sh" in h.get("command", "") for h in editor_hooks),
+              "tool-floor is absent from the editor matcher")
+        check("tool-floor: manifest description covers Write replacements",
+              "Write replacements of existing repository source" in manifest["description"],
+              "ToolFloor description still covers only shell edits")
         check("tool-floor: unparseable input is silent",
               run("tool-floor.sh", "not-json", proj).returncode == 0,
               "blocked on garbage")
@@ -698,7 +941,7 @@ def main():
     if fails:
         print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
         print(f"test-hooks: {len(fails)}/{ran} failed", file=sys.stderr); return 1
-    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, scratch-guard, tool-floor, destructive-command)")
+    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, stale-run, scratch-guard, tool-floor, destructive-command)")
     return 0
 
 if __name__ == "__main__":
