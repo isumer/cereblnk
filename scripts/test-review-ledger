@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Acceptance checks for the CB-173 review-ledger utility.
+"""
+
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HELPER = ROOT / "plugins/cereblnk/scripts/review-ledger"
+
+
+def run(cb_dir, *args):
+    env = dict(os.environ, CB_DIR=str(cb_dir))
+    return subprocess.run(
+        [str(HELPER), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def main():
+    failures = []
+    checks = 0
+
+    def expect(label, condition, detail=""):
+        nonlocal checks
+        checks += 1
+        if not condition:
+            failures.append(f"{label}{(' — ' + detail) if detail else ''}")
+
+    with tempfile.TemporaryDirectory() as td:
+        cb_dir = pathlib.Path(td) / "cereblnk"
+        telemetry = cb_dir / "telemetry"
+        telemetry.mkdir(parents=True)
+        ledger = telemetry / "review-ledger.log"
+        original = (
+            "2026-08-28 · R-2026-08-28-001 · reviewed=no · "
+            "files=src/a.py · Ship A.\n"
+            "2026-08-29 · R-2026-08-29-002 · reviewed=yes · "
+            "files=docs/a.md · Ship B.\n"
+            "2026-08-30 · R-2026-08-28-001-extra · reviewed=no · "
+            "files=src/b.py · Ship C.\n"
+        )
+        ledger.write_text(original, encoding="utf-8")
+
+        listed = run(cb_dir, "list", "--unreviewed")
+        expect("list exits zero", listed.returncode == 0, listed.stderr)
+        expect(
+            "list prints only reviewed=no lines",
+            listed.stdout
+            == "\n".join((original.splitlines()[0], original.splitlines()[2]))
+            + "\n",
+            repr(listed.stdout),
+        )
+        expect("list does not modify the ledger", ledger.read_text() == original)
+
+        marked = run(cb_dir, "mark", "R-2026-08-28-001")
+        expected = original.replace(
+            "R-2026-08-28-001 · reviewed=no",
+            "R-2026-08-28-001 · reviewed=yes",
+            1,
+        )
+        expect("mark exits zero", marked.returncode == 0, marked.stderr)
+        expect("mark flips exactly the selected line", ledger.read_text() == expected)
+        expect(
+            "mark does not match a run-id prefix",
+            "R-2026-08-28-001-extra · reviewed=no" in ledger.read_text(),
+        )
+
+        before = ledger.read_bytes()
+        repeated = run(cb_dir, "mark", "R-2026-08-28-001")
+        expect("mark is idempotent for a reviewed run", repeated.returncode == 0)
+        expect("idempotent mark writes nothing", ledger.read_bytes() == before)
+
+        missing = run(pathlib.Path(td) / "absent", "list", "--unreviewed")
+        expect(
+            "missing ledger lists as empty",
+            missing.returncode == 0 and not missing.stdout,
+        )
+
+    if failures:
+        print(f"test-review-ledger: {len(failures)}/{checks} FAILED")
+        for failure in failures:
+            print(f"  FAIL  {failure}")
+        return 1
+    print(f"test-review-ledger: {checks} checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

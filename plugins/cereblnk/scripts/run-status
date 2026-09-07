@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # run-status (CB-086) — status from files, not from the conversation.
-#
-# Reads $CB_DIR/state.md (+ the plan and inbox it points to) and
-# prints at most three lines. Works from a second terminal while the
-# conductor is blocked mid-run — that is its reason to exist.
-#
+# Prints at most three lines from state, plan, and inbox, including from a second terminal.
 # Usage: run-status [cb_dir]     (default: cbenv-resolved $CB_DIR)
 # Exit:  0 always (a status tool never blocks anything) · 2 usage-only
 set -euo pipefail
@@ -35,7 +31,13 @@ print(f"run: {run_id} · stage: {stage} · spec {spec.split('·')[-1].strip() if
       f" / plan {plan.split('·')[-1].strip() if '·' in plan else plan}")
 
 # plan progress (same task-header grammar as plan-status / plan-format)
-plan_path = d / plan.split("·")[0].strip() if plan != "?" else None
+plan_ref = plan.split("·")[0].strip() if plan != "?" else None
+plan_path = d / plan_ref if plan_ref else None
+if plan_path and not plan_path.is_file():
+    # CB-178: recover the stable run id if archival moved the directory before state rewrite.
+    old_prefix = f"context/{run_id}/"
+    if plan_ref.startswith(old_prefix):
+        plan_path = d / "archive" / run_id / plan_ref[len(old_prefix):]
 if plan_path and plan_path.is_file():
     pt = plan_path.read_text()
     tasks = re.findall(r"^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:\s*(.+)$", pt, re.M)
@@ -49,7 +51,10 @@ if plan_path and plan_path.is_file():
 
 # unresolved inbox items (input-policy §3): unchecked boxes; correction
 # and invalidation classes block the loop, clarification never does.
-inbox = d / "context" / run_id / "inbox.md"
+run_dir = d / "context" / run_id
+if not run_dir.is_dir():
+    run_dir = d / "archive" / run_id
+inbox = run_dir / "inbox.md"
 n = blocking = 0
 if inbox.is_file():
     for line in inbox.read_text().splitlines():

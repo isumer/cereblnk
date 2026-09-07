@@ -23,6 +23,14 @@ Budgets: Docs 4K · TechnicalWriter 5K (when engaged) · Verifier 4K ·
 Synthesis 6K. Risk: low by default; docs describing security or
 migration behavior escalate to the underlying topic's level.
 
+## Run flag
+
+Arm at execution start with this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
+A non-zero exit means the run is not guarded, so stop. Disarm before a
+turn that awaits the operator. The post-synthesis gate below is the only
+path to `run-flag complete`. See `policies/run-discipline.md` §5.
+
 ## Method
 
 1. **Diff first.** Extract what changed: paths, names, structures,
@@ -45,3 +53,11 @@ process changed. Each hit = fact pair (doc line ↔ code line).
 DECISION states sync status, fixes applied, and questions pending.
 EVIDENCE carries the doc-to-code pairs. Then REASONING, then RISK,
 which covers pending questions and undocumented new behavior) → CONFIDENCE.
+
+## Post-synthesis acceptance
+
+After every synthesis, disarm before asking the operator: **Anything to
+improve or fix?** A yes keeps `context/<run_id>/` live: re-arm the same
+id, run the improvement through the documentation workflow and its gates,
+synthesize, then ask again. Only a no calls `scripts/run-flag complete`;
+completion hands off `run-completed` and archives the run.

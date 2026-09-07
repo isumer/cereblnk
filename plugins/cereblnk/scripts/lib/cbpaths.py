@@ -1,30 +1,8 @@
 """cbpaths — where the runtime directory is, answered once.
 
-`detect-stack` writes its cache to `$CB_DIR/context/stack-profile.yaml`.
-Two scripts read it. `select-agents` resolved `$CB_DIR` from the
-environment and found the file. `select-rules` hand-rolled its own
-resolution, looked for `.claude/cereblnk/stack-profile.yaml` without
-the `context/` segment, and never found it — so it printed
-`stack_profile: absent — no gate applied` on every invocation and
-returned every glob match. The stack gate CB-109 exists to apply had
-not applied once.
-
-Two copies of a path convention drift for the same reason two copies of
-a policy table drift, which is the lesson CB-122 cost. So both readers
-call this.
-
-Resolution order, and why:
-
-1. `$CB_DIR` — set by `lib/cbenv.sh`, which every lifecycle script
-   sources. Authoritative when present.
-2. `.claude/cereblnk` found by walking up from the working directory.
-   `select-rules` is called directly by agents, from anywhere in the
-   tree, often without a sourced environment. Dropping this would trade
-   one broken resolution for another.
-3. Nothing. Callers treat absence as "no evidence", never as a licence
-   to guess — an absent profile means the stack gate does not apply,
-   which returns more rules rather than fewer. A missing constraint is
-   worse than an extra one.
+CB-128: select-rules omitted `context/`, so the profile gate never applied.
+Order is $CB_DIR, then a walk up from cwd (agents call select-rules from
+anywhere, often without a sourced environment), then None — never a guess.
 """
 import os
 import pathlib

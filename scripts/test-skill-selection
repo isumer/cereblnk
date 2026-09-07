@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 """test-skill-selection — CB-097 acceptance, mechanical half.
 
-Covers the three things that must hold for task-scoped skills to be
-worth their complexity:
-  1. the floor is computed from paths AND from request text
-  2. the stack profile subtracts skills this project cannot use
-  3. an agent that skips its floor cannot finish (SubagentStop, exit 2)
-
-The hook cases assert the failure path too: a hook that never blocks
-is a hook that enforces nothing (Part II trap #8 applied to hooks).
-
 Usage: scripts/test-skill-selection
 Exit:  0 all green · 1 any failure
 """
@@ -63,10 +54,7 @@ def main():
          r.returncode == 0 and "java" in r.stdout and "spring-boot" in r.stdout,
          r.stdout[-200:])
 
-    # ---- 3. unresolved is a handoff, and never a silent guess ---------
-    # T-DISC-21 reverses CB-133's exit-0 default. Nothing matched, so
-    # the floor has nothing to force: the selector exits 3, names no
-    # guessed specialist, and hands the roster to the conductor.
+    # T-DISC-21: unresolved selection exits 3 and hands off the roster without guessing.
     r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"])
     case("unresolved: exits 3 rather than guessing a specialist",
          r.returncode == 3, "rc=%d" % r.returncode)
@@ -83,7 +71,83 @@ def main():
          "security-agent" in r.stdout and "unresolved: true" not in r.stdout,
          r.stdout[:100])
 
-    # ---- 4. stack gate -------------------------------------------------
+    # ---- 4. emitted run inputs are pinned and complete ----------------
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-emit-floor-"))
+    try:
+        cb = tmp / ".claude/cereblnk"
+        run = cb / "context/R-emit"
+        other = cb / "context/R-newest-guess"
+        flags = cb / "flags"
+        run.mkdir(parents=True)
+        other.mkdir(parents=True)
+        flags.mkdir(parents=True)
+        env = {"CLAUDE_PROJECT_DIR": str(tmp)}
+
+        # A context directory plus empty active flag is not authority to guess a run id.
+        (flags / "run-active").touch()
+        r = sh(["bash", str(PS / "select-agents"), "--emit-floor", "--text",
+                "add an authenticated API endpoint"], env=env)
+        case("emit floor: unarmed run is skipped with the existing message",
+             r.returncode == 0 and "emit_floor: skipped — no run is armed with an id" in r.stderr,
+             "rc=%d stderr=%r" % (r.returncode, r.stderr[:180]))
+        case("emit floor: unarmed run writes neither required file",
+             not any((d / name).exists() for d in (run, other)
+                     for name in ("skills-required.yaml", "agents-required.yaml")),
+             "an unarmed context directory was modified")
+
+        (flags / "run-active").write_text("R-emit\n", encoding="utf-8")
+        r = sh(["bash", str(PS / "select-agents"), "--emit-floor", "--text",
+                "add an authenticated API endpoint"], env=env)
+        skills_file = run / "skills-required.yaml"
+        agents_file = run / "agents-required.yaml"
+        case("emit floor: armed run writes skills and agents",
+             r.returncode == 0 and skills_file.is_file() and agents_file.is_file()
+             and agents_file.read_text(encoding="utf-8").startswith("agents_required:\n"),
+             "rc=%d stdout=%r stderr=%r" %
+             (r.returncode, r.stdout[-180:], r.stderr[-180:]))
+
+        output_lines = r.stdout.splitlines()
+        specialists_start = output_lines.index("specialists:") + 1
+        specialists_end = next(i for i in range(specialists_start, len(output_lines))
+                               if output_lines[i].startswith("gate_level:"))
+        specialists = [line.split("- ", 1)[1].split(" #", 1)[0].strip()
+                       for line in output_lines[specialists_start:specialists_end]
+                       if line.startswith("  - ")]
+        emitted_agents, emitted_domains = [], []
+        for line in agents_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("  - agent: "):
+                emitted_agents.append(line.split(": ", 1)[1])
+            elif line.startswith("    domain: "):
+                emitted_domains.append(line.split(": ", 1)[1].strip().strip('"'))
+        case("emit agents: every specialist appears exactly once",
+             emitted_agents == specialists and len(emitted_agents) == len(set(emitted_agents)),
+             "specialists=%r emitted=%r" % (specialists, emitted_agents))
+        case("emit agents: level-3 challenger is persisted once",
+             emitted_agents.count("cereblnk:core:challenger-agent") == 1,
+             "emitted=%r" % emitted_agents)
+        case("emit agents: every specialist has a non-empty domain",
+             len(emitted_domains) == len(emitted_agents)
+             and all(domain for domain in emitted_domains),
+             "domains=%r" % emitted_domains)
+
+        roster = sh(["bash", str(PS / "select-agents"), "--roster"], env=env)
+        roster_domains = {}
+        for line in roster.stdout.splitlines():
+            if line.startswith("  cereblnk:") and ': "' in line:
+                agent, domain = line.strip().split(': "', 1)
+                roster_domains[agent] = domain.rsplit('"', 1)[0]
+        case("emit agents: domains reuse the existing roster decisions",
+             all(roster_domains.get(agent) == domain
+                 for agent, domain in zip(emitted_agents, emitted_domains)),
+             "roster domains did not match agents-required.yaml")
+        case("emit floor: the pinned run wins over another context directory",
+             not any((other / name).exists()
+                     for name in ("skills-required.yaml", "agents-required.yaml")),
+             "emission used an unpinned directory")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # ---- 5. stack gate -------------------------------------------------
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-skill-"))
     try:
         cb = tmp / ".claude/cereblnk"
@@ -98,7 +162,7 @@ def main():
              r.returncode == 0 and "angular" in r.stdout and "react" not in r.stdout,
              r.stdout[-200:])
 
-        # ---- 5. skill floor hook ---------------------------------------
+        # ---- 6. skill floor hook ---------------------------------------
         run = cb / "context/R-test"
         run.mkdir(parents=True)
         (run / "skills-required.yaml").write_text(
@@ -144,7 +208,7 @@ def main():
         case("floor hook: nudge cap reached, stop allowed (no loop)",
              r.returncode == 0, "rc=%d" % r.returncode)
 
-        # ---- 6. detect-stack -------------------------------------------
+        # ---- 7. detect-stack -------------------------------------------
         (tmp / "pom.xml").write_text(
             "<project><dependency><artifactId>spring-boot-starter-web"
             "</artifactId></dependency><dependency><artifactId>liquibase-core"
@@ -157,18 +221,8 @@ def main():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    # ---- 7. CB-143 / F-07: the surface specialist and its stack skills --
-    # The measured failure: in a repository whose profile carries the
-    # four Spring tokens, a request naming server-side behaviour
-    # returned exactly what an empty repository returned —
-    # apidesign-agent alone, api-design alone. The contract designer
-    # was selected and the implementer was not, because no TEXT rule
-    # carried request semantics for the server surface and because a
-    # stack token could only ever subtract.
-    #
-    # This fixture pins both halves of the floor and the bound that
-    # keeps the fix from becoming "any Java repository loads java":
-    # the docs-only request in the SAME repository must stay clean.
+    # CB-143/F-07: Spring request text once selected only the contract designer, never the implementer.
+    # Keep the docs-only control clean so stack completion cannot become blanket Java routing.
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-f07-"))
     try:
         ctx = tmp / ".claude/cereblnk/context"
@@ -194,9 +248,7 @@ def main():
         case("F-07: a routed floor is never marked inferred",
              "inferred: true" not in out, out[:120])
 
-        # the bound: stack completion adds skills to a routed role, it
-        # never routes a role. A docs request in a Spring repository
-        # gets neither backend-agent nor the java skill.
+        # Stack completion adds skills to a routed role; it never routes a role.
         r = sh(["bash", str(PS / "select-agents"), "--text",
                 "update the README and the contributing guide"], env=env)
         case("F-07 bound: a docs request pulls no backend-agent",
@@ -205,9 +257,7 @@ def main():
              "java" not in r.stdout and "spring-boot" not in r.stdout,
              r.stdout[:200])
 
-        # the other bound: an unroutable request gets the roster, never
-        # a completed guess — stack completion must not resurrect a
-        # silent default under a new name.
+        # An unroutable request gets the roster; stack completion must not revive a default.
         r = sh(["bash", str(PS / "select-agents"), "--text", "good morning"],
                env=env)
         case("F-07 bound: the unresolved handoff gains no stack skills",

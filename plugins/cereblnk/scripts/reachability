@@ -51,30 +51,21 @@ PATTERNS = [
     ({".java", ".kt"},
      re.compile(r"^\s*(?:public|internal)\s+(?:final\s+|abstract\s+|open\s+|data\s+)*"
                 r"(?:class|interface|enum|object)\s+(?P<name>[A-Z][\w]*)")),
-    # Methods. The type patterns above cover Java and Kotlin declarations
-    # only, so a helper that is written, compiled and never called was
-    # outside the check entirely. A return type is required, which
-    # excludes constructors: those are reached through the class name,
-    # which the type pattern already tracks.
+# Java/Kotlin methods need return types here; constructors are tracked by the type pattern.
     ({".java", ".kt"},
      re.compile(r"^\s*(?:public|protected|private)\s+"
                 r"(?:static\s+|final\s+|synchronized\s+|abstract\s+|default\s+)*"
                 r"[\w<>\[\],.?\s]+?\s+(?P<name>[a-z][\w]*)\s*\(")),
 ]
 
-# Names whose caller is conventionally outside the source. Accessors are
-# reached by serialisers and template engines; the Object overrides and
-# entry points by the runtime. Reporting them is the wolf-crying this
-# check trades recall to avoid.
+# Exempt runtime/framework entry points and accessors to avoid low-value false positives.
 FRAMEWORK_CALLED = re.compile(r"^(get|set|is|has)[A-Z]")
 RUNTIME_CALLED = {"main", "toString", "equals", "hashCode", "clone",
                   "run", "call", "close", "compareTo", "iterator"}
 
 
 def is_annotated(lines, idx):
-    """A decorator or annotation on or above the declaration means the
-    caller may live outside the source: framework, DI container, test
-    runner. Not our business."""
+    """Treat annotations as evidence that a caller may live outside source."""
     for j in range(max(0, idx - 3), idx + 1):
         stripped = lines[j].strip()
         if stripped.startswith("@"):

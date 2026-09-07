@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-parse_office.py — extract text and tables from docx / xlsx / pptx to
-Markdown or plain text, using ONLY the Python standard library
-(zipfile + xml.etree). No pip install, works fully offline.
-
-Office Open XML files are ZIP archives of XML parts; this reads those
-parts directly. It does NOT import python-docx/openpyxl/python-pptx —
-by design, so it runs in dependency-free offline environments.
+"""parse_office.py — extract Office text and tables with the standard library.
 
 Usage:
   parse_office.py <file.docx|xlsx|pptx> [--format md|txt] [--out PATH]
@@ -29,16 +22,7 @@ def _text_of(el, ns_t):
 _HEADING_STYLE = re.compile(r"^heading[ _-]?([1-9])$", re.I)
 
 def _heading_level(el):
-    """Outline level of a <w:p> from its paragraph style, else 0.
-
-    Word records document structure in `w:pStyle`, not in the run text.
-    Dropping it loses the only structural signal a .docx carries, so
-    `docindex` would have to guess at section boundaries that the file
-    already states. Recognises the OOXML style ids `Heading1`..`Heading9`
-    and `Title`; a localized style id (Word writes e.g. `berschrift1`
-    under a German UI) is NOT matched and degrades to body text — a
-    missed heading, never a wrong one.
-    """
+    """Read Heading1..9/Title; localized styles become body text rather than guessed headings."""
     pPr = el.find(f"{{{W}}}pPr")
     if pPr is None:
         return 0

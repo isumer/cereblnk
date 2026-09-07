@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# repo-map — git-based repository map for Cereblnk CTX bundles (CB-045)
-# Produces a single YAML on stdout from git history + the file tree:
-#   1. hotspots: change-frequency ranking (commits touching each file)
-#   2. ownership: top committers per file
-#   3. imports: static import/include listing per source file
-# No semantic index, no embeddings, no external services (F-class stays F).
+# repo-map emits YAML history hotspots, ownership, and static imports (CB-045).
+# No semantic index, embeddings, or external services.
 # Usage: scripts/repo-map [max_files]   (default 30; run at repo root)
 set -euo pipefail
 # shellcheck source=../lib/cbenv.sh

@@ -1,30 +1,7 @@
 #!/usr/bin/env python3
 """docindex.py — build a navigable index over one document (CB-112).
 
-Invoked through `scripts/docindex`, which resolves CB_DIR. Extraction is
-delegated to docparse; nothing here re-implements a parser.
-
-The only real decision this makes is how the document was segmented,
-and it refuses to pretend that decision is better than it was. Three
-layers, tried in order, each recorded in the manifest with the epistemic
-label it earns:
-
-  structural  ATX headings present in the extracted text        known
-              (docx heading styles, pptx slides, xlsx sheets)
-  pattern     a section-heading keyword matched the line starts  derived
-              (policies/document-sections.yaml, numbered heads)
-  window      fixed line windows — no structure was found       assumed
-
-A caller that reads `segmentation.label` learns whether the section
-boundaries came from the file or from this script guessing. That
-distinction is the point: a `window` outline still makes the document
-navigable, but a claim anchored to one of its sections is anchored to an
-arbitrary line, and the manifest says so rather than letting the shape
-of the JSON imply otherwise.
-
-Token figures are `chars / 4`. They are estimates, named
-`tokens_estimated` everywhere, and exist to order sections by weight —
-not to be spent as a budget.
+Segmentation labels structural evidence known, keyword matches derived, and windows assumed.
 
 Exit: 0 indexed or reused · 1 extraction failed · 2 usage/unsupported
       · 3 no text layer (the source needs OCR)
@@ -44,25 +21,17 @@ DOCPARSE = HERE.parent / "docparse" / "docparse.py"
 # Layer 1 — structure the extracted text actually carries.
 ATX = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
-# Layer 2 — section headings by shape. The keyword set is data, in
-# policies/document-sections.yaml, because any such set is arbitrary:
-# hardcoding one privileges whichever languages the author worked in and
-# marks nothing as missing. A match here is `derived`, never `known` —
-# these patterns also match ordinary prose, and the manifest carries
-# that caveat to the caller.
+# Keyword headings are policy data because hardcoding privileges the author's languages.
+# They can match prose, so their segmentation label is `derived`, never `known`.
 POLICY = HERE.parent.parent / "policies" / "document-sections.yaml"
 
-# Used only if the policy file is absent or unreadable. Degrading to a
-# smaller keyword set costs navigation quality; refusing to index would
-# cost the document.
+# An unreadable policy degrades navigation; it must not prevent indexing.
 FALLBACK_KEYWORDS = ["Chapter", "Section", "Part", "Article"]
 NUMBERED_HEAD = re.compile(r"^\s*[0-9]+(?:\.[0-9]+){0,3}\.?\s+\S.{0,80}$")
 
 
 def load_patterns(policy=POLICY):
-    """Keyword list -> compiled patterns. Parsed by line, not with a
-    YAML library: this package takes no third-party dependency, and the
-    file's schema is one flat list plus one flag."""
+    """Compile the flat policy schema without adding a YAML dependency."""
     keywords, numbered = None, True
     try:
         for line in policy.read_text(encoding="utf-8").splitlines():
@@ -136,16 +105,12 @@ def _sections_from_headings(heads, total):
 
 
 def _sections_windowed(total, size):
-    """No structure found. Windows do not overlap: an overlapping range
-    makes 'which section is this line in' ambiguous, and the caller
-    widens the range itself when a slice cuts a paragraph."""
+    """Create non-overlapping fallback windows so each line has one section."""
     sections = []
     start = 1
     while start <= total:
         end = min(start + size - 1, total)
-        # No title: a window has no name, and inventing "lines 401-800"
-        # as one would let a reader mistake an arbitrary cut for a
-        # heading the document declared.
+    # Windows have no title; inventing one would imply the document declared the cut.
         sections.append((start, end, 1, None))
         start = end + 1
     return sections or [(1, max(total, 1), 1, None)]
@@ -194,12 +159,7 @@ def build_outline(lines, window_lines):
 
 
 def extract(src, dest):
-    """Produce the canonical text. Plain-text sources are copied
-    verbatim — docparse exists to open binary containers, and routing a
-    .md file through it would only reject it. Everything else is
-    delegated, and docparse's exit codes are propagated unchanged: a
-    caller that knows docparse knows these already, and remapping them
-    would hide the OCR path behind a generic failure."""
+    """Copy text verbatim; delegate containers and preserve docparse's OCR exit code."""
     if src.suffix.lower() in TEXT_EXT:
         dest.write_text(src.read_text(encoding="utf-8", errors="replace"),
                         encoding="utf-8")

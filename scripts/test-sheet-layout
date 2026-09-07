@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""test-sheet-layout — each case carries one defect and asserts the rule
+fires; the exemption cases assert it stays silent on deliberate design.
+
+Usage: scripts/test-sheet-layout   Exit: 0 all pass · 1 any failure
+"""
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+
+import sheetlayout                                          # noqa: E402
+
+TRACKED = ROOT / "docs/assets/systems-note/note.html"
+
+HEAD = """<!doctype html><html><head><meta charset="utf-8"><style>
+text{font-family:"DejaVu Sans Mono",monospace;font-size:10px;fill:#c9ccd2}
+.panel{fill:#15151a;stroke:#4ec9d9}
+.sub{fill:#111116;stroke:#363942}
+</style></head><body>
+<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="400" height="240" fill="#0d0d10"/>
+<rect x="20" y="20" width="360" height="200" class="panel"/>
+%s
+</svg></body></html>"""
+
+
+def rows(n=9, x=32, y0=40, lead=19):
+    """A column that fills the panel on the sheet's own rhythm."""
+    return "\n".join('<text x="%d" y="%d">line %d of body</text>'
+                     % (x, y0 + i * lead, i) for i in range(n))
+
+
+def page(extra="", base=None):
+    return HEAD % ((base if base is not None else rows()) + "\n" + extra)
+
+
+def kinds(html, tmp):
+    tmp.write_text(html, encoding="utf-8")
+    sheet = sheetlayout.parse(str(tmp), FONTS)
+    found = (sheetlayout.geometry_findings(sheet)
+             + sheetlayout.consistency_findings(sheet))
+    return [f[0] for f in found], found
+
+
+def main():
+    global FONTS
+    try:
+        FONTS = sheetlayout.load_fonts()
+    except sheetlayout.FontUnavailable as e:
+        print("test-sheet-layout: skipping — DejaVu faces not installed (%s)"
+              % e)
+        return 0
+
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix="sheet-layout-")
+    tmp = pathlib.Path(tmpdir) / "case.html"
+    fails, ran = [], 0
+
+    def case(name, html, expect=None, forbid=None):
+        nonlocal ran
+        ran += 1
+        ks, found = kinds(html, tmp)
+        if expect and expect not in ks:
+            fails.append("%s: expected %s, got %s"
+                         % (name, expect, sorted(set(ks)) or "nothing"))
+        if forbid and forbid in ks:
+            detail = next(f[2] for f in found if f[0] == forbid)
+            fails.append("%s: %s fired on something deliberate — %s"
+                         % (name, forbid, detail[:90]))
+
+    # --- the baseline must be silent, or every other case proves nothing
+    ks, found = kinds(page(), tmp)
+    ran += 1
+    if ks:
+        fails.append("clean sheet reported %s"
+                     % "; ".join("%s %s" % (f[0], f[2][:60]) for f in found))
+
+    # --- geometry
+    case("overflow past the box",
+         page('<text x="32" y="200">%s</text>' % ("wide" * 15)), "OVERFLOW")
+    case("descender below the box floor",
+         page('<rect x="40" y="60" width="120" height="20" class="sub"/>'
+              '<text x="52" y="79">on the floor</text>'), "OVERFLOW")
+    case("two runs overlapping",
+         page('<text x="32" y="215">aaaaaaaaaaaaaaaa</text>'
+              '<text x="60" y="215">bbbbbbbb</text>'), "COLLIDE")
+    # "aaaa" at 10px mono is 24.1 wide, so it ends at 56.1; starting the next
+    # run at 59 leaves under 3px — legible as one phrase, not two.
+    case("two runs three pixels apart",
+         page('<text x="32" y="215">aaaa</text>'
+              '<text x="59" y="215">bbbb</text>'), "SEPARATE")
+    case("sibling boxes overlapping",
+         page('<rect x="40" y="60" width="120" height="30" class="sub"/>'
+              '<rect x="120" y="70" width="120" height="30" class="sub"/>'),
+         "BOXOVER")
+
+    # --- consistency
+    case("a column drifting two pixels",
+         page(base=rows(8) + '\n<text x="34" y="192">drifted</text>'),
+         "ALIGN")
+    case("leading drifting two pixels",
+         page(base=rows(8) + '\n<text x="32" y="190">off rhythm</text>'),
+         "RHYTHM")
+    case("a hole in the panel",
+         page(base=rows(4) + "\n" + rows(3, y0=190)), "VOID")
+    case("a ragged row of boxes",
+         page(base=rows(3) + '\n<rect x="40" y="110" width="100" height="80" '
+              'class="sub"/><rect x="160" y="110" width="100" height="40" '
+              'class="sub"/>'), "BOXFIT")
+
+    # --- exemptions: intent must not read as drift
+    case("a deliberate indent is not drift",
+         page(base=rows(8) + '\n<text x="50" y="192">indented heading</text>'),
+         forbid="ALIGN")
+    case("a stacked column is not a ragged bottom",
+         page(base=rows(3) + '\n<rect x="40" y="110" width="100" height="80" '
+              'class="sub"/><rect x="160" y="110" width="100" height="40" '
+              'class="sub"/><rect x="160" y="155" width="100" height="35" '
+              'class="sub"/>'), forbid="BOXFIT")
+    case("a section break is not drift",
+         page(base=rows(6) + '\n<text x="32" y="188">after a break</text>'),
+         forbid="RHYTHM")
+
+    # --- the tracked sheet is the real regression guard
+    if TRACKED.exists():
+        ran += 1
+        sheet = sheetlayout.parse(str(TRACKED), FONTS)
+        found = sheetlayout.sort_findings(
+            sheetlayout.geometry_findings(sheet)
+            + sheetlayout.consistency_findings(sheet))
+        hard = [f for f in found if f[0] in sheetlayout.HARD]
+        if hard:
+            fails.append("the tracked sheet has %d finding(s): %s"
+                         % (len(hard), "; ".join("%s %s" % (f[0], f[2][:60])
+                                                 for f in hard[:3])))
+
+    import shutil
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if fails:
+        for f in fails:
+            print("FAIL  %s" % f, file=sys.stderr)
+        print("test-sheet-layout: %d/%d cases failed" % (len(fails), ran),
+              file=sys.stderr)
+        return 1
+    print("test-sheet-layout: %d cases pass" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

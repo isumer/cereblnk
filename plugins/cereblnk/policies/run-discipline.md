@@ -26,13 +26,14 @@ the owning role is re-issued, it APPENDS a `revisions:` entry and leaves
 the text above untouched. The base block is its own history.
 
 Rewriting was the default because it was the only thing anyone had
-named, and it cost three things. Twelve roles deny the Edit tool — they
-decide and record, they never modify existing source — and Edit is
-denied per role, not per path, so changing two fields in a block meant
-re-emitting the whole file with Write. Measured: a qa-agent spent 3900
-tokens against a 2500 budget to change two fields in a 230-line block,
-and a verifier pass ran ~9800 against 3500. In both cases the reasoning
-was cheap and the re-emission was the entire overrun.
+named, and it cost three things. Twelve roles deny the Edit tool and are
+instructed to decide and record rather than modify existing source. That
+boundary is D-class because they retain Write. Edit is denied per role,
+not per path, so changing two fields in a block meant re-emitting the
+whole file with Write. Measured: a qa-agent spent 3900 tokens against a
+2500 budget to change two fields in a 230-line block, and a verifier pass
+ran ~9800 against 3500. In both cases the reasoning was cheap and the
+re-emission was the entire overrun.
 
 The tokens were the least of it. A role that is structurally over budget
 declares `over_budget: true` on every revision, so the flag stops
@@ -56,12 +57,15 @@ Each appended revision carries `revision:`, `reason:`, its own
 alone is reading the first draft; a reader that takes only the last
 revision is reading a patch without its subject. Gate agents read both.
 
-## 1c. The skill floor has one copy
+## 1c. Required selection artifacts have one copy
 
 `scripts/select-agents --emit-floor` writes
-`$CB_DIR/context/<run_id>/skills-required.yaml`. That file is the only
-place the floor exists. A Task Block names the file and the role key; it
-never restates the list.
+`$CB_DIR/context/<run_id>/skills-required.yaml` and
+`agents-required.yaml`. The first is the only place the skill floor
+exists; a Task Block names it and the role key rather than restating the
+list. The second is the mandatory specialist roster; `plan-lint` R8
+requires every entry as a lead/reviewer or an exact plan-header
+`merged: <agent> into <agent> because <reason>` waiver.
 
 The list used to be hand-copied to two places — the file the
 SubagentStop floor reads, and the Task Block text the subagent reads.
@@ -139,10 +143,16 @@ result also arrives as a later turn, but the flag is what judges those
 subagents when they return. Disarming here removes the judge before it
 can act.
 
-At final synthesis use `scripts/run-flag complete`, which performs the
-handoff described below. The two verbs are not synonyms — `disarm` is
-a pause the run may return from, `complete` ends it. While armed, a
-premature stop gets exactly one continue-nudge.
+Synthesis is followed by the operator question **Anything to improve or
+fix?** Disarm before asking it. A yes keeps the run ledger live under
+`context/<run_id>/`; re-arm the same id, run and verify the improvement,
+synthesize, and ask again. Only a no uses `scripts/run-flag complete`,
+which performs the handoff and archival described below. The verbs are
+not synonyms — `disarm` is a pause the run may return from, `complete`
+ends it, and `abandon` retires a crashed or stale run without claiming
+completion. While armed, stagnant Stops consume RunGuard's bounded
+nudge budget; new Response Blocks are progress and do not consume it.
+Full retirement semantics live in `run-archival.md`.
 
 Disarm-before-asking is one case of three. `hooks/scripts/run-guard.sh`
 is the operational authority for all three: specialists still out,
@@ -152,7 +162,7 @@ decision logic lives. This section states the principle; it does not
 restate the hook's cases.
 
 The flag also carries the run's identity, and that is not bookkeeping.
-Eight hooks — the four floors, both ledgers, DigestCap and RunGuard —
+Nine hooks — all six SubagentStop checks, both ledgers and RunGuard —
 need to know which run directory to read or write. They used to infer
 it: newest directory under `context/` by mtime, recomputed on every
 invocation. An agent that edits source and only afterwards writes its
@@ -175,12 +185,31 @@ went on to run a full workflow inline with no Task Blocks on disk.
 afterwards: a non-zero exit means the run is NOT guarded. A run that
 cannot arm does not proceed as though it did.
 
-At final synthesis the flag is not merely removed — it is HANDED OFF:
-write `$CB_DIR/flags/run-completed`, which keeps DelegationGuard armed
-through the follow-up window (input-policy §4). The window is
-TTL-bounded (default 8h, `CB_COMPLETED_TTL_HOURS`) so a forgotten flag
-degrades to fail-open rather than blocking a project indefinitely.
-A new run arming `run-active` supersedes it.
+At accepted synthesis the flag is not merely removed — it is HANDED
+OFF: write `$CB_DIR/flags/run-completed`, which makes `cb_run_state`
+return `COMPLETED` and keeps repository-source follow-ups routed through
+dispatch (input-policy §4). Completion appends telemetry while the live
+ledger is readable, then moves `context/<run_id>/` to
+`archive/<run_id>/`. It does not make the run active again.
+`cb_run_state` is presence-only and matches `run-flag status`:
+`run-active` is `ARMED`, `run-completed` without `run-active` is
+`COMPLETED`, and neither is `IDLE`. A new run arming `run-active`
+supersedes the completed sentinel.
+
+Every completion appends `tokens_total` when known and `tasks_shipped`
+to `$CB_DIR/telemetry/runs.log`. Shipping completions also append one line to
+`$CB_DIR/telemetry/review-ledger.log`. This append-only ledger holds one
+compact record per shipping run so the operator can see what remains
+unreviewed; `/cb-catchup` reads it and acknowledges one exact run only
+after operator confirmation.
+
+There is no TTL or ledger-mtime fail-open. A forgotten `run-active`
+sentinel stays `ARMED` until `run-flag disarm`, `run-flag complete`, or
+`run-flag abandon` removes it, or the explicit `conductor-override`
+hatch is active. `/cb-resume` continues the pinned ledger;
+`run-flag abandon` archives a dead one without writing `run-completed`.
+The mitigation for stale state is explicit lifecycle cleanup, not a
+silent timeout.
 
 ## 6. Context-error recovery
 On a context-length error: no blind retry. `/compact`, then resume

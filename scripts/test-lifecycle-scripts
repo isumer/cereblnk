@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 """test-lifecycle-scripts (CB-086) — spec-assemble, run-status, ensure-gitignore.
-
-spec-assemble:  good sections → head written, spec_version=1;
-                reassemble → v2 head + v1 archived in history/;
-                missing section → A-1, rc 1, nothing written;
-                label-stripped section → A-2, rc 1;
-                diagrams without fence → A-3, rc 1.
-run-status:     no state.md → graceful line, rc 0;
-                full state + plan + inbox → run/progress/inbox lines.
-ensure-gitignore: adds when absent; idempotent second run;
-                respects opt-out flag; respects pre-existing pattern.
-plan-lint:      a direct run (/cb-do) has no spec, and its header says
-                so — the field must stay present and admissible, or the
-                spec-less entry point cannot write a resumable plan;
-                a header still missing a field is still rejected.
 """
 import os, pathlib, shutil, subprocess, sys, tempfile
 
@@ -27,9 +13,15 @@ def run(script, args, cwd, env_extra=None):
 
 
 def plan_lint_cases(tmp, case):
-    """CB-101: the spec-less header must pass, an incomplete one must not."""
-    plan = tmp / "direct-plan.md"
+    """CB-101/CB-177: direct headers and the mandated-agent planning gate."""
+    run_dir = tmp / ".claude/cereblnk/context/R-plan-lint"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    flags = tmp / ".claude/cereblnk/flags"
+    flags.mkdir(parents=True, exist_ok=True)
+    (flags / "run-active").write_text("R-plan-lint\n", encoding="utf-8")
+    plan = run_dir / "plan.md"
     body = ("### [ ] Task 1: store the key with the outcome\n"
+            "- agent: cereblnk:engineering:backend-agent lead\n"
             "- risk: HIGH\n"
             "- files: src/main/java/com/acme/pay/PaymentService.java\n"
             "- verify: a repeated key returns the first outcome\n")
@@ -43,6 +35,56 @@ def plan_lint_cases(tmp, case):
     r = run("plan-lint", [str(plan)], cwd=tmp)
     case("plan-lint: spec-less direct header is admissible", r.returncode == 0,
          r.stderr[:120])
+
+    required = run_dir / "agents-required.yaml"
+    required.write_text(
+        "agents_required:\n"
+        "  - agent: cereblnk:engineering:backend-agent\n"
+        "    domain: \"server-side implementation\"\n"
+        "  - agent: cereblnk:quality:qa-agent\n"
+        "    domain: \"behavioral verification\"\n", encoding="utf-8")
+    r = run("plan-lint", [str(plan)], cwd=tmp)
+    case("plan-lint: missing mandated agent fails and is named",
+         r.returncode == 1 and "qa-agent" in r.stderr
+         and "merged: <missing-agent> into <covering-agent> because <reason text>" in r.stderr,
+         "rc=%d stderr=%r" % (r.returncode, r.stderr[-240:]))
+
+    plan.write_text(plan.read_text(encoding="utf-8").replace(
+        "- recomposition_check: ./gradlew test --tests '*CaptureTest'\n",
+        "- recomposition_check: ./gradlew test --tests '*CaptureTest'\n"
+        "merged: qa-agent into backend-agent because    \n"), encoding="utf-8")
+    r = run("plan-lint", [str(plan)], cwd=tmp)
+    case("plan-lint: merged waiver requires a non-empty reason",
+         r.returncode == 1 and "qa-agent" in r.stderr,
+         "rc=%d stderr=%r" % (r.returncode, r.stderr[-160:]))
+    plan.write_text(plan.read_text(encoding="utf-8").replace(
+        "merged: qa-agent into backend-agent because    \n", ""), encoding="utf-8")
+
+    reviewer_plan = plan.read_text(encoding="utf-8").replace(
+        "cereblnk:engineering:backend-agent lead",
+        "backend-agent lead, qa-agent reviews")
+    plan.write_text(reviewer_plan, encoding="utf-8")
+    r = run("plan-lint", [str(plan)], cwd=tmp)
+    case("plan-lint: mandated reviewer assignment passes", r.returncode == 0,
+         r.stderr[:160])
+
+    plan.write_text(reviewer_plan.replace(
+        "backend-agent lead, qa-agent reviews", "backend-agent lead").replace(
+        "- recomposition_check: ./gradlew test --tests '*CaptureTest'\n",
+        "- recomposition_check: ./gradlew test --tests '*CaptureTest'\n"
+        "merged: qa-agent into backend-agent because the same narrow behavior is verified\n"),
+        encoding="utf-8")
+    r = run("plan-lint", [str(plan)], cwd=tmp)
+    case("plan-lint: exact merged header waiver passes", r.returncode == 0,
+         r.stderr[:160])
+
+    required.unlink()
+    plan.write_text(plan.read_text(encoding="utf-8").replace(
+        "merged: qa-agent into backend-agent because the same narrow behavior is verified\n", ""),
+        encoding="utf-8")
+    r = run("plan-lint", [str(plan)], cwd=tmp)
+    case("plan-lint: absent mandated-agent file preserves behavior",
+         r.returncode == 0, r.stderr[:160])
 
     plan.write_text(
         "# Plan\n\n"

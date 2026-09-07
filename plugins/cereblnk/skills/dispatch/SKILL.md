@@ -40,7 +40,18 @@ Apply policies/risk-model.md. Check the always-level-3 list first:
 auth, money, deletion, migration, prod config. A match forces high —
 "quickly bump the token expiry" is still high.
 
-## Step 3 — Route by signal
+## Step 3 — Arm the routed run flag
+
+Before any route that selects a surface, arm the routed workflow with
+this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
+The id is what every run-reading hook resolves against; without it they
+fall back to guessing the newest context directory (CB-147, F-31).
+Remove it before any turn that ends awaiting the user. The routed
+workflow owns the post-synthesis improve/fix gate, completion and
+archival. Full semantics live in `policies/run-discipline.md` §5.
+
+## Step 4 — Route by signal
 
 | The user asks to… | Route |
 |---|---|
@@ -87,13 +98,14 @@ Rules:
 8. **Nothing changed yet? Route on the request.** Design and new-build
    work has no diff. Use
    `select-agents --emit-floor --text "<the request>"`, which writes the
-   skill floor to `context/<run_id>/skills-required.yaml`. Task Blocks
-   point at that file; they never restate the list. Exit 3 is
+   skill floor to `context/<run_id>/skills-required.yaml` and the
+   mandatory roster to `agents-required.yaml`. Task Blocks point at the
+   skill file; plans assign or waive the roster. Exit 3 is
    unresolved: no specialist is printed, only the roster. Pick a
    role from it and record the roster line your choice rests on.
    Never guess one agent.
 
-## Step 4 — When NOT to dispatch
+## Step 5 — When NOT to dispatch
 Pure knowledge questions. Single-fact lookups. Conversations touching
 no repository. Answer those directly — routing them is ceremony.
 
@@ -101,8 +113,8 @@ Note the boundary with /cb-think: a knowledge question has an answer
 you can give; a deliberation has a question the user is still forming.
 Answer the first, route the second.
 
-## Step 5 — After routing
-The workflow owns the run: flags, gates, synthesis. You return when
+## Step 6 — After routing
+The workflow owns the armed run: gates, synthesis. You return when
 it ends. A follow-up request re-enters at Step 1 — finishing one job
 never switches the session to freehand building.
 

@@ -1,51 +1,14 @@
 """shellwrite — which files does this shell command write? (CB-123)
 
-DelegationGuard was registered on the edit tools only. A shell
-redirection reaches the same files under no delegation check, and a
-blocked run said so out loud before taking that route: "I will write
-the setup files from the command line to avoid the hook blocks."
+Emits paths, `?` for an unresolved target, or `!` for untokenizable input.
+Unresolved targets block; unknown utilities do not, or required tools would stop.
 
-Reads a PreToolUse hook payload on stdin. Emits, on stdout:
+Limit: this is a floor, not proof. Internal redirects, base64 round trips,
+editors, and obfuscated interpreters can escape it; determined bypasses will.
+It covers ordinary write forms and raises bypass cost without closing the gap.
 
-    (nothing)   no write intent — the command only reads, and the
-                guard lets it through
-    <path>...   one candidate target per line, checked against the
-                same conductor-ownership table the edit path uses
-    ?           the command was read, and it writes somewhere this
-                walk cannot name — the guard treats it as a
-                conductor edit and blocks
-    !           the command itself could not be tokenised — whether
-                it writes at all is unknown, not merely unresolved
-
-WHAT THIS IS NOT. It is a floor, not a proof. A command can write a
-file in ways no token walk will see: a script that redirects
-internally, a base64 round trip, an editor invocation, an obfuscated
-interpreter one-liner. Anything determined to get around this will.
-The claim is bounded to what it detects: the ordinary write forms a
-model actually reaches for when a Write is refused. It raises the cost
-of the bypass from zero; it does not close it, and the changelog says
-so rather than implying more.
-
-The bias is deliberate: unresolved targets block, unknown utilities do
-not. A guard that blocks every unrecognised command stops the
-conductor from running `detect-stack`, `select-agents`, `run-quiet`
-and git, all of which run-discipline requires it to run.
-
-MODES. `--in-place` narrows the answer to the commands that modify a
-file that already exists — `sed -i`, `perl -i`, `patch`, `ed`, an
-editor, `git apply`/`git checkout`. Redirections and copy/create
-utilities are excluded there, because those are Write-shaped: an agent
-that holds Write may already replace a whole file with the tool, so
-blocking its shell equivalent would be stricter than the grant it was
-given. ToolFloor (F-24) asks in this mode; DelegationGuard asks in the
-default mode, where every write counts. The `--in-place` answer is a
-subset of the default one, never a superset.
-
-The bound is the same one stated above, and one case is named because
-it is the obvious gap: an inline interpreter (`python3 -c`) that
-rewrites a file in place reports UNRESOLVED in the default mode and
-NOTHING here, because a write hint cannot say which shape it was. A
-floor, still not a proof.
+`--in-place` includes edits to existing files but excludes Write-shaped creation.
+Known gap: inline interpreters report `?` normally and nothing in this mode.
 """
 import json
 import re
@@ -68,10 +31,7 @@ ALL_OPERANDS = {"tee", "touch", "truncate"}
 # Utilities that edit named files in place, but only under a flag.
 IN_PLACE = {"sed": ("-i",), "perl": ("-i",), "ruby": ("-i",)}
 
-# Utilities that write somewhere this walk cannot name. Split by shape:
-# the first set opens a file that already exists and rewrites part of
-# it; the second unpacks or streams new content. Only the first is an
-# edit in the sense `disallowedTools: Edit` means.
+# Split opaque utilities by whether they edit existing files or create content.
 OPAQUE_IN_PLACE = {"patch", "ed", "vi", "vim", "nano", "emacs"}
 OPAQUE_CREATE = {"dd", "tar", "unzip"}
 OPAQUE = OPAQUE_IN_PLACE | OPAQUE_CREATE
@@ -80,11 +40,7 @@ OPAQUE = OPAQUE_IN_PLACE | OPAQUE_CREATE
 # rather than guessing at it.
 NESTED_SHELL = {"sh", "bash", "zsh", "dash"}
 
-# Other inline-code interpreters: opaque only when the code names a
-# write. The hint list stays narrow on purpose — `print(` and a bare
-# `>` would make `python3 -c "print(a > b)"` a blocked command, and a
-# guard that blocks arithmetic is one the conductor learns to route
-# around.
+# Keep hints narrow: `print(` or bare `>` would false-block Python arithmetic.
 INLINE = {"python", "python3", "py", "perl", "node", "ruby",
           "powershell", "pwsh", "awk"}
 INLINE_FLAGS = {"-c", "-e", "-Command", "--command"}
@@ -116,22 +72,13 @@ def _looks_like_flag(tok):
 
 
 def targets(command, in_place=False, _top=True):
-    """Yield write targets for a shell command, UNRESOLVED, or UNPARSEABLE.
-
-    With in_place=True, only the commands that rewrite an existing file
-    are reported; see MODES in the module docstring. UNPARSEABLE is
-    reported only for the outermost call (_top) of the default mode: a
-    nested command string (see NESTED_SHELL below), and every --in-place
-    call, keep reporting UNRESOLVED, their established shape.
-    """
+    """Yield write targets, UNRESOLVED, or outermost-mode UNPARSEABLE."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
         toks = list(lexer)
     except ValueError:
-        # Unbalanced quoting: the command cannot be read at all, so
-        # whether it writes anywhere is unknown — a stronger claim than
-        # "read, and its target cannot be resolved".
+        # Unbalanced quoting is unknowable, stronger than a parsed unresolved target.
         return [UNPARSEABLE if (_top and not in_place) else UNRESOLVED]
 
     found, head, operands, i, in_test = [], None, [], 0, False
@@ -184,9 +131,7 @@ def targets(command, in_place=False, _top=True):
             in_test = True
         elif tok == "]]":
             in_test = False
-        # Inside [[ ... ]], > and < are string comparisons, never
-        # redirection — [ ... ]/test has no such construct, so this
-        # narrowing does not reach it.
+        # `[[ > ]]` compares strings; single-bracket test has no grammar we can narrow.
         if tok in WRITE_REDIR and not in_test:
             if in_place:
                 # a redirection replaces or extends whole-file content,
@@ -213,10 +158,7 @@ def targets(command, in_place=False, _top=True):
             operands.append(tok)
         i += 1
     flush()
-    # No collapse to a single UNRESOLVED: the caller checks every target
-    # and stops at the first one the conductor does not own, and "?"
-    # matches no ownership glob, so a mixed list blocks on its own. A
-    # collapse here changed no outcome and no test could kill it.
+    # Keep mixed targets: `?` matches no ownership glob and independently blocks.
     return found
 
 
@@ -232,12 +174,7 @@ def main():
     if not command.strip():
         return 0
     for t in targets(command, in_place):
-        # $CB_DIR and ${CB_DIR} are never expanded in the payload — the
-        # command arrives as written. Both boundary skills tell the
-        # conductor to redirect into the runtime directory through the
-        # variable, and an unexpanded target matches no ownership glob,
-        # so it would read as an unowned write. Substitute the shape
-        # the table knows.
+    # Hook payloads keep $CB_DIR literal; normalize it before ownership matching.
         for var in ("${CB_DIR}", "$CB_DIR"):
             if t.startswith(var):
                 t = "/cereblnk" + t[len(var):]

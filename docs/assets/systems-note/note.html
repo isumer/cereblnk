@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cereblnk Systems Note</title>
+<style>
+html,body{margin:0;background:#06080a}
+body{display:flex;justify-content:center;padding:8px}
+svg{width:min(1030px,100%);height:auto;display:block;background:#0d0d10}
+text { font-family: "DejaVu Sans", Arial, sans-serif; }
+.mono { font-family: "DejaVu Sans Mono", Consolas, monospace; }
+text{fill:#c9ccd2}
+.title{font-size:30px;font-weight:800;letter-spacing:1px;fill:#f1f2f4}
+.tag{font-size:10px;font-weight:700;fill:#4ec9d9}
+.creed{font-size:11px;font-weight:700;fill:#4ec9d9}
+.intro{font-size:8.5px;fill:#c9ccd2}
+.count{font-size:9px;fill:#c9ccd2}
+.ph{font-size:12px;font-weight:800;letter-spacing:.35px}
+.sh{font-size:8.4px;font-weight:800}
+.body{font-size:7.25px}
+.small{font-size:6.7px}
+.tiny{font-size:6px}
+.muted{fill:#8b909a}
+.cyan{fill:#4ec9d9}.green{fill:#5bd88a}.amber{fill:#e0943c}
+.red{fill:#d94a3d}.purple{fill:#b57edc}.yellow{fill:#e6c84a}
+.panel{fill:#111419;stroke-width:1}
+.sub{fill:#0e1115;stroke:#353a40;stroke-width:.8}
+.cyanS{stroke:#4ec9d9}.greenS{stroke:#5bd88a}.amberS{stroke:#e0943c}
+.redS{stroke:#d94a3d}.purpleS{stroke:#b57edc}.yellowS{stroke:#e6c84a}
+.flow{fill:none;stroke:#c9ccd2;stroke-width:1.15;marker-end:url(#arr)}
+.data{fill:none;stroke:#e0943c;stroke-width:1.05;stroke-dasharray:5 4;marker-end:url(#arrA)}
+.enforce{fill:none;stroke:#d94a3d;stroke-width:1.55;marker-end:url(#arrR)}
+.line{stroke:#565b65;stroke-width:.8}
+.pill{fill:#0f1115;stroke-width:.8}
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1030 1607" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cereblnk systems note">
+<defs>
+<marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c9ccd2"/></marker>
+<marker id="arrA" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#e0943c"/></marker>
+<marker id="arrR" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#d94a3d"/></marker>
+</defs>
+
+<defs>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-route" viewBox="0 0 24 24"><path d="M4 20V8a4 4 0 0 1 4-4h4"/><path d="M9 1l3 3-3 3"/><path d="M20 20V14a4 4 0 0 0-4-4h-4"/><path d="M15 7l-3 3 3 3"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-think" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-frame" viewBox="0 0 24 24"><path d="M7 2v15a2 2 0 0 0 2 2h13"/><path d="M2 7h15a2 2 0 0 1 2 2v13"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-design" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3Z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5Z"/><path d="M2 2l7.6 7.6"/><circle cx="11" cy="11" r="2"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-implement" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-do" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-refactor" viewBox="0 0 24 24"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-review" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/><path d="M8 11h6"/><path d="M11 8v6"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-bug" viewBox="0 0 24 24"><path d="M12 6a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4 4 4 0 0 1-4-4v-6a4 4 0 0 1 4-4Z"/><path d="M8 12H3M21 12h-5M8 8L5 5M16 8l3-3M8 17l-3 3M16 17l3 3"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-qa" viewBox="0 0 24 24"><path d="M9 2v6L4 19a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L15 8V2"/><path d="M8 2h8"/><path d="M6.5 15h11"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-security" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3Z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-docs" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-rewrite" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="M14 6l4 4"/><path d="M3 4h6"/><path d="M6 1v6"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-requirements" viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12"/><path d="M4 4v3M3 5h1.5"/><path d="M3 11h2l-2 3h2"/><path d="M3 18h2v3H3"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-catchup" viewBox="0 0 24 24"><path d="M3 3v6h6"/><path d="M3.5 9a9 9 0 1 0 2.6-4.6L3 9"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-resume" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 3v5h-5"/><path d="M10 9.5v5l4.5-2.5-4.5-2.5Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-guard" viewBox="0 0 24 24"><path d="M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-boundary" viewBox="0 0 24 24"><path d="M4 3v18"/><path d="M9 12h11"/><path d="M16 8l4 4-4 4"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-orchestrate" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.2 7.2 16.8 11"/><path d="M7.2 16.8 16.8 13"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-request" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 13 4a8 8 0 0 1 8 8Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-interpret" viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h9"/><circle cx="4" cy="5" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="4" cy="19" r="1.6"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-select" viewBox="0 0 24 24"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.5"/><path d="M18 8l2 2 4-4"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-plan" viewBox="0 0 24 24"><path d="M9 4h9M9 12h9M9 20h9"/><path d="M3 4.5l1.5 1.5L7 3"/><path d="M3 12.5 4.5 14 7 11"/><path d="M3 20.5 4.5 22 7 19"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-execute" viewBox="0 0 24 24"><path d="M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M7 9l3 3-3 3"/><path d="M13 15h4"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-gate" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3Z"/><path d="M12 8v5"/><path d="M12 16h.01"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-synthesize" viewBox="0 0 24 24"><path d="M12 2l2.6 6.3L21 9l-4.8 4.3L17.6 20 12 16.6 6.4 20l1.4-6.7L3 9l6.4-.7L12 2Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-observe" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-architect" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-surface" viewBox="0 0 24 24"><path d="M8 8l-5 4 5 4"/><path d="M16 8l5 4-5 4"/><path d="M13.5 5l-3 14"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-data" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-infra" viewBox="0 0 24 24"><path d="M18 10h-1.3A6 6 0 1 0 6 15h12a4 4 0 0 0 0-5Z"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-performance" viewBox="0 0 24 24"><path d="M3 18a9 9 0 1 1 18 0"/><path d="M12 18l5-6"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-challenge" viewBox="0 0 24 24"><path d="M12 2l9 16H3L12 2Z"/><path d="M12 9v4"/><path d="M12 16h.01"/></symbol>
+  <symbol fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="ic-verify" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/></symbol>
+</defs>
+
+<rect x="5" y="5" width="1020" height="1597" rx="5" fill="#0d0d10" stroke="#5b6068"/>
+
+<!-- HEADER / LEFT BRAND -->
+<g transform="translate(22 18)">
+  <!-- brain glyph -->
+  <g fill="none" stroke="#4ec9d9" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 4c-6 0-10 4-10 9v3c-4 1-6 4-6 8 0 4 2 7 6 8 0 5 4 9 9 9 3 0 5-1 7-3"/>
+    <path d="M30 4c6 0 10 4 10 9v3c4 1 6 4 6 8 0 4-2 7-6 8 0 5-4 9-9 9-3 0-5-1-7-3"/>
+    <path d="M25 4v34M14 14c5 0 7 3 11 7M36 14c-5 0-7 3-11 7M14 28c4 0 7-2 11-6M36 28c-4 0-7-2-11-6"/>
+    <path d="M18 44h14M20 48h10"/>
+  </g>
+  <text x="64" y="28" class="title">CEREBLNK</text>
+  <text x="52" y="49" class="tag">CONTEXT ENGINEERING LAYER FOR CLAUDE</text>
+  <text x="66" y="73" class="creed">Context is expensive.</text>
+  <text x="66" y="89" class="creed">Evidence is valuable.</text>
+  <text x="66" y="105" class="creed">Verification is mandatory.</text>
+  <text x="10" y="130" class="intro">Cereblnk routes engineering work to the right</text>
+  <text x="10" y="144" class="intro">specialists, verifies with evidence, and refuses</text>
+  <text x="10" y="158" class="intro">to let a step be skipped.</text>
+</g>
+<text x="1012" y="28" text-anchor="end" class="count mono">27 agents · 96 skills · 163 constraint files · 23 hooks · 51 verify suites</text>
+
+<!-- LEFT COLUMN PANEL 2 -->
+<g id="panel-entry">
+<rect x="18" y="200" width="294" height="974" rx="4" class="panel cyanS"/>
+<text x="30" y="224" class="ph cyan">2  19 ENTRY POINTS <tspan class="small">(COMMANDS)</tspan></text>
+<text x="56" y="277.5" class="sh cyan">WORKFLOW COMMANDS (13)</text>
+
+<!-- icon column x=30; name column x=49; description column x=142; wrapped lines use 13px leading -->
+<g class="body">
+<use href="#ic-route" x="30" y="297" width="11" height="11" color="#5bd88a"/><text x="49" y="305.5" class="green mono">/cb-dispatch</text><text x="142" y="305.5">route natural-language</text>
+<use href="#ic-think" x="30" y="316" width="11" height="11" color="#5bd88a"/><text x="49" y="324.5" class="green mono">/cb-think</text><text x="142" y="324.5">think it through (no build)</text>
+<use href="#ic-frame" x="30" y="335" width="11" height="11" color="#5bd88a"/><text x="49" y="343.5" class="green mono">/cb-frame</text><text x="142" y="343.5">frame a vague request</text>
+<use href="#ic-design" x="30" y="354" width="11" height="11" color="#5bd88a"/><text x="49" y="362.5" class="green mono">/cb-design</text><text x="142" y="362.5">brief → executable spec</text>
+<use href="#ic-implement" x="30" y="373" width="11" height="11" color="#5bd88a"/><text x="49" y="381.5" class="green mono">/cb-implement</text><text x="142" y="381.5">build from a spec, slice by slice</text>
+<use href="#ic-do" x="30" y="392" width="11" height="11" color="#5bd88a"/><text x="49" y="400.5" class="green mono">/cb-do</text><text x="142" y="400.5">build a stated bounded change</text>
+<use href="#ic-refactor" x="30" y="411" width="11" height="11" color="#5bd88a"/><text x="49" y="419.5" class="green mono">/cb-refactor</text><text x="142" y="419.5">restructure without behaviour change</text>
+<use href="#ic-review" x="30" y="430" width="11" height="11" color="#5bd88a"/><text x="49" y="438.5" class="green mono">/cb-pr-review</text><text x="142" y="438.5">review a PR / diff / branch</text>
+<use href="#ic-bug" x="30" y="449" width="11" height="11" color="#d94a3d"/><text x="49" y="457.5" class="red mono">/cb-bug</text><text x="142" y="457.5">find root cause then fix</text>
+<use href="#ic-qa" x="30" y="468" width="11" height="11" color="#d94a3d"/><text x="49" y="476.5" class="red mono">/cb-qa</text><text x="142" y="476.5">test what changed</text>
+<use href="#ic-security" x="30" y="487" width="11" height="11" color="#5bd88a"/><text x="49" y="495.5" class="green mono">/cb-security-audit</text><text x="142" y="495.5">security / auth / secrets</text>
+<use href="#ic-docs" x="30" y="506" width="11" height="11" color="#5bd88a"/><text x="49" y="514.5" class="green mono">/cb-docs</text><text x="142" y="514.5">fix documentation drift</text>
+<use href="#ic-rewrite" x="30" y="525" width="11" height="11" color="#5bd88a"/><text x="49" y="533.5" class="green mono">/cb-rewrite</text><text x="142" y="533.5">replace code whose design is wrong</text>
+</g>
+
+<rect x="30" y="579.45" width="270" height=".1" fill="none" stroke="#e0943c" stroke-dasharray="4 3"/>
+<text x="200.305" y="606.5" text-anchor="end" class="sh cyan">REQUIREMENTS COMMAND (1)</text>
+<use href="#ic-requirements" x="30" y="626" width="11" height="11" color="#5bd88a"/>
+<text x="49" y="634.5" class="body green mono">/cb-requirements</text>
+<text x="142" y="634.5" class="body">vague request → numbered,</text>
+<text x="222.578" y="647.5" text-anchor="end" class="body">testable requirements</text>
+
+<rect x="30" y="694.45" width="270" height=".1" fill="none" stroke="#b57edc" stroke-dasharray="4 3"/>
+<text x="182.250" y="707.5" text-anchor="end" class="sh purple">RECOVERY COMMANDS (2)</text>
+<use href="#ic-catchup" x="30" y="727" width="11" height="11" color="#b57edc"/>
+<text x="49" y="735.5" class="body purple mono">/cb-catchup</text>
+<text x="142" y="735.5" class="body">walk unreviewed shipping runs</text>
+<text x="245.521" y="748.5" text-anchor="end" class="body">oldest first via review ledger</text>
+<use href="#ic-resume" x="30" y="759" width="11" height="11" color="#b57edc"/>
+<text x="49" y="767.5" class="body purple mono">/cb-resume</text>
+<text x="142" y="767.5" class="body">re-arm pinned incomplete run</text>
+<text x="258.935" y="780.5" text-anchor="end" class="body">continue at first unchecked task</text>
+
+<rect x="30" y="814.45" width="270" height=".1" fill="none" stroke="#e0943c" stroke-dasharray="4 3"/>
+<text x="165.606" y="827.5" text-anchor="end" class="sh amber">GUARD COMMANDS (2)</text>
+<text x="176.538" y="840.5" text-anchor="end" class="small amber">SESSION CONTROLS (NOT ROUTED)</text>
+<use href="#ic-guard" x="30" y="860" width="11" height="11" color="#e0943c"/>
+<text x="49" y="868.5" class="body amber mono">/cb-careful</text>
+<text x="142" y="868.5" class="body">enable destructive-command guard</text>
+<use href="#ic-boundary" x="30" y="879" width="11" height="11" color="#e0943c"/>
+<text x="49" y="887.5" class="body amber mono">/cb-boundary &lt;path&gt;</text>
+<text x="142" y="887.5" class="body">set / clear edit boundary</text>
+
+<rect x="30" y="933.45" width="270" height=".1" fill="none" stroke="#4ec9d9" stroke-dasharray="4 3"/>
+<text x="115.719" y="960.5" text-anchor="end" class="sh cyan">RUNTIME (1)</text>
+<use href="#ic-orchestrate" x="30" y="980" width="11" height="11" color="#5bd88a"/>
+<text x="49" y="988.5" class="body green mono">/cb-orchestrate</text>
+<text x="142" y="988.5" class="body">handle mixed / unclear intent</text>
+<text x="221.297" y="1001.5" text-anchor="end" class="body">show routing decision</text>
+
+<text x="30" y="1055" class="sh purple">TWO BUILD PATHS</text>
+<rect x="30" y="1076.5" width="162" height="69" rx="3" class="sub purpleS"/>
+<text x="42" y="1089.5" class="tiny purple">VAGUE / NEW</text>
+<text x="42" y="1102.5" class="tiny"><tspan class="mono">/cb-frame</tspan> → <tspan class="mono">/cb-design</tspan> → <tspan class="mono">/cb-implement</tspan></text>
+<text x="42" y="1121.5" class="tiny green">STATED / BOUNDED</text>
+<text x="42" y="1134.5" class="tiny green">→ <tspan class="mono">/cb-do</tspan></text>
+</g>
+
+<!-- RIGHT TOP PANEL 1 -->
+<g id="panel-routing">
+<rect x="322" y="48" width="690" height="410" rx="4" class="panel cyanS"/>
+<text x="334" y="72" class="ph cyan">1  REQUEST ROUTING LOOP <tspan class="small muted">(HIGH LEVEL)</tspan></text>
+
+<rect x="334" y="84" width="109" height="100" rx="3" class="sub cyanS"/>
+<use href="#ic-request" x="346" y="97.5" width="13" height="13" color="#4ec9d9"/>
+<text x="367" y="107" class="sh cyan">1 REQUEST</text>
+<text x="346" y="135" class="small">User asks in</text><text x="346" y="148" class="small">natural language</text><text x="346" y="161" class="small">or runs a command.</text>
+
+<rect x="455" y="84" width="157" height="141" rx="3" class="sub greenS"/>
+<use href="#ic-orchestrate" x="467" y="97.5" width="13" height="13" color="#5bd88a"/>
+<text x="488" y="107" class="sh green">2 ENTRY POINT FORK</text>
+<text x="467" y="135" class="small green">A) user ran <tspan class="mono">/cb-*</tspan> command</text>
+<text x="467" y="148" class="small">→ entry point executes</text>
+<text x="467" y="167" class="small green">B) or <tspan class="mono">cb-dispatch</tspan> may route</text>
+<text x="467" y="186" class="tiny red">If <tspan class="mono">cb-dispatch</tspan> does not fire:</text>
+<text x="467" y="199" class="tiny red">ordinary session turn —</text>
+<text x="467" y="212" class="tiny red">no specialists · no floors · no gates.</text>
+
+<rect x="624" y="84" width="118" height="101" rx="3" class="sub purpleS"/>
+<use href="#ic-interpret" x="636" y="97.5" width="13" height="13" color="#b57edc"/>
+<text x="657" y="107" class="sh purple">3 INTERPRET</text>
+<text x="636" y="135" class="small">Read intent at three</text>
+<text x="636" y="148" class="small">levels: literal ·</text>
+<text x="636" y="161" class="small">operational · constraint.</text>
+
+<rect x="751" y="84" width="111" height="101" rx="3" class="sub amberS"/>
+<use href="#ic-route" x="763" y="97.5" width="13" height="13" color="#e0943c"/>
+<text x="784" y="107" class="sh amber">4 ROUTE</text>
+<text x="763" y="135" class="small">Select workflow(s)</text>
+<text x="763" y="148" class="small">and required</text>
+<text x="763" y="161" class="small">specialist domains.</text>
+
+<rect x="874" y="84" width="126" height="101" rx="3" class="sub greenS"/>
+<use href="#ic-select" x="886" y="97.5" width="13" height="13" color="#5bd88a"/>
+<text x="907" y="107" class="sh green">5 SELECT</text>
+<text x="886" y="135" class="small">Deterministic selection of</text>
+<text x="886" y="163" class="small">specialists + skills.</text>
+
+<rect x="570" y="246" width="190" height="94" fill="#101217"/>
+<line x1="570" y1="246" x2="570" y2="340" stroke="#e0943c"/>
+<line x1="760" y1="246" x2="760" y2="340" stroke="#e0943c"/>
+<ellipse cx="665" cy="246" rx="95" ry="21" fill="#101217" stroke="#e0943c"/>
+<path d="M570,340 A95,21 0 0 0 760,340" fill="#101217" stroke="#e0943c"/>
+<text x="665" y="283" text-anchor="middle" class="sh amber">CEREBLNK RUNTIME LEDGER</text>
+<text x="665" y="302" text-anchor="middle" class="small">Persistent run state under <tspan class="cyan mono">.claude/cereblnk/</tspan></text>
+<text x="665" y="328" text-anchor="middle" class="tiny muted">see panel 7</text>
+
+<rect x="874" y="238" width="126" height="92" rx="3" class="sub amberS"/>
+<use href="#ic-plan" x="886" y="250.5" width="13" height="13" color="#e0943c"/>
+<text x="907" y="260" class="sh amber">6 PLAN</text>
+<text x="886" y="288" class="small">Plan task graph,</text>
+<text x="886" y="301" class="small">acceptance criteria,</text>
+<text x="886" y="314" class="small">and verify level.</text>
+
+<rect x="717" y="366" width="137" height="73" rx="3" class="sub amberS"/>
+<use href="#ic-execute" x="729" y="378.5" width="13" height="13" color="#e0943c"/>
+<text x="750" y="388" class="sh amber">7 EXECUTE</text>
+<text x="729" y="416" class="small">Specialists work in</text>
+<text x="729" y="429" class="small">isolated contexts.</text>
+
+<rect x="539" y="366" width="145" height="73" rx="3" class="sub redS"/>
+<use href="#ic-gate" x="551" y="378.5" width="13" height="13" color="#d94a3d"/>
+<text x="572" y="388" class="sh red">8 GATE</text>
+<text x="551" y="416" class="small">Verify at required</text>
+<text x="551" y="429" class="small red">level. Floors may refuse stop.</text>
+
+<rect x="334" y="310" width="161" height="128" rx="3" class="sub purpleS"/>
+<use href="#ic-synthesize" x="346" y="322.5" width="13" height="13" color="#b57edc"/>
+<text x="367" y="332" class="sh purple">9 SYNTHESIZE</text>
+<text x="346" y="360" class="small">Then: anything to improve or fix?</text>
+<text x="346" y="392" class="small green">no → complete</text>
+<text x="346" y="405" class="tiny green">(archives the run)</text>
+<text x="346" y="424" class="small amber">yes → improvement loop</text>
+
+<path d="M443 134H455M612 134H624M739 134H751M862 134H874" class="flow"/>
+<path d="M937 185V238" class="flow"/>
+<path d="M874 284C848 342 825 361 790 366" class="flow"/>
+<path d="M717 403H684" class="flow"/>
+<path d="M539 403H495" class="flow"/>
+<path d="M416 310 C392 276 390 226 392 184" class="flow"/>
+
+<path d="M612 204C620 224 620 240 613 259" class="data"/>
+<path d="M681 185V248" class="data"/>
+<path d="M806 185C777 232 741 251 720 260" class="data"/>
+<path d="M874 330C835 342 800 338 760 309" class="data"/>
+<path d="M786 366C760 338 737 327 715 320" class="data"/>
+<path d="M611 366C607 344 613 333 625 323" class="data"/>
+</g>
+
+<!-- PANEL 3 AGENT PIPELINE -->
+<g id="panel-agent" transform="translate(0 -1)">
+<rect x="322" y="469" width="690" height="350" rx="4" class="panel cyanS"/>
+<text x="334" y="493" class="ph cyan">3  AGENT PIPELINE <tspan class="small muted">(SPEC AUTHORING → PLAN DERIVATION)</tspan></text>
+
+<rect x="334" y="511" width="101" height="74" rx="3" class="sub cyanS"/>
+<text x="385" y="530" text-anchor="middle" class="sh cyan">BRIEF /</text><text x="385" y="543" text-anchor="middle" class="sh cyan">FRAMED</text><text x="385" y="556" text-anchor="middle" class="sh cyan">INTENT</text>
+
+<rect x="457" y="511" width="114" height="74" rx="3" class="sub cyanS"/>
+<use href="#ic-architect" x="469" y="520.5" width="13" height="13" color="#4ec9d9"/>
+<text x="527.929" y="530" text-anchor="middle" class="sh cyan mono">ARCHITECT-AGENT</text>
+<text x="514" y="558" text-anchor="middle" class="small">structure &amp; boundaries</text>
+
+<rect x="593" y="504" width="270" height="93" rx="3" class="sub greenS"/>
+<use href="#ic-surface" x="605" y="513.5" width="13" height="13" color="#5bd88a"/>
+<text x="717.182" y="523" text-anchor="middle" class="sh green">SURFACE SPECIALISTS (CONDITIONAL)</text>
+<text x="605" y="551" class="tiny"><tspan class="mono">frontend-agent</tspan> (if UI) · <tspan class="mono">backend-agent</tspan> (if server)</text>
+<text x="605" y="564" class="tiny"><tspan class="mono">database-agent</tspan> (if data) · <tspan class="mono">infra-agent</tspan> (if deploy)</text>
+<text x="605" y="577" class="tiny"><tspan class="mono">apidesign-agent</tspan> (if interface)</text>
+<text x="605" y="590" class="tiny"><tspan class="mono">performance-agent</tspan> (advisory)</text>
+
+<rect x="887" y="504" width="113" height="46" rx="3" class="sub redS"/>
+<use href="#ic-security" x="899" y="513.5" width="13" height="13" color="#d94a3d"/>
+<text x="955.401" y="523" text-anchor="middle" class="sh red mono">SECURITY-AGENT</text>
+<text x="944" y="536" text-anchor="middle" class="tiny red">(mandatory)</text>
+<rect x="887" y="557" width="113" height="40" rx="3" class="sub amberS"/>
+<use href="#ic-qa" x="899" y="565.5" width="13" height="13" color="#e0943c"/>
+<text x="940.229" y="575" text-anchor="middle" class="sh amber mono">QA-AGENT</text>
+<text x="944" y="588" text-anchor="middle" class="tiny">authors test matrix</text>
+
+<path d="M435 548H457M571 548H593M863 548H887" class="flow"/>
+
+<rect x="340" y="620" width="131" height="76" rx="3" class="sub purpleS"/>
+<use href="#ic-synthesize" x="352" y="630.5" width="13" height="13" color="#b57edc"/>
+<text x="405.566" y="640" text-anchor="middle" class="sh purple">SYNTHESIZER</text>
+<text x="406" y="668" text-anchor="middle" class="tiny">final user-facing</text>
+<text x="406" y="681" text-anchor="middle" class="tiny">synthesis</text>
+
+<rect x="495" y="620" width="132" height="76" rx="3" class="sub purpleS"/>
+<use href="#ic-challenge" x="507" y="630.5" width="13" height="13" color="#b57edc"/>
+<text x="559.135" y="640" text-anchor="middle" class="sh purple">CHALLENGER</text>
+<text x="561" y="668" text-anchor="middle" class="tiny">attack high-risk</text>
+<text x="561" y="681" text-anchor="middle" class="tiny">assumptions</text>
+
+<rect x="652" y="620" width="132" height="76" rx="3" class="sub purpleS"/>
+<use href="#ic-verify" x="664" y="630.5" width="13" height="13" color="#b57edc"/>
+<text x="706.451" y="640" text-anchor="middle" class="sh purple">VERIFIER</text>
+<text x="718" y="668" text-anchor="middle" class="tiny">re-derive conclusions</text>
+<text x="718" y="681" text-anchor="middle" class="tiny">from evidence</text>
+
+<rect x="809" y="620" width="179" height="76" rx="3" class="sub purpleS"/>
+<use href="#ic-plan" x="821" y="630.5" width="13" height="13" color="#b57edc"/>
+<text x="864.138" y="640" text-anchor="middle" class="sh purple">PLANNER</text>
+<text x="899" y="668" text-anchor="middle" class="tiny">derives task graph + plan from synthesized spec</text>
+
+<rect x="334" y="714" width="666" height="92" rx="3" fill="#0f1115" stroke="#565b65" stroke-dasharray="4 3"/>
+<text x="667" y="733" text-anchor="middle" class="sh cyan">SPEC AUTHORING MODEL (INDEPENDENT → SYNTHESIZED)</text>
+<rect x="432" y="746" width="134" height="32" rx="3" class="sub amberS"/>
+<text x="499" y="765" text-anchor="middle" class="tiny">Each specialist works independently</text>
+<rect x="576" y="746" width="122" height="32" rx="3" class="sub amberS"/>
+<text x="637" y="765" text-anchor="middle" class="tiny">Produces an ACP response block</text>
+<rect x="708" y="746" width="76" height="32" rx="3" class="sub amberS"/>
+<text x="746" y="765" text-anchor="middle" class="tiny">Digest ≤ 10 lines</text>
+<rect x="794" y="746" width="108" height="32" rx="3" class="sub amberS"/>
+<text x="848" y="765" text-anchor="middle" class="tiny">Synthesized by the pipeline</text>
+<text x="667" y="786" text-anchor="middle" class="tiny muted"><tspan class="mono">select-agents</tspan> emits <tspan class="mono">skills-required.yaml</tspan> + <tspan class="mono">agents-required.yaml</tspan></text>
+<text x="667" y="799" text-anchor="middle" class="tiny muted"><tspan class="mono">plan-lint</tspan> refuses mandated specialists left unassigned or unwaived</text>
+</g>
+
+<!-- PANEL 4 ENFORCEMENT -->
+<g id="panel-enforcement">
+<rect x="322" y="828" width="690" height="346" rx="4" class="panel redS"/>
+<text x="334" y="851" class="ph red">4  ENFORCEMENT — 22 HOOKS ACROSS 8 EVENTS</text>
+
+<g class="tiny mono">
+<rect x="334" y="861" width="96" height="20" rx="7" class="pill redS"/><text x="382" y="875" text-anchor="middle">UserPromptSubmit</text>
+<rect x="435" y="861" width="71" height="20" rx="7" class="pill redS"/><text x="470" y="875" text-anchor="middle">PreToolUse</text>
+<rect x="511" y="861" width="74" height="20" rx="7" class="pill redS"/><text x="548" y="875" text-anchor="middle">PostToolUse</text>
+<rect x="590" y="861" width="73" height="20" rx="7" class="pill redS"/><text x="626" y="875" text-anchor="middle">PreCompact</text>
+<rect x="668" y="861" width="49" height="20" rx="7" class="pill redS"/><text x="692" y="875" text-anchor="middle">Stop</text>
+<rect x="722" y="861" width="84" height="20" rx="7" class="pill redS"/><text x="764" y="875" text-anchor="middle">SubagentStop</text>
+<rect x="811" y="861" width="80" height="20" rx="7" class="pill redS"/><text x="851" y="875" text-anchor="middle">SessionStart</text>
+<rect x="896" y="861" width="104" height="20" rx="7" class="pill redS"/><text x="948" y="875" text-anchor="middle">SessionEnd</text>
+</g>
+
+<rect x="334" y="890" width="192" height="218" rx="3" class="sub redS"/>
+<text x="346" y="908" class="sh red">BLOCKS A TOOL CALL (8)</text>
+<use href="#ic-block" x="346" y="927.5" width="11" height="11" color="#d94a3d"/><text x="365" y="936" class="small mono">delegation-guard</text>
+<use href="#ic-block" x="346" y="946.5" width="11" height="11" color="#d94a3d"/><text x="365" y="955" class="small mono">edit-boundary</text>
+<use href="#ic-block" x="346" y="965.5" width="11" height="11" color="#d94a3d"/><text x="365" y="974" class="small mono">destructive-command</text>
+<use href="#ic-block" x="346" y="984.5" width="11" height="11" color="#d94a3d"/><text x="365" y="993" class="small mono">secret-guard</text>
+<use href="#ic-block" x="346" y="1003.5" width="11" height="11" color="#d94a3d"/><text x="365" y="1012" class="small mono">scratch-guard</text>
+<use href="#ic-block" x="346" y="1022.5" width="11" height="11" color="#d94a3d"/><text x="365" y="1031" class="small mono">doc-floor</text>
+<use href="#ic-block" x="346" y="1041.5" width="11" height="11" color="#d94a3d"/><text x="365" y="1050" class="small mono">tool-floor</text>
+<use href="#ic-block" x="346" y="1060.5" width="11" height="11" color="#d94a3d"/><text x="365" y="1069" class="small mono">post-edit-test</text>
+
+<rect x="536" y="890" width="289" height="218" rx="3" class="sub redS"/>
+<text x="548" y="908" class="sh red">BLOCKS A FINISH (6) — on SubagentStop, in order</text>
+<use href="#ic-block" x="548" y="927.5" width="11" height="11" color="#d94a3d"/><text x="567" y="936" class="small red">1 <tspan class="mono">skill-floor</tspan></text><text x="640" y="936" class="tiny">finished without required craft</text>
+<use href="#ic-block" x="548" y="946.5" width="11" height="11" color="#d94a3d"/><text x="567" y="955" class="small red">2 <tspan class="mono">exec-floor</tspan></text><text x="640" y="955" class="tiny">edited a surface, never ran it</text>
+<use href="#ic-block" x="548" y="965.5" width="11" height="11" color="#d94a3d"/><text x="567" y="974" class="small red">3 <tspan class="mono">reach-floor</tspan></text><text x="640" y="974" class="tiny">declared symbol nothing references</text>
+<use href="#ic-block" x="548" y="984.5" width="11" height="11" color="#d94a3d"/><text x="567" y="993" class="small red">4 <tspan class="mono">contract-floor</tspan></text><text x="640" y="993" class="tiny">new cross-surface contract finding</text>
+<use href="#ic-block" x="548" y="1003.5" width="11" height="11" color="#d94a3d"/><text x="567" y="1012" class="small red">5 <tspan class="mono">digest-cap</tspan></text><text x="640" y="1012" class="tiny">&gt;10 lines; persists ACP block</text>
+<use href="#ic-block" x="548" y="1022.5" width="11" height="11" color="#d94a3d"/><text x="567" y="1031" class="small red">6 <tspan class="mono">ground-floor</tspan></text><text x="640" y="1031" class="tiny">cited file/doc-line/quote unresolved</text>
+<text x="548" y="1050" class="tiny muted">pre-existing findings reported, not blocked</text>
+
+<rect x="835" y="890" width="165" height="218" rx="3" class="sub purpleS"/>
+<text x="847" y="908" class="sh purple">OBSERVE ONLY (8)</text>
+<use href="#ic-observe" x="847" y="927.5" width="11" height="11" color="#b57edc"/><text x="866" y="936" class="small mono">context-monitor</text>
+<use href="#ic-observe" x="847" y="946.5" width="11" height="11" color="#b57edc"/><text x="866" y="955" class="small mono">skill-ledger</text>
+<use href="#ic-observe" x="847" y="965.5" width="11" height="11" color="#b57edc"/><text x="866" y="974" class="small mono">exec-ledger</text>
+<use href="#ic-observe" x="847" y="984.5" width="11" height="11" color="#b57edc"/><text x="866" y="993" class="small mono">history-archive</text>
+<use href="#ic-observe" x="847" y="1003.5" width="11" height="11" color="#b57edc"/><text x="866" y="1012" class="small mono">stale-run</text>
+<use href="#ic-observe" x="847" y="1022.5" width="11" height="11" color="#b57edc"/><text x="866" y="1031" class="small mono">env-teardown</text>
+<use href="#ic-observe" x="847" y="1041.5" width="11" height="11" color="#b57edc"/><text x="866" y="1050" class="small mono">run-guard</text>
+<use href="#ic-observe" x="847" y="1060.5" width="11" height="11" color="#b57edc"/><text x="866" y="1069" class="small mono">route-hint</text>
+<text x="847" y="1088" class="tiny muted"><tspan class="mono">run-guard</tspan> on <tspan class="mono">Stop</tspan></text>
+<text x="847" y="1101" class="tiny muted"><tspan class="mono">route-hint</tspan> on <tspan class="mono">UserPromptSubmit</tspan></text>
+
+<!-- STOP band: fully contained by the enforcement panel -->
+<polygon points="344,1130 356,1118 373,1118 385,1130 385,1147 373,1159 356,1159 344,1147" fill="#d94a3d" stroke="#ff7a6e"/>
+<text x="365" y="1142" text-anchor="middle" class="tiny" fill="#fff">STOP</text>
+<text x="400" y="1127" class="sh red">REFUSED TO STOP → RETURN TO EXECUTE</text>
+<text x="400" y="1140" class="tiny">Specialist returns to work. Exit code: 2</text>
+
+<text x="666" y="1127" class="sh amber">FLOORS ARE NUDGE-CAPPED</text>
+<text x="666" y="1140" class="tiny">Bounded returns, not forever.</text>
+<text x="866" y="1127" class="sh green">MOST HOOKS FAIL OPEN</text>
+<text x="866" y="1140" class="tiny">Failure does not freeze the session.</text>
+</g>
+
+<!-- LOWER BAND -->
+<g transform="translate(0 45)">
+<g id="panel-gates" transform="translate(0 -3)">
+<rect x="18" y="1142" width="205" height="258" rx="4" class="panel cyanS"/>
+<text x="30" y="1165" class="ph cyan">5  VERIFICATION GATES</text>
+<text x="30" y="1178" class="small muted">BY RISK</text>
+<rect x="30" y="1187" width="181" height="48" rx="3" class="sub greenS"/>
+<text x="42" y="1205" class="sh green">LEVEL 1</text><text x="42" y="1224" class="small">self-verification by executing agent</text>
+<rect x="30" y="1245" width="181" height="48" rx="3" class="sub amberS"/>
+<text x="42" y="1263" class="sh amber">LEVEL 2</text><text x="42" y="1282" class="small">Verifier + Consistency</text>
+<rect x="30" y="1303" width="181" height="58" rx="3" class="sub redS"/>
+<text x="42" y="1321" class="sh red">LEVEL 3</text><text x="42" y="1340" class="small">Verifier + Challenger +</text><text x="42" y="1353" class="small">Consistency (all mandatory)</text>
+<text x="30" y="1381" class="tiny muted">Always L3: security · auth · deletion · migration</text>
+<text x="30" y="1394" class="tiny muted">money · prod config · never silently downgraded</text>
+</g>
+
+<g id="panel-frontmatter" transform="translate(0 -3)">
+<rect x="233" y="1142" width="190" height="258" rx="4" class="panel amberS"/>
+<text x="245" y="1165" class="ph amber">6  FRONTMATTER-</text>
+<text x="245" y="1178" class="ph amber">DRIVEN RULE INJECTION</text>
+<rect x="245" y="1198" width="166" height="114" rx="3" class="sub yellowS"/>
+<text x="257" y="1218" class="small mono">name: &lt;rule-skill-name&gt;</text>
+<text x="257" y="1237" class="small mono">description: &lt;rule purpose&gt;</text>
+<text x="257" y="1256" class="small mono">argument-hint: &lt;when to use&gt;</text>
+<text x="257" y="1284" class="small green mono">8 rules follow (example)</text>
+<text x="257" y="1303" class="tiny mono">Rule Alpha · Rule Beta · Rule Gamma</text>
+<text x="245" y="1331" class="small">Rules and standards are injected</text>
+<text x="245" y="1344" class="small">into the run context from frontmatter</text>
+<text x="245" y="1357" class="small">before planning and execution.</text>
+</g>
+
+<g id="panel-ledger" transform="translate(0 -3)">
+<rect x="433" y="1142" width="315" height="258" rx="4" class="panel amberS"/>
+<text x="445" y="1165" class="ph amber">7  RUNTIME LEDGER <tspan class="small muted">(ON DISK)</tspan></text>
+<text x="445" y="1178" class="small cyan mono">.claude/cereblnk/</text>
+<use href="#ic-folder" x="445" y="1197.5" width="11" height="11" color="#e0943c"/><text x="464" y="1206" class="small"><tspan class="mono">config/</tspan>       <tspan class="muted">system configuration</tspan></text>
+<use href="#ic-folder" x="445" y="1216.5" width="11" height="11" color="#e0943c"/><text x="464" y="1225" class="small"><tspan class="mono">context/</tspan>      <tspan class="muted">run contexts by </tspan><tspan class="muted mono">&lt;run_id&gt;</tspan></text>
+<use href="#ic-folder" x="445" y="1235.5" width="11" height="11" color="#e0943c"/><text x="464" y="1244" class="small amber"><tspan class="mono">archive/</tspan>      <tspan class="muted">retired + completed run contexts</tspan></text>
+<use href="#ic-folder" x="445" y="1254.5" width="11" height="11" color="#e0943c"/><text x="464" y="1263" class="small"><tspan class="mono">flags/</tspan>        <tspan class="muted">session + run-state flags</tspan></text>
+<use href="#ic-folder" x="445" y="1273.5" width="11" height="11" color="#e0943c"/><text x="464" y="1282" class="small"><tspan class="mono">history/</tspan>      <tspan class="muted">run history &amp; decisions</tspan></text>
+<use href="#ic-folder" x="445" y="1292.5" width="11" height="11" color="#e0943c"/><text x="464" y="1301" class="small"><tspan class="mono">memory/</tspan>       <tspan class="muted">reusable briefs / specs / contracts</tspan></text>
+<use href="#ic-docs" x="445" y="1311.5" width="11" height="11" color="#e0943c"/><text x="464" y="1320" class="small"><tspan class="mono">state.md</tspan>      <tspan class="muted">persistent state</tspan></text>
+<use href="#ic-folder" x="445" y="1330.5" width="11" height="11" color="#e0943c"/><text x="464" y="1339" class="small amber"><tspan class="mono">telemetry/</tspan>    <tspan class="muted mono">runs.log</tspan><tspan class="muted"> · </tspan><tspan class="muted mono">review-ledger.log</tspan></text>
+<text x="445" y="1367" class="tiny">Written and read by the system. Paths are authoritative.</text>
+<text x="445" y="1380" class="tiny red">None of it ships with the plugin.</text>
+</g>
+
+<g id="panel-dispatch" transform="translate(0 -3)">
+<rect x="758" y="1142" width="254" height="258" rx="4" class="panel greenS"/>
+<text x="770" y="1165" class="ph cyan">8  <tspan class="mono">CB-DISPATCH</tspan> —</text>
+<text x="770" y="1178" class="ph cyan">FORK, NOT A GUARANTEE</text>
+<rect x="770" y="1197" width="230" height="72" rx="3" class="sub greenS"/>
+<text x="782" y="1217" class="sh green">DISPATCH FIRES</text>
+<text x="782" y="1236" class="small"><tspan class="mono">cb-dispatch</tspan> routes request</text>
+<text x="782" y="1255" class="small green">→ workflows + specialists + floors + gates</text>
+<rect x="770" y="1279" width="230" height="82" rx="3" class="sub redS"/>
+<text x="782" y="1300" class="sh red">DISPATCH DOES NOT FIRE</text>
+<text x="782" y="1319" class="small">ordinary session turn</text>
+<text x="782" y="1338" class="small red">→ no specialists · no floors · no gates</text>
+<text x="782" y="1379" class="sh yellow">TYPE A COMMAND WHEN IT MATTERS.</text>
+</g>
+
+<!-- PANEL 9 -->
+<g id="panel-principles">
+<rect x="18" y="1407" width="994" height="111" rx="4" class="panel purpleS"/>
+<line x1="390" y1="1419" x2="390" y2="1506" class="line"/>
+<text x="30" y="1430" class="ph cyan">9  DESIGN PRINCIPLES</text>
+<text x="30" y="1458" class="small">• Context is expensive.   • Evidence is valuable.</text>
+<text x="30" y="1471" class="small">• Verification is mandatory.   • Specialists implement; conductor coordinates.</text>
+<text x="30" y="1484" class="small">• Specialists stay in boundaries.   • Floors self-enforce.</text>
+<text x="30" y="1497" class="small">• Human stays in the outcome.</text>
+
+<text x="402" y="1430" class="ph purple">REFERENCES &amp; ARTIFACTS</text>
+<text x="402" y="1458" class="tiny cyan">BRIEFS  <tspan class="mono">memory/briefs/</tspan>     SPECS  <tspan class="mono">memory/specs/</tspan></text>
+<text x="402" y="1471" class="tiny cyan">PLAN  <tspan class="mono">context/&lt;run_id&gt;/plan.md</tspan></text>
+<text x="402" y="1484" class="tiny cyan">RUN CONTEXT  <tspan class="mono">context/&lt;run_id&gt;/</tspan>    ARCHIVE  <tspan class="mono">archive/&lt;run_id&gt;/</tspan></text>
+<text x="402" y="1497" class="tiny cyan">HISTORY  <tspan class="mono">history/&lt;run_id&gt;/</tspan>    INDEXED DOCS  <tspan class="mono">docs/&lt;doc_id&gt;/</tspan></text>
+<text x="402" y="1510" class="tiny amber"><tspan class="mono">archive-pointer.txt</tspan> lives with the archived run.</text>
+</g>
+
+<!-- FOOTER -->
+<text x="28" y="1531" class="tiny amber">A run is not done at synthesis — it is done when the operator says nothing else needs fixing; then it is archived.</text>
+<text x="28" y="1544" class="tiny">Run state is presence-only: ARMED / COMPLETED / IDLE.</text>
+<line x1="520" y1="1540" x2="570" y2="1540" stroke="#c9ccd2" stroke-width="1.2"/>
+<text x="578" y="1544" class="tiny">control flow</text>
+<line x1="675" y1="1540" x2="725" y2="1540" stroke="#e0943c" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="733" y="1544" class="tiny amber">data / state</text>
+<line x1="850" y1="1540" x2="900" y2="1540" stroke="#d94a3d" stroke-width="1.5"/>
+<text x="908" y="1544" class="tiny red">enforcement / refused</text>
+</g>
+</svg>
+</body>
+</html>

@@ -81,7 +81,7 @@ only against computed style; reading a rule yields `derived`.
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/css/`:
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/css/`:
 `coding-style` · `patterns`.
 
 Before producing or reviewing styles, read the files whose `paths:`

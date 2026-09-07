@@ -62,13 +62,23 @@ a nonzero blocking count.
 ## 4. Post-run follow-ups (I-4)
 
 A completed run hands `flags/run-active` off to
-`flags/run-completed`, which keeps DelegationGuard armed through the
-follow-up window (TTL-bounded, default 8h, `CB_COMPLETED_TTL_HOURS`).
-A follow-up re-enters routing at dispatch step 1 — it is not handled
-freehand because the last workflow finished.
+`flags/run-completed`. The shared `cb_run_state` resolver reads sentinel
+presence exactly as `run-flag status` does: `run-active` is `ARMED`,
+`run-completed` without `run-active` is `COMPLETED`, and neither is
+`IDLE`. There is no TTL or ledger-mtime inference. In `COMPLETED`, a
+repository-source follow-up re-enters routing at dispatch step 1 — it is
+not handled freehand because the last workflow finished — while
+`.claude/`, run-context notes, and paths outside the repository remain
+writable by the conductor.
+
+A forgotten `run-active` sentinel therefore stays `ARMED` until
+`run-flag disarm`, `run-flag complete`, or `run-flag abandon` removes
+it, or the explicit `conductor-override` hatch is active. Cleanup is an
+explicit lifecycle action, not a silent timeout.
 
 **Checker:** DelegationGuardHook (mechanism) for edits;
-`test-hooks` covers armed, subagent-allowed, and stale-flag paths.
+`test-hooks` covers `ARMED`, `COMPLETED`, and `IDLE`, subagent allowance,
+and repository-source versus non-source paths.
 
 ## 5. Honest limit (I-5)
 

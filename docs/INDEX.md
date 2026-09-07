@@ -29,7 +29,7 @@ rejected: a third normative source invites drift.
 | `05_EXECUTION_REALITY_MAP.md` | Living map from every concept to its real Claude Code mechanism (M), discipline (D), or future (F) class. |
 | `06_PROJECT_INSTRUCTIONS.md` | Original collaboration ground rules (superseded by 07, kept for history). |
 | `07_BUILD_INSTRUCTIONS.md` | How the plugin is built and delivered: backlog protocol, artifact standards, amendment protocol. |
-| `08_PLATFORM_CATALOG.md` | The full capability scope: 22 workflows, 28 agents, 40+ skills, 4 hooks, phased. |
+| `08_PLATFORM_CATALOG.md` | The full phased capability scope and the current 22-hook hard-enforcement catalog. |
 
 **Working documents:** `COVERAGE.md` (capability map),
 `.claude/BACKLOG.md` (live task source of truth).

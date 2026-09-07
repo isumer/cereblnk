@@ -79,35 +79,35 @@ in the run summary.
 is a resume. Reconcile against the Response Blocks already
    in the ledger and re-issue only the tasks without a completed
    block, never the whole graph.
-2. **Execute.** Spawn the assigned specialist subagents, independent
-tasks in parallel — up to the `wave_size` returned by
-`${CLAUDE_PLUGIN_ROOT}/scripts/context-budget` at run start. More
-agents than one wave allows are split across waves, and the next wave
-starts only once the previous one's digests are in the ledger.
-Synchronously: never background a gate-bearing run. A backgrounded agent's completion does not wake this
-   conversation, its result waits for the user's next message and the
-   run stalls. On execution start run
+2. **Arm the run flag.** On execution start run
    `${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`,
    with this run's id — that is what the run-reading hooks resolve
    against, and without it they guess the newest context directory
    (CB-147, F-31). That arms
-RunGuardHook's single continue-nudge. Remove it before asking the
-user anything and at synthesis — a question asked while
-   armed turns the nudge into noise. Specialist choice and skill sets follow
+RunGuardHook's bounded progress-aware nudges. Remove it before any turn
+that ends awaiting the user. Do not complete at first synthesis; the
+post-synthesis acceptance gate below decides that. Full lifecycle
+semantics live in `policies/run-discipline.md` §5.
+3. **Select the surface.** Specialist choice and skill sets follow
 `policies/agent-selection-policy.md`. See §1 for signals, §2 for the
 union, §4 for relations closure, §4c for task-scoped skills.
    **Skills are resolved per task, never assumed.** At run start run
 `${CLAUDE_PLUGIN_ROOT}/scripts/detect-stack` once, then
 `${CLAUDE_PLUGIN_ROOT}/scripts/select-agents` with the changed paths,
 or `--text "<the request>"` when nothing has changed yet, and pass
-`--emit-floor` so the selector WRITES
-`$CB_DIR/context/<run_id>/skills-required.yaml` itself.
+`--emit-floor` so the selector WRITES both
+`$CB_DIR/context/<run_id>/skills-required.yaml` and
+`agents-required.yaml` itself.
 
    Do not restate the list in the Task Block. That file is the single
 source of truth: the subagent reads its own row from it, and the
 SubagentStop floor judges against the same rows. A hand-copied second
 list is a copy that can drift from the one the floor enforces, and the
 subagent would be judged on a list it was never shown.
+
+   `agents-required.yaml` is the planning source of truth: assign every
+roster entry as a lead or reviewer, or record its exact `merged:` waiver
+before Task 1.
 
    The Task Block says instead: *"your required skills are in
 `context/<run_id>/skills-required.yaml`, under your role key — load
@@ -116,6 +116,14 @@ and the selector emits the roster, not a guessed specialist. Choose
 a role from it and record the roster line your choice rests on.
 Never route on a silent default. the same tables the dispatch skill routes
    by, so command-invoked and dispatch-invoked runs select identically.
+4. **Execute.** Spawn the assigned specialist subagents, independent
+tasks in parallel — up to the `wave_size` returned by
+`${CLAUDE_PLUGIN_ROOT}/scripts/context-budget` at run start. More
+agents than one wave allows are split across waves, and the next wave
+starts only once the previous one's digests are in the ledger.
+Synchronously: never background a gate-bearing run. A backgrounded agent's completion does not wake this
+   conversation, its result waits for the user's next message and the
+   run stalls.
    **File-mediated ACP, the context ledger.** Every subagent writes its
 full Response Block to `$CB_DIR/context/<run_id>/<task_id>.yaml`. It then returns a digest of at most ten lines, and nothing else.
 That digest carries task_id, role, status, a one-sentence decision,
@@ -125,7 +133,7 @@ receive the file path in their Task Block. They read it inside their
 own context. Each receives exactly one Task Block and only the
    context refs listed in it. Never paste raw conversation
    history or whole-repo content into a subagent prompt.
-3. **Enforce ACP** — run the ordered checklist
+5. **Enforce ACP** — run the ordered checklist
    `${CLAUDE_PLUGIN_ROOT}/policies/acp-validation-checklist.md`
    (V1–V9) on EVERY incoming block. On violation: discard the block
    and re-issue the task once, citing the specific checklist item
@@ -133,7 +141,7 @@ own context. Each receives exactly one Task Block and only the
    task → return to Planner as `blocked` with the violation history.
    Never patch a malformed block yourself — repair is the producing
    agent's job.
-4. **Gate** — per `policies/gate-policy.md`: level 2 → `verifier-agent`
+6. **Gate** — per `policies/gate-policy.md`: level 2 → `verifier-agent`
    + consistency check; level 3 → also `challenger-agent`, mandatory.
    Then apply the gate-completeness rule of
 `policies/acp-validation-checklist.md`. No synthesis is composed while any required verdict is missing or
@@ -142,9 +150,17 @@ a waivable one.
    `refuted` → back to planning; `inconclusive` → evidence request;
    contradictions → consensus-policy §3, synthesis stays blocked until
    the prescribed re-verification completes.
-5. **Synthesize** — invoke `synthesizer-agent` with the merged, labeled
+7. **Synthesize** — invoke `synthesizer-agent` with the merged, labeled
    fact set and gate verdicts. Relay its Synthesis Block to the user
    unchanged. Do not relay a synthesis missing required gate verdicts.
+
+## Post-synthesis acceptance
+
+After every synthesis, disarm before asking the operator: **Anything to
+improve or fix?** A yes keeps `context/<run_id>/` live: re-arm the same
+id, run the improvement through the routed workflow and its gates,
+synthesize, then ask again. Only a no calls `scripts/run-flag complete`;
+completion hands off `run-completed` and archives the run.
 
 ## Standing rules
 

@@ -1,34 +1,6 @@
 #!/usr/bin/env bash
-# ReachFloorHook (SubagentStop) — CB-114, hard enforcement.
-#
-# ExecFloorHook (CB-113) asks whether a changed surface was run. This
-# asks the question running does not answer: is the new code reached at
-# all. Unwired code fails by silence — no exception, no console error,
-# nothing to see in a smoke run. A client module whose connect function
-# is written, exported, and never called passes review, passes the skill
-# floor, runs clean, and reports complete.
-#
-# Precision over recall. scripts/reachability reports a symbol only when
-# its identifier appears nowhere in the project outside its own
-# declaration line, and exempts anything carrying a decorator or
-# annotation, where a framework may be the caller. A report is therefore
-# near-certain; a clean result is weak evidence. That is the correct
-# trade for a check that gets switched off the first time it cries wolf.
-#
-# The haystack is every text file under the root, prose included, so a
-# symbol named in a README or a design note counts as reached. That
-# biases the same way the rest of this check does — toward staying
-# quiet — and it is a real bound: documented dead code is not reported.
-#
-# Escape hatch: $CB_DIR/config/reachability-ignore, one symbol per line.
-# A public API surface with no in-repo consumer is a real thing and the
-# agent must not be trapped arguing with a hook about it.
-#
-# Loop safety and fail-open in skill-floor.sh's shape:
-#   1. stop_hook_active in stdin -> always allow the stop.
-#   2. Nudge state keyed to run dir + agent.
-#   3. Hard cap MAX_NUDGES per agent per run, then allow.
-#   4. Fail open on every error path.
+# ReachFloorHook (SubagentStop) — CB-114. Exit 2 catches unwired declarations CB-113 misses.
+# Favor precision; ignore configured APIs/decorators, bound re-entry, and fail open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0

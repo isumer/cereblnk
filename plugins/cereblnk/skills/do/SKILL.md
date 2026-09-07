@@ -30,7 +30,17 @@ done. Constraint: what makes it risky or urgent.
 
 Two readings survive? Ask one question. Then proceed.
 
-## Step 2 — Select the surface
+## Step 2 — Arm the run flag
+
+Arm at start with this run's id:
+`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
+The id is what every run-reading hook resolves against; without it they
+fall back to guessing the newest context directory (CB-147, F-31).
+Remove it before any turn that ends awaiting the user. Do not complete
+the run at first synthesis; the acceptance gate below decides that.
+Full semantics live in `policies/run-discipline.md` §5.
+
+## Step 3 — Select the surface
 
 Run both scripts. Do not reason the routing table by hand.
 
@@ -40,14 +50,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/select-agents --emit-floor --text "<the request>"
 ```
 
 Take `specialists` and `gate_level`. `--emit-floor` writes the skill
-floor to `context/<run_id>/skills-required.yaml`, which is the single
-source of truth — the Task Block points at it rather than restating it,
-because a second copy can drift from the one the floor enforces. Exit 3
+floor to `context/<run_id>/skills-required.yaml` and the mandated roster
+to `agents-required.yaml`. The Task Block points at the skill file
+rather than restating it; the plan assigns or explicitly merges every
+agent in the roster. Exit 3
 means unresolved: the output is the roster, not a specialist. Pick
 a role from it and cite the roster line your choice rests on.
 Never guess one agent.
 
-## Step 3 — Stop only where the work is irreversible
+## Step 4 — Stop only where the work is irreversible
 
 Risk raises the gate. It does not stop the run. One class does stop
 it: work that cannot be undone by editing code again.
@@ -62,7 +73,7 @@ it: work that cannot be undone by editing code again.
 The confirmation names what cannot be undone. It is not a risk
 warning. A user who wanted a design phase would have asked for one.
 
-## Step 4 — Shape the work
+## Step 5 — Shape the work
 
 Count the tasks first.
 
@@ -82,9 +93,20 @@ and it is what each fresh executor receives. Header for a direct run:
 ```
 
 Every task carries a `verify:` line that names a behaviour. The
+`- agent:` line names its lead and any reviewers. Every specialist in
+`context/<run_id>/agents-required.yaml` must appear on one of those task
+lines. If one specialist's work is genuinely covered by another, record
+one waiver per specialist in the plan header, with a non-empty reason:
+
+```
+merged: <missing-agent> into <covering-agent> because <reason text>
+```
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/plan-lint <plan.md>` before Task 1;
+an unassigned and unwaived mandated specialist blocks execution. The
 staleness gate does not apply: there is no spec to drift from.
 
-## Step 5 — Execute
+## Step 6 — Execute
 
 `policies/execution-loop-policy.md` binds this run in full. Fresh
 executor per task. Stage 1 checks request compliance: does the diff do
@@ -114,14 +136,13 @@ Final synthesis in fixed order: Decision, Evidence, Reasoning, Risk,
 Confidence. Decision states what shipped. Risk covers what was
 assumed, and what the absent spec would have pinned down.
 
-## Run flag
+## Post-synthesis acceptance
 
-Arm at start with this run's id:
-`${CLAUDE_PLUGIN_ROOT}/scripts/run-flag arm "" R-YYYY-MM-DD-NNN`.
-The id is what every run-reading hook resolves against; without it they
-fall back to guessing the newest context directory (CB-147, F-31).
-Remove it before any turn that ends awaiting the user. Remove it at
-final synthesis. Full semantics live in `policies/run-discipline.md` §5.
+After every synthesis, disarm before asking the operator: **Anything to
+improve or fix?** A yes keeps `context/<run_id>/` live: re-arm the same
+id, run the improvement through the workflow and its gates, synthesize,
+then ask again. Only a no calls `scripts/run-flag complete`; completion
+hands off `run-completed` and archives the run.
 
 ## When not to use this
 

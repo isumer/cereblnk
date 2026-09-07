@@ -2,10 +2,10 @@
 
 Class: **D** with an **M** checker: `scripts/ground-check` validates
 every file/line reference in a Response Block against the repository;
-the orchestrator runs it beside acp-lint (checklist V-3's mechanical
-deepening). Fluent confabulation is the most expensive failure this
-platform has (Law 5); these rules make its common forms impossible or
-loudly labeled.
+GroundFloorHook runs it on the matching block at SubagentStop (checklist
+V-3's mechanical deepening). Fluent confabulation is the most expensive
+failure this platform has (Law 5); these rules make its common forms
+impossible or loudly labeled.
 
 ## The five rules
 
@@ -36,7 +36,7 @@ confident wrong one.
 | Rule | Mechanism |
 |---|---|
 | G-1 | Verifier re-derivation (04 §3.1) — unopened citations fail re-derivation |
-| G-2 | `scripts/ground-check` (M) — dangling refs exit 1 |
+| G-2 | GroundFloorHook + `scripts/ground-check` (M) — dangling refs refuse SubagentStop, with a bounded nudge cap |
 | G-3 | acp-lint V-3 evidence requirement + PATTERNS frontmatter |
 | G-4 | authoring-style + gate review: bare numbers → Estimated downgrade |
 | G-5 | ACP `unknowns` field is never compressed away (02 §3) |

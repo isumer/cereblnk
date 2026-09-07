@@ -1,14 +1,6 @@
-"""cbmap — reader for policies/skill-selection.yaml (CB-097).
+"""cbmap — restricted-schema reader for skill-selection.yaml (CB-097).
 
-Deliberately parses the restricted schema documented at the top of the
-map file, not general YAML: no dependency may be added to a plugin the
-user installs, and stdlib carries no YAML reader. The schema is a flat
-list of blocks with scalar and inline-list values, which a dozen lines
-handle exactly and predictably.
-
-Shared by scripts/select-agents and scripts/check-agent-skills so that
-selection and its checker can never drift onto different readings of
-the same file.
+The flat parser avoids adding a YAML dependency to the installed plugin.
 """
 import pathlib
 import re

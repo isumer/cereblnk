@@ -9,9 +9,11 @@ Consumed by PlannerAgent (emits it), `/cb-implement` (executes it),
 
 ## 1. Location and lifecycle
 
-`.claude/cereblnk/memory/plans/<slug>-<date>.md`, committed. One commit per
-completed task (task title as message), plan + code together. A task is
-done ONLY when its checkbox is `[x]` AND its commit exists.
+The live run copy is `.claude/cereblnk/context/<run_id>/plan.md`; it
+moves intact to `archive/<run_id>/plan.md` at retirement. A promoted,
+committed plan may also live at
+`.claude/cereblnk/memory/plans/<slug>-<date>.md`. A task is done only
+when its live checkbox is `[x]` and its required evidence exists.
 
 ## 2. Header (linter-enforced — all fields required)
 
@@ -22,12 +24,15 @@ done ONLY when its checkbox is `[x]` AND its commit exists.
 - goal: <one sentence>
 - out_of_scope: <explicit list — scope creep is measured against this>
 - recomposition_check: <the ONE end-to-end command run after all tasks pass>
+# one line per deliberately merged roster entry, before Task 1:
+merged: <missing-agent> into <covering-agent> because <reason text>
 ```
 
 ## 3. Task format (linter-enforced)
 
 ```markdown
 ### [ ] Task N: <imperative title>
+- agent: <lead-agent>; <reviewer-agent> reviews
 - risk: HIGH | MED | LOW — <one-line why, from the domain risk maps>
 - files: exact/path/One.java, exact/path/Two.sql
 - verify: <executable check or concrete observable — `mvn test -Dtest=X`,
@@ -50,6 +55,11 @@ done ONLY when its checkbox is `[x]` AND its commit exists.
 - **R5** every task has a `risk:` rank (HIGH/MED/LOW).
 - **R6** `verify:` is not a compile-only check ("compiles", "builds"
   alone are rejected — name the behavior).
+- **R7** a declared spec resolves; when `@vN` is pinned, its
+  `spec_version` matches.
+- **R8** when the pinned run has `agents-required.yaml`, every mandated
+  specialist appears on a task `agent:` line or has one exact,
+  non-empty `merged: ... into ... because ...` header waiver.
 
 ## 5. Rules that are D-class (checker = agent, not script)
 

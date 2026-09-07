@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
-"""
-parse_pdf.py — original, dependency-free PDF text extractor.
+"""parse_pdf.py — original, dependency-free PDF text extractor.
 
-Extracts the text layer from text-based PDFs using ONLY the Python
-standard library (re + zlib). No pip install, fully offline, no third-
-party PDF library. Written from scratch: it walks stream objects,
-inflates FlateDecode content, and interprets the text-showing operators
-(Tj, TJ, ', ") together with the positioning operators (Td, TD, Tm, T*)
-to reconstruct lines — and, when cells align in columns, tables.
-
-HONEST LIMITS (stated, not hidden):
-  * Works on PDFs that carry a real text layer.
-  * A scanned/image-only PDF has NO text layer; this reports that
-    clearly and suggests OCR rather than returning empty output.
-  * CID / custom-encoded fonts with non-trivial CMaps may yield
-    garbled glyphs; flagged when detected.
-  * Only FlateDecode and raw streams are inflated (the common case);
-    LZW/ASCII85-only streams are skipped with a note.
+Limits: requires a text layer; scanned PDFs report that they need OCR.
+Custom CMaps may garble glyphs; only FlateDecode and raw streams are inflated.
 
 Usage:
   parse_pdf.py <file.pdf> [--format md|txt] [--out PATH]

@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 """test-artifact-gate (CB-091) — the loss gate must catch real drift.
-
-Positive: a faithful reconstruction passes.
-Negative, one per rule: silent drop (G-1), version not bumped (G-2),
-section vanished (G-3), checked task deleted (G-4), checked task
-rewritten (G-5), checked task silently unchecked (G-6).
-Plus: an explicit superseded_by drop passes, and a REWORK uncheck
-passes — the gate must not punish the honest paths.
 """
 import pathlib, shutil, subprocess, sys, tempfile
 

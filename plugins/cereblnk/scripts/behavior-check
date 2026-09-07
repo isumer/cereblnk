@@ -1,54 +1,10 @@
 #!/usr/bin/env python3
 """behavior-check — has the old system's behavior been ruled, or just copied.
 
-A rewrite starts because the current design is wrong. The failure it
-falls into is the opposite of the one it was called for: the old
-structure is carried over, and with it the bugs that motivated the
-rewrite. Fidelity to legacy code preserves the defects along with the
-requirements, because nothing in the run ever separated the two.
+No hook enforces this yet; /cb-rewrite invokes it as the design gate.
 
-The separation is a ruling, and it is per behavior rather than per
-system. Each line the analyst extracted carries what it is (a
-requirement, an accident, a defect) and what happens to it (kept,
-fixed, dropped, deferred). A line that reaches the design stage
-unruled is the one that gets copied by default.
-
-This checker reads the `## Behavior` section of a contract and refuses
-the combinations that let a rewrite silently become a transcription:
-
-  - a row with no ruling — the default is transcription
-  - a defect ruled `keep` — if the behavior is load-bearing, the row is
-    reclassified `intentional` and the reason is recorded; keeping a
-    row still labelled a defect hides the decision
-  - `keep` or `fix` with no characterization oracle — both are claims
-    about what the old system does, and neither is evidence until
-    something ran against it. `keep` without a pinned oracle is a
-    guess about the old behavior; `fix` without one cannot show the
-    behavior changed.
-  - `drop` or `deferred` with no reason — a removal nobody has to
-    justify is indistinguishable from an omission
-
-Class D: the ruling is instruction, this script is its checker. No hook
-blocks a design stage on it yet; `/cb-rewrite` runs it as a gate.
-
-Format, inside a contract under .claude/cereblnk/memory/contracts/*.md.
-`contract-check` (CB-116) ignores sections it does not know, so the
-behavior rows live in the same file as the channels they will produce:
-
-    contract: orders-rewrite
-    version: 1
-    parties: api
-
-    ## Behavior
-    | id | behavior | class | ruling | oracle |
-    | --- | --- | --- | --- | --- |
-    | B-1 | An order below the minimum is rejected before payment | intentional | keep | char:OrderMinimumTest |
-    | B-2 | Cancelling a shipped order reports success | suspected-bug | fix | char:CancelShippedTest |
-    | B-3 | Timestamps are stored in server-local time | incidental | drop | reason:UTC across the new module |
-
-Behavior is written in domain language. A row naming a class, file or
-call path has described the structure the rewrite exists to replace,
-and anchors the design to it.
+Rows are read by position under `## Behavior`:
+`| id | behavior | class | ruling | oracle |`.
 
 Usage: behavior-check <project-root> [contract-name ...]
 Exit:  0 clean · 1 findings printed · 3 nothing to check

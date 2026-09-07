@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# security-findings-lint (CB-048) — validates a security-findings YAML
-# artifact against policies/security-finding-contract.md.
-# Dependency-free beyond $PYBIN stdlib. Exit 0 = admit; exit 1 = block
-# (violations printed to stderr, one per line). Usage:
+# security-findings-lint validates YAML against the security finding contract (CB-048).
+# Exit: 0 admit · 1 named violations · 2 usage or unmet dependency
 #   security-findings-lint <artifact.yaml>
 set -euo pipefail
 # shellcheck source=../lib/cbenv.sh

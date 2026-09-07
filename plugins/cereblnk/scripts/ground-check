@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
-# ground-check — mechanical grounding validation (grounding-policy G-2).
-#
-# Two reference forms, both resolved the same way: find the text, prove
-# the cited lines are in it.
-#
-#   path/to/file.ext#L42-58        a file in the repository
-#   doc:1113d150a553#L1240-1298    a document indexed by scripts/docindex
-#
-# A doc reference resolves through $CB_DIR/docs/<doc_id>/, so what is
-# checked is the extracted text the agent actually read, not the binary
-# it came from.
-#
-# When a fact carries `quote:` beside its reference, the quote must
-# occur within the cited lines. That is the check worth having: a
-# resolvable reference only proves the lines exist, while a quote that
-# is present proves the claim was read off them. G-2 catches the
-# dangling pointer; G-3 catches a confident paraphrase of a passage
-# that says something else.
-#
+# ground-check resolves repository and doc:<id> line references (grounding-policy G-2).
+# Quotes must occur within cited lines; existence alone cannot validate a paraphrase (G-3).
 # Usage: ground-check <block.yaml> [repo-root]   Exit 0 ok / 1 dangling / 2 usage
 set -euo pipefail
 # cbenv.sh sits beside this script; sourcing it is optional so file/line

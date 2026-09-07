@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
-# ContextMonitorHook (UserPromptSubmit) — CB-102, measurement.
-#
-# scripts/context-budget prints `source: assumed` next to the window and
-# the output reserve, and every figure below them inherits that word.
-# The whole budget architecture — wave size, digest cap, checkpoint —
-# rests on a guess about how much room there is.
-#
-# The real number is on disk. Claude Code writes each assistant turn to
-# the session transcript with a `usage` object, and the input side of
-# that object IS the occupancy of the window for that turn. Reading it
-# turns `assumed` into `known` at the bottom of the chain.
-#
-# Two outputs, deliberately different in cost:
-#   - Every turn: one line appended to telemetry. Disk is free; this is
-#     the sample that lets context claims become numbers instead of
-#     adjectives.
-#   - Only past the checkpoint: one short line injected as context. A
-#     monitor that narrates every turn spends the budget it is watching,
-#     which would be a joke at its own expense.
-#
-# Never blocks. UserPromptSubmit CAN block a prompt; this must not.
-# A measurement that can stop work is no longer a measurement.
-#
-# Fail-open on every path — no transcript, no interpreter, no usage
-# field, unparseable input. The known upstream case where
-# transcript_path arrives empty therefore yields silence, not a stall.
+# ContextMonitorHook (UserPromptSubmit) — CB-102. Logs transcript usage every turn,
+# injects context only past the checkpoint, and fails open silently.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${PYBIN:-}" ] || exit 0
@@ -46,8 +22,7 @@ if tp.startswith("~/"):
 if not tp or not pathlib.Path(tp).is_file():
     sys.exit(0)
 
-# Transcripts grow without bound; read the tail, not the file. The most
-# recent assistant turn is what describes the window right now.
+# Transcripts are unbounded; only the latest assistant turn describes occupancy.
 try:
     size = os.path.getsize(tp)
     with open(tp, "rb") as fh:
@@ -75,10 +50,8 @@ for idx, raw in enumerate(tail.splitlines()):
     if isinstance(u, dict) and msg.get("role") == "assistant":
         usage = u
         last_usage_idx = idx
-    # A compaction record carries no `usage` of its own. It is also
-    # written as two records, not one: a `system` record holding
-    # compactMetadata, then a separate `user` record flagged
-    # isCompactSummary. Requiring both on one record matches nothing.
+    # Compaction writes metadata and summary as separate records; requiring
+    # both on one record previously matched nothing.
     cm = rec.get("compactMetadata")
     if isinstance(cm, dict) and isinstance(cm.get("postTokens"), int):
         compact_post = cm["postTokens"]
@@ -92,9 +65,7 @@ elif usage:
         v = usage.get(key)
         return v if isinstance(v, int) else 0
 
-    # Occupancy is everything the model was sent, cached or not. Counting
-    # only input_tokens reads a cache-warm turn as nearly empty, which is
-    # the opposite of true.
+    # Cached tokens were sent too; omitting them makes cache-warm turns look empty.
     occupancy = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens")
 else:
     sys.exit(0)
@@ -111,14 +82,8 @@ try:
     mk = re.search(r"checkpoint_at:\s*(\d+)", out)
     capacity = int(mc.group(1)) if mc else 0
     checkpoint = int(mk.group(1)) if mk else 0
-    # F-13: context-budget labels the window `source: assumed` when
-    # nothing measured it, and this hook printed the derived percentage
-    # with no hedge at all. Observed: a session warned at 101.8% and
-    # 104.7% of a guessed denominator while the real window was several
-    # times larger, and the conductor split work into subagents it did
-    # not need to. A percentage above 100 is the tell that the
-    # denominator was never real; the warning must carry the same label
-    # its own source does.
+    # F-13: guessed capacity once produced unqualified 101.8%/104.7% warnings
+    # and unnecessary delegation; preserve the `assumed` label from context-budget.
     capacity_assumed = bool(re.search(r"^\s*labelled:\s*assumed", out, re.MULTILINE))
 except Exception:
     pass
@@ -127,8 +92,6 @@ if not capacity:
 
 pct = round(100.0 * occupancy / capacity, 1)
 
-# Sample every turn. This is the file that makes a context claim a
-# number; without it the monitor only ever warns and measures nothing.
 cb = os.environ.get("CB_DIR") or ""
 if cb:
     try:

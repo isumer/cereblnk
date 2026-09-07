@@ -92,7 +92,7 @@ only against an observed sequence. Timing that merely works today is
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/javascript/`.
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/javascript/`.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/select-rules <path>` for the files
 the task touches; it returns the constraint files to read, applying both
 the glob and the stack gate. Read `rules/common/` once per run. Cite a

@@ -74,6 +74,14 @@ Procedure 3) → EVIDENCE → REASONING → RISK (assumption ledger,
 surviving counter-scenarios, not-applicable rulings) → CONFIDENCE.
 Epistemic labels survive verbatim into the synthesis.
 
+## Post-synthesis acceptance
+
+After every synthesis, disarm before asking the operator: **Anything to
+improve or fix?** A yes keeps `context/<run_id>/` live: re-arm the same
+id, run the improvement through the audit and mandatory level-3 gates,
+synthesize, then ask again. Only a no calls `scripts/run-flag complete`;
+completion hands off `run-completed` and archives the run.
+
 ## Execution discipline
 
 `policies/run-discipline.md` binds this run in full — ledger +
@@ -88,12 +96,12 @@ It resolves `$CB_DIR` and verifies the flag landed.
 A non-zero exit means the run is not guarded.
 Do not proceed as though it were.
 The id is not decoration.
-Eight hooks resolve the run from this flag.
+Nine hooks resolve the run from this flag.
 Armed without an id, they guess the newest directory.
 That guess is the F-31 defect (CB-147).
 The empty second argument holds the cb_dir slot.
 Remove it before ANY turn that ends awaiting the user.
-Complete it at final synthesis with `scripts/run-flag complete`.
+Do not complete it at first synthesis; the acceptance gate above decides.
 A finished run is handed off, not stripped of its guard.
 Plain `disarm` is the pause.
 DelegationGuard tells the two apart.

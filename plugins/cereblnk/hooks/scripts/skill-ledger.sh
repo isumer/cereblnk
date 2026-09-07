@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # SkillLedgerHook (PreToolUse: Skill) — CB-097, observation only.
-#
-# Records which subagent loaded which skill, into the run ledger. This
-# is the evidence SkillFloorHook checks at SubagentStop and VerifierAgent
-# checks at gate review; without it, "the agent loaded its skills" is an
-# unverifiable claim about a context window nobody can inspect.
-#
-# Never blocks. A recording hook that can fail a tool call would trade a
-# budget optimization for a broken session.
+# Records per-agent skill loads for SkillFloorHook and gate review; never blocks.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0

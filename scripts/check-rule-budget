@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""check-rule-budget — tokens of constraints one source file pulls in.
+Ceilings are a ratchet from today's measurement, meant to come down.
+
+Usage: scripts/check-rule-budget [--report]
+Exit:  0 within budget · 1 over · 2 cannot run
+"""
+import pathlib
+import re
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SELECT = ROOT / "plugins/cereblnk/scripts/select-rules"
+RULES = ROOT / "plugins/cereblnk/rules"
+
+# path -> ceiling in tokens. Measured 2026-09-03, rounded up to 500.
+BUDGET = {
+    "src/main/java/com/x/UserService.java": 10500,
+    "app/page.tsx": 11000,
+    "src/components/Button.tsx": 11000,
+    "api/models.py": 7500,
+    "scripts/deploy.sh": 7000,
+    "k8s/deployment.yaml": 7500,
+    "db/queries.sql": 7500,
+    "svc/main.go": 7000,
+}
+
+# The union cost of one realistic multi-surface task.
+TASK = ["src/main/java/com/x/UserService.java",
+        "src/main/java/com/x/controller/OrderController.java",
+        "src/test/java/com/x/ApiTest.java",
+        "app/page.tsx",
+        "src/components/Button.tsx"]
+TASK_BUDGET = 20000
+
+
+def tokens(rel):
+    p = RULES / rel
+    if not p.is_file():
+        return 0
+    return len(p.read_text(encoding="utf-8", errors="replace")) // 4
+
+
+def select(path):
+    r = subprocess.run([sys.executable, str(SELECT), path],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    if r.returncode != 0:
+        return None
+    return [m.group(1).strip()
+            for m in re.finditer(r"^\s+-\s+(.+)$", r.stdout, re.M)]
+
+
+def main():
+    report = "--report" in sys.argv
+    if not SELECT.is_file():
+        print("check-rule-budget: select-rules not found", file=sys.stderr)
+        return 2
+
+    over, rows = [], []
+    for path, ceiling in sorted(BUDGET.items()):
+        rules = select(path)
+        if rules is None:
+            print("check-rule-budget: select-rules failed on %s" % path,
+                  file=sys.stderr)
+            return 2
+        cost = sum(tokens(r) for r in rules)
+        rows.append((path, len(rules), cost, ceiling))
+        if cost > ceiling:
+            over.append("%s costs %d tokens over a ceiling of %d"
+                        % (path, cost, ceiling))
+
+    union = set()
+    for p in TASK:
+        union |= set(select(p) or [])
+    task_cost = sum(tokens(r) for r in union)
+    if task_cost > TASK_BUDGET:
+        over.append("the five-file task costs %d tokens over a ceiling of %d"
+                    % (task_cost, TASK_BUDGET))
+
+    if report or over:
+        for path, n, cost, ceiling in rows:
+            flag = "OVER" if cost > ceiling else "ok"
+            print("  %-4s %-44s %2d rules  %6d / %6d"
+                  % (flag, path, n, cost, ceiling))
+        print("  %-4s %-44s %2d rules  %6d / %6d"
+              % ("OVER" if task_cost > TASK_BUDGET else "ok",
+                 "(five-file task, union)", len(union), task_cost,
+                 TASK_BUDGET))
+
+    if over:
+        for line in over:
+            print("check-rule-budget: %s" % line, file=sys.stderr)
+        return 1
+
+    worst = max(rows, key=lambda r: r[2])
+    print("check-rule-budget: within budget — worst single file is %s at "
+          "%d tokens across %d rules; the five-file task costs %d"
+          % (worst[0], worst[2], worst[1], task_cost))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
