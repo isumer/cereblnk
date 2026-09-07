@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
 """test-run-quiet (CB-085) — asserts the tool-output gate's contract.
-
-Cases:
-  1. big-output success: digest <= 20 lines, full output in log,
-     exit 0 propagated, header states the real line count.
-  2. failing command, unstructured: digest contains tail section,
-     exit code propagated verbatim.
-  3. surefire fixture: failing test class surfaces in digest;
-     passing-only report does not.
-  4. compile-error lines: deduplicated, capped at 10.
-  5. missing args: usage error, exit 64.
 """
 import os, pathlib, shutil, subprocess, sys, tempfile
 

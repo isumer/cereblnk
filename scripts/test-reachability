@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 """test-reachability — acceptance run for the reachability check (CB-114).
 
-Two layers. The analyser is driven against a synthetic project covering
-the orphan case, the referenced case, framework-annotated declarations,
-non-source references, and the ignore list. The hook is driven with
-synthetic SubagentStop input covering blocking, the clean path, loop
-safety, cross-agent isolation, and the nudge cap.
-
-Requires bash + python3 on PATH (the hooks' own runtime contract).
-
 Usage: scripts/test-reachability   Exit: 0 all pass · 1 any failure
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile

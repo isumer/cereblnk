@@ -1,29 +1,10 @@
 #!/usr/bin/env bash
-# ToolFloorHook (PreToolUse: Bash) — the shell half of a tool denial.
-#
-# `disallowedTools` closes the tools it names, not the shell, and the
-# shell reaches the same files. Twelve agents deny `Edit, NotebookEdit`:
-# they decide and record, they never modify existing source. `sed -i`,
-# `patch`, `ed` and an editor invocation do exactly that.
-#
-# Decision table:
-#   no agent identity in the payload   -> allow (the conductor;
-#                                         DelegationGuard owns it)
-#   identity is not a Cereblnk agent   -> allow
-#   agent denies no edit tool          -> allow
-#   command rewrites no existing file  -> allow
-#   otherwise                          -> BLOCK (exit 2)
-#
-# Scope: it asks `shellwrite.py --in-place`, so it sees the ordinary
-# in-place forms and not a determined bypass. It does NOT block
-# redirection — an agent holding Write may replace a whole file with the
-# tool, so blocking `> file` would be stricter than the grant it has.
-#
-# Fails open on every error path: no project root, no interpreter, no
-# roster, unparseable input -> exit 0.
+# ToolFloorHook blocks in-place shell edits and replacement Writes for agents denied edit tools.
+# Write-shaped redirection stays allowed; shellwrite covers ordinary forms, not bypasses.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 . "$HERE/lib/cbenv.sh" 2>/dev/null || true
+. "$HERE/lib/cbowner.sh" 2>/dev/null || true
 [ -n "${PYBIN:-}" ] || exit 0
 
 INPUT="$(cat 2>/dev/null || true)"
@@ -40,12 +21,10 @@ try:
     d = json.loads(raw)
 except Exception:
     sys.exit(0)
-if not isinstance(d, dict) or d.get("tool_name") != "Bash":
+if not isinstance(d, dict) or d.get("tool_name") not in {"Bash", "Write"}:
     sys.exit(0)
 
-# Identity on the last segment, as every other floor reads it (F-10):
-# the harness hands back `cereblnk:engineering:architect-agent`, a bare
-# `architect-agent`, or an opaque id. Only the first two resolve.
+# F-10: qualified and bare agent names resolve by last segment; opaque IDs do not.
 agent = d.get("agent_type") or d.get("agent_id") or ""
 if not agent:
     sys.exit(0)                      # the conductor: not this hook s business
@@ -67,6 +46,14 @@ denied = {t.strip() for t in m.group(1).split(",") if t.strip()}
 if not denied & {"Edit", "MultiEdit", "NotebookEdit"}:
     sys.exit(0)
 
+if d.get("tool_name") == "Write":
+    ti = d.get("tool_input") or {}
+    target = ti.get("file_path") if isinstance(ti, dict) else None
+    if not isinstance(target, str) or not target.strip():
+        sys.exit(0)
+    print("\x1f".join(("WRITE", key, ", ".join(sorted(denied)), target.strip())))
+    sys.exit(0)
+
 out = subprocess.run([sys.executable, os.environ["CB_SW"], "--in-place"],
                      input=raw, capture_output=True, text=True)
 hits = [t for t in out.stdout.splitlines() if t.strip()]
@@ -85,5 +72,16 @@ print("BLOCK:Cereblnk ToolFloor: %s is declared `disallowedTools: %s`, and "
 
 case "$REASON" in
   BLOCK:*) echo "${REASON#BLOCK:}" >&2; exit 2 ;;
+  WRITE$'\037'*)
+    IFS=$'\037' read -r _kind _role _denied _where <<< "$REASON"
+    # Only the Write branch needs a repo root; requiring it earlier would
+    # have silently disarmed the shell branch too.
+    [ -n "${CB_ROOT:-}" ] || exit 0
+    [ -e "$_where" ] || exit 0
+    [ "$(type -t cb_is_repo_source 2>/dev/null || true)" = "function" ] || exit 0
+    cb_is_repo_source "$_where" || exit 0
+    echo "Cereblnk ToolFloor: $_role is declared \`disallowedTools: $_denied\`, and Write would replace existing repository source $_where. This role decides and records: put the change in your Response Block as a finding, or hand the edit to the surface specialist that owns the file." >&2
+    exit 2
+    ;;
 esac
 exit 0

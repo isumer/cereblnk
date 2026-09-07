@@ -102,7 +102,7 @@ It resolves `$CB_DIR` and verifies the flag landed.
 A non-zero exit means the run is not guarded.
 Do not proceed as though it were.
 The id is not decoration.
-Eight hooks resolve the run from this flag.
+Nine hooks resolve the run from this flag.
 Armed without an id, they guess the newest directory.
 That guess is the F-31 defect (CB-147).
 The empty second argument holds the cb_dir slot.

@@ -1,60 +1,6 @@
 #!/usr/bin/env python3
 """verify — the single deterministic acceptance entry for this repo.
 
-Runs every scripted checker in one pass and reports one line per
-suite. This is the mechanical half of the verification story; workflow
-behavior (prompt-driven) is NOT covered here and never will be — it can
-only be established by running the workflows. Claiming workflow
-correctness from this script's green would be Part II trap #8.
-
-Suites (each asserts exit codes AND expected output, incl. failure and
-unsupported paths where the tool has them):
-  check-skill-relations   skill graph integrity
-  test-xmltools           xml/xsd tools, fixtures
-  test-docparse           office/pdf golden files + path cases
-  test-docindex           segmentation ladder + the read floor (CB-112)
-  test-exec-floor         edit/exec ledger + the execution floor (CB-113)
-  test-run-identity       the run directory is carried, not guessed;
-                          eight hooks resolve it through one validated
-                          function and all fail open (CB-147)
-  test-reachability       orphan-symbol analyser + the reach floor (CB-114)
-  test-env-lifecycle      environment lifecycle + teardown safety (CB-115)
-  test-contract-check     cross-surface contract reconciliation (CB-116)
-  test-behavior-check     behavior rulings in a rewrite contract (CB-121)
-  test-hooks              four guards, full path matrix
-  test-run-quiet          tool-output gate contract (CB-085)
-  skill-frontmatter       every skill loads: fm present, names sane (CB-088)
-  rules-layer             constraint files load and resolve (CB-092)
-  test-context-budget     capacity follows the window (CB-094)
-  budget-literals         no window size written as a fact (CB-094)
-  test-lifecycle-scripts  spec-assemble/run-status/ensure-gitignore (CB-086)
-  test-skill-selection    task-scoped skill floor + hooks (CB-097)
-  check-agent-skills      agent<->skill graph: no dangling, no orphan,
-                          preload inside budget (CB-097)
-  test-artifact-gate      R-2 loss gate + R-3 history preservation (CB-091)
-  acp-lint domain floor   a security task may not be assigned below
-                          level 3; an unfloored role keeps its own (F-26)
-  acp-lint fixtures       canonical block passes; 5-violation block
-                          reports all five checklist IDs; task blocks
-                          with indexed documents, both ways (CB-112)
-  select-agents triples   CB-044 dry-run expectations
-  check-exec-bit          hooks and the verify entry point keep the mode
-                          bit; a hook that cannot run fails silently
-  check-readme            the front page's command list and counts match
-                          the tree it describes (CB-104)
-  test-select-rules       the stack gate subtracts only what it can
-                          prove; absent profile subtracts nothing (CB-109)
-  test-discovery         cascade triggers name evidence that real files
-                          contain, not plausible-looking strings (CB-098)
-  check-discovery-claim   the cascade is advisory and both the map and
-                          §4c still say so; no executor (CB-142)
-  ground-check ships     the doc:/G-2 checker ships with the package, not
-                          just the rule that names it
-  test-leakage            the leakage checker's own failure paths (CB-108)
-  leakage scan            reference strings in tracked files; SKIPs when
-                          no wordlist is configured — a skip is never a
-                          pass, and the skip is printed (CB-108)
-
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
 import os, pathlib, re, subprocess, sys, tempfile
@@ -69,9 +15,7 @@ def main():
     results, bad = [], 0
     def suite(name, ok, detail="", skipped=False):
         nonlocal bad
-        # A skip is reported, never counted as green. A suite that cannot
-        # run must say so out loud — silence here is how an unenforced
-        # check survives a release.
+        # Report skips; silence lets an unenforced check survive a release.
         if skipped:
             results.append(f"  SKIP  {name}" + (f" — {detail}" if detail else ""))
             return
@@ -80,9 +24,11 @@ def main():
 
     for name in ("check-skill-relations", "test-xmltools", "test-docparse", "test-hooks", "test-run-quiet", "test-lifecycle-scripts", "test-artifact-gate", "test-context-budget",
                  "test-skill-selection", "test-discovery", "test-select-rules",
-                 "test-docindex", "test-exec-floor", "test-run-identity",
+                 "test-docindex", "test-exec-floor", "test-gate-floor", "test-run-identity",
+                 "test-review-ledger",
                  "test-reachability", "test-env-lifecycle",
-                 "test-contract-check", "test-behavior-check"):
+                 "test-contract-check", "test-behavior-check",
+                 "test-sheet-layout"):
         r = sh([sys.executable, str(S / name)])
         suite(name, r.returncode == 0, (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
 
@@ -98,19 +44,8 @@ def main():
           else (lk.stderr or lk.stdout).strip().splitlines()[0][:100],
           skipped=(lk.returncode == 3))
 
-    # CB-129: templates are copied verbatim into a user's run ledger, so
-    # anything in one ships to their repository. `CB-097` was observed in
-    # a project's T-00N.yaml, carried out of the Response Block template
-    # comment an agent had copied along with the fields. A backlog number
-    # means nothing in someone else's repository.
-    #
-    # Scoped to protocols/ on purpose. Policies, skills and agents cite CB
-    # numbers as provenance and are READ, not copied — banning them there
-    # would remove useful history to solve a problem those files do not
-    # have. This is also not the leakage scanner's job: that list is
-    # deliberately uncommitted because publishing it would be the leak,
-    # whereas backlog numbers are public in BACKLOG.md. Different problem,
-    # separate check.
+    # CB-129: a template comment copied CB-097 into a user's T-00N.yaml.
+    # Scope to copied protocols; policies, skills, and agents retain CB provenance.
     tmpl_hits = []
     for f in sorted((ROOT / "plugins/cereblnk/protocols").rglob("*")):
         if not f.is_file():
@@ -122,14 +57,8 @@ def main():
     suite("protocols carry no backlog ids", not tmpl_hits,
           ", ".join(tmpl_hits[:3]))
 
-    # CB-131: eleven files told the conductor to arm the run with a raw
-    # `mkdir`/`touch` pair. A raw command carries no environment, so an
-    # unresolved $CB_DIR aimed at /flags and failed on permissions —
-    # and nothing looked. DelegationGuard and RunGuard read that file
-    # and treat its absence as "no run", so the failed arm did not
-    # weaken the boundary, it removed it. The session then ran a whole
-    # workflow inline: no Task Blocks on disk, and a context-length
-    # error at 96001 tokens.
+    # CB-131: raw arming in eleven files resolved $CB_DIR to /flags and failed silently.
+    # With no run flag, a whole workflow ran inline and hit a context-length error.
     rf = PS / "run-flag"
     rf_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-flag-")) / "cereblnk"
     fw = []
@@ -139,9 +68,7 @@ def main():
     d = sh(["bash", str(rf), "disarm", str(rf_root)])
     if d.returncode != 0 or (rf_root / "flags/run-active").exists():
         fw.append(f"disarm did not remove it (rc={d.returncode})")
-    # the case that started this: a target that cannot be written must
-    # be loud, because a silent failure is indistinguishable from a
-    # session that is simply not a run.
+    # An unwritable target must be loud; silence is indistinguishable from no run.
     u = sh(["bash", str(rf), "arm", "/proc/cb-nonexistent/cereblnk"])
     if u.returncode == 0:
         fw.append("an unwritable target armed silently")
@@ -152,12 +79,8 @@ def main():
     for f in sorted((ROOT / "plugins/cereblnk").rglob("*.md")):
         if raw in f.read_text(encoding="utf-8", errors="replace"):
             fw.append(f"{f.relative_to(ROOT)} still arms by hand")
-    # F-16/F-20: careful and boundary were armed with a relative path,
-    # so they landed next to the shell rather than under $CB_DIR. A
-    # controlled experiment showed the same delete running when the flag
-    # sat where the skill wrote it and blocked when it sat where the
-    # hook reads. Both skills reported the protection as enabled either
-    # way.
+    # F-16/F-20: relative flag paths landed beside the shell while hooks read $CB_DIR.
+    # Skills reported protection enabled although the guarded delete still ran.
     for nm, extra in (("careful", []), ("boundary", ["src"])):
         a = sh(["bash", str(rf), "flag", nm, "arm", str(rf_root)] + extra)
         if a.returncode != 0 or not (rf_root / f"flags/{nm}").is_file():
@@ -172,10 +95,8 @@ def main():
         t = f.read_text(encoding="utf-8", errors="replace")
         if ".claude/cereblnk/flags" in t:
             fw.append(f"{f.parent.name} still writes a flag by relative path")
-    # F-01: CLAUDE_PROJECT_DIR won unconditionally and only hooks get
-    # it, so in a session opened above the project the hooks and the
-    # scripts resolved different trees. The baseline was written under
-    # one and looked for under the other, and every floor exited 0.
+    # F-01: hook-only CLAUDE_PROJECT_DIR made scripts and hooks resolve different trees.
+    # Baselines landed in one tree and every floor searched the other, then exited 0.
     env_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-root-"))
     (env_root / "proj/.git").mkdir(parents=True)
     (env_root / "proj/sub").mkdir(parents=True)
@@ -213,12 +134,8 @@ def main():
     suite("budget-literals", bl.returncode == 0,
           bl.stdout.strip().splitlines()[-1] if bl.stdout else "")
 
-    # F-04: the policy cites this as a live guarantee, but it lived in
-    # the repository scripts/ and the package does not carry those — so
-    # anyone reading the policy from an install held the rule without
-    # the checker. Moved into the plugin rather than copied: two copies
-    # of a checker drift, which is the defect class this release keeps
-    # closing.
+    # F-04: the installed policy promised a checker that only repository scripts carried.
+    # It moved into the plugin; copying it would create another drift source.
     ags = sh([sys.executable, str(PS / "check-agent-skills")])
     # F-04: it must be reachable from an install, not just from here.
     if not (ROOT / "plugins/cereblnk/scripts/check-agent-skills").is_file():
@@ -228,9 +145,7 @@ def main():
     suite("check-agent-skills", ags.returncode == 0,
           ags.stdout.strip().splitlines()[-1] if ags.stdout else "")
 
-    # CB-142/F-08: the discovery cascade has validators and no executor.
-    # This holds the map header and policy §4c to that fact in both
-    # directions, and ships with the plugin for the §4c reason above.
+    # CB-142/F-08: discovery has validators but no executor; map and policy §4c must agree.
     dc = sh([sys.executable, str(PS / "check-discovery-claim")])
     if not (ROOT / "plugins/cereblnk/scripts/check-discovery-claim").is_file():
         suite("check-discovery-claim ships", False, "not in the package")
@@ -258,6 +173,11 @@ def main():
     suite("ground-check fixtures", g_ok.returncode == 0 and g_bad.returncode == 1,
           f"ok rc={g_ok.returncode}, bad rc={g_bad.returncode}")
 
+    gf = sh([sys.executable, str(S / "test-ground-floor")])
+    suite("test-ground-floor", gf.returncode == 0,
+          (gf.stderr or gf.stdout).strip().splitlines()[-1][:100]
+          if gf.returncode else "")
+
     r = sh(["bash", str(S / "authoring-lint"), "manifest"])
     suite("authoring-lint manifest", r.returncode == 0,
           (r.stderr or r.stdout).strip().splitlines()[-1][:100] if r.returncode else "")
@@ -269,11 +189,8 @@ def main():
     # doc_id, an empty section list and a non-outline section id are not.
     t_good = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/good-task-block.yaml")])
     t_bad = sh(["bash", str(PS / "acp-lint"), str(ROOT / "tests/fixtures/acp/bad-task-block.yaml")])
-    # CB-125: a run spawned a specialist that was never shipped, got a
-    # silent no-op, re-ran the work on a general-purpose agent and wrote
-    # the block itself. The fabricated verdict reached the gate. The
-    # roster is the one thing Cereblnk knows without discovering
-    # anything, so the block that claims a role has to match it.
+    # CB-125: an unshipped specialist no-op led a run to fabricate its Response Block.
+    # Claimed roles must therefore match the known roster.
     _acp_good = (ROOT / "tests/fixtures/acp/good-block.yaml").read_text()
     _tmp = pathlib.Path(tempfile.mkdtemp(prefix="cb-acp-"))
     fake = _tmp / "fabricated-role.yaml"
@@ -288,16 +205,11 @@ def main():
         .replace("role: SecurityAgent", "role: security-agent"),
         encoding="utf-8")
     f_ok = sh(["bash", str(PS / "acp-lint"), str(real)])
-    # ACP writes the role CamelCase (`role: SecurityAgent`) while the
-    # roster is filenames (`security-agent.md`). Both spellings have to
-    # resolve, or the check rejects every well-formed block there is.
+    # ACP uses CamelCase roles while the roster uses kebab-case filenames; accept both.
     camel = _tmp / "camel-role.yaml"
     camel.write_text(_acp_good, encoding="utf-8")
     f_camel = sh(["bash", str(PS / "acp-lint"), str(camel)])
-    # CB-127: the assignment is where an invented role is written first.
-    # Before this, the check ran on responses only and the Task Block
-    # carrying `role: domain-expert` sailed through — twenty-seven
-    # minutes ahead of the block that got refused.
+    # CB-127: a Task Block with invented role domain-expert ran 27 minutes before response validation.
     t_fake = _tmp / "fabricated-task-role.yaml"
     t_fake.write_text(
         (ROOT / "tests/fixtures/acp/good-task-block.yaml").read_text()
@@ -313,13 +225,8 @@ def main():
           f"fabricated rc={f_bad.returncode}, spelled-out rc={f_ok.returncode}, "
           f"CamelCase rc={f_camel.returncode}, task rc={t_bad_role.returncode}")
 
-    # F-26: two rules collided and nothing stated an order. A Task
-    # Block carried `verification_level: 1` and `risk: low` for a
-    # security task, while security-agent.md and the security-audit
-    # skill both said "always level 3 — no exceptions, no fast path".
-    # The agent chose 3 by judgment. risk-model.md now states the
-    # precedence; T-2 is the mechanical half, checked at the
-    # assignment because that is where the wrong number is written.
+    # F-26: a security Task Block used level 1 because risk and domain floors lacked precedence.
+    # risk-model now makes the level-3 domain floor win; check it at assignment time.
     t2_bad = sh(["bash", str(PS / "acp-lint"),
                  str(ROOT / "tests/fixtures/acp/security-task-level-1.yaml")])
     _t2 = _tmp / "security-task-level-3.yaml"
@@ -328,9 +235,7 @@ def main():
         .replace("verification_level: 1", "verification_level: 3"),
         encoding="utf-8")
     t2_ok = sh(["bash", str(PS / "acp-lint"), str(_t2)])
-    # the qualified spelling select-agents now emits must reach the
-    # same floor, or the block that names its agent correctly is the
-    # one that escapes the check
+    # Qualified agent names must reach the same domain floor.
     _t2q = _tmp / "security-task-qualified.yaml"
     _t2q.write_text(
         (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
@@ -338,9 +243,7 @@ def main():
                  "role: cereblnk:engineering:security-agent"),
         encoding="utf-8")
     t2_q = sh(["bash", str(PS / "acp-lint"), str(_t2q)])
-    # a role WITHOUT an unconditional floor keeps its assigned level:
-    # database and infra floors are conditional, and a checker that
-    # cannot read the objective must not refuse a well-formed block
+    # Roles without an unconditional floor retain their assigned level.
     _t2n = _tmp / "backend-task-level-1.yaml"
     _t2n.write_text(
         (ROOT / "tests/fixtures/acp/security-task-level-1.yaml").read_text()
@@ -385,9 +288,7 @@ def main():
         # The wrong specialist must not merely be outranked, it must be absent.
         if paths[0].startswith("memory/specs/") and "docs-agent" in r.stdout:
             ok = False; why.append(paths[0] + " (docs-agent still selected)")
-    # CB-121: a rewrite has no diff to route on — the request is the
-    # only signal. The analyst must be reachable from it, and the agent
-    # the workflow excludes must not ride along.
+    # CB-121: rewrites have no diff, so routing must work from request text alone.
     for text, want, level in [
         ("rewrite this legacy order module, the design is wrong",
          "legacy-analyst-agent", "gate_level: 3"),
@@ -400,10 +301,7 @@ def main():
         if "refactoring-agent" in r.stdout:
             ok = False; why.append(text[:24] + " (refactoring-agent selected)")
 
-    # T-DISC-21: unresolved now means HANDOFF. Nothing matched, so the
-    # mechanical floor has nothing to force — the selector exits 3,
-    # names no guessed specialist, and emits the roster so the
-    # conductor can choose a role and cite the line it rests on.
+    # T-DISC-21: unresolved selection exits 3 and emits the roster without guessing.
     r_txt = sh(["bash", str(PS / "select-agents"), "--text",
                 "review the OrderValidator class"])
     if r_txt.returncode != 3:
@@ -423,10 +321,7 @@ def main():
     if "unresolved: true" in r_resolved.stdout:
         ok = False; why.append("a routed choice was marked unresolved")
 
-    # CB-132: the routing table must name something the spawn API
-    # accepts. It emitted `docs-agent`; the platform wants
-    # `cereblnk:engineering:docs-agent`, and a run spawned the bare form
-    # four times because that is what the handoff told it to spawn.
+    # CB-132: a run retried bare `docs-agent` four times; spawn requires its qualified name.
     q = sh(["bash", str(PS / "select-agents"), "README.md"])
     qw = []
     if "  - cereblnk:engineering:docs-agent" not in q.stdout:
@@ -443,11 +338,7 @@ def main():
                   encoding="utf-8")
     if sh(["bash", str(PS / "acp-lint"), str(qf)]).returncode != 0:
         qw.append("acp-lint rejects the qualified form it now receives")
-    # F-21: three file kinds resolved to nothing while sql, css and
-    # nginx resolved fine — so the cause was never the stack gate they
-    # share. The routing table simply had no row for shell, YAML or
-    # XML, nor for the AI configuration a request to restructure
-    # `.claude/` names.
+    # F-21: shell, YAML, XML, and AI-config had no routing rows; sibling formats did.
     sw2 = []
     for path, want in (("deploy.sh", "infra-agent"),
                        ("Makefile", "infra-agent"),
@@ -471,12 +362,8 @@ def main():
 
     suite("select-agents triples", ok, f"mismatch on {why}")
 
-    # CB-128: the rules-side stack gate had never applied. detect-stack
-    # caches to $CB_DIR/context/stack-profile.yaml; select-rules looked
-    # for .claude/cereblnk/stack-profile.yaml, without the context/
-    # segment, found nothing, and returned every glob match — the
-    # behaviour CB-109 was written to replace. select-agents read the
-    # same cache correctly, which is why one half of the gate worked.
+    # CB-128: select-rules omitted `context/` from the profile path, so its gate never applied.
+    # select-agents used the correct cache, hiding that only half the gate worked.
     gate_root = pathlib.Path(tempfile.mkdtemp(prefix="cb-gate-"))
     (gate_root / "src/main/java/com/x").mkdir(parents=True)
     prof_dir = gate_root / ".claude/cereblnk/context"
@@ -512,14 +399,8 @@ def main():
         ok = False; why.append(f"gate reduced nothing ({len(ungated)} -> {len(gated)})")
     suite("select-rules gate", ok, "; ".join(why))
 
-    # CB-130: three spring-boot rules claimed every file under
-    # src/main/java, which is every class in a Maven project. Their own
-    # Trigger tables say otherwise — hooks fires on property files,
-    # controller mappings and config classes; patterns on units of work,
-    # exceptions at the edge and off-thread work; security on endpoints,
-    # payload binding and management output. A service class pulled all
-    # three and used none. Directory globs are paired with filename
-    # globs so a flat package layout still matches.
+    # CB-130: broad Maven globs made ordinary services load three unused Spring rule sets.
+    # Pair narrow directory and filename globs so flat packages still match.
     sw = []
     # Its own root: gate_root carries a java-only profile, which gates
     # every spring-boot rule away and would prove nothing here.
@@ -538,7 +419,7 @@ def main():
 
     r_svc = rules_text("src/main/java/com/x/service/PaymentService.java")
     r_ctl = rules_text("src/main/java/com/x/controller/OrderController.java")
-    for rule in ("spring-boot/hooks.md", "spring-boot/security.md"):
+    for rule in ("spring-boot/security.md",):
         if rule in r_svc:
             sw.append(f"{rule} still matches a service class")
         if rule not in r_ctl:
@@ -548,6 +429,74 @@ def main():
     if "spring-boot/patterns.md" not in r_svc:
         sw.append("patterns lost the service layer it is written for")
     suite("spring-boot globs match their triggers", not sw, "; ".join(sw))
+
+    # One Java file once pulled ~11k constraint tokens; this ratchet prevents regrowth.
+    rb = sh([sys.executable, str(S / "check-rule-budget")])
+    suite("rule selection budget", rb.returncode == 0,
+          (rb.stderr or rb.stdout).strip().splitlines()[-1][:100]
+          if rb.returncode else "")
+
+    # The pixel pass catches hand-authored SVG labels crossing boxes in the published PNG.
+    cs = sh([sys.executable, str(S / "check-sheet")])
+    suite("systems-note layout", cs.returncode == 0,
+          (cs.stderr or cs.stdout).strip().splitlines()[-1][:100]
+          if cs.returncode else "")
+
+    # Published suite counts drifted to 29/30 while verify ran 44.
+    # The three count checks below have not appended yet; the reconciliation
+    # at the end of main() fails the run if this stops being true.
+    PENDING = 3
+    total = len(results) + PENDING
+    stale = []
+    for label, path in (("README", ROOT / "README.md"),
+                        ("the systems note",
+                         ROOT / "docs/assets/systems-note/note.html")):
+        if not path.exists():
+            continue
+        m = re.search(r"(\d+)\s+verify suites", path.read_text())
+        if not m:
+            stale.append(f"{label} publishes no count")
+        elif int(m.group(1)) != total:
+            stale.append(f"{label} says {m.group(1)}")
+    suite("published suite counts", not stale,
+          "; ".join(stale) + f" — verify runs {total}" if stale else "")
+
+    # The sheet's hook count drifted to 22 while 23 shipped: only the suite
+    # count above was ever compared, so every other published number was hand-held.
+    hooks = len(list((ROOT / "plugins/cereblnk/hooks/scripts").glob("*.sh")))
+    hook_stale = []
+    for label, path in (("README", ROOT / "README.md"),
+                        ("the systems note",
+                         ROOT / "docs/assets/systems-note/note.html")):
+        if not path.exists():
+            continue
+        m = re.search(r"(\d+)\s+hooks", path.read_text())
+        if not m:
+            hook_stale.append(f"{label} publishes no hook count")
+        elif int(m.group(1)) != hooks:
+            hook_stale.append(f"{label} says {m.group(1)}")
+    suite("published hook counts", not hook_stale,
+          "; ".join(hook_stale) + f" — {hooks} ship" if hook_stale else "")
+
+    # "One of the 48 suites" drifted twice while "N verify suites" was checked:
+    # a second number in prose that no check covered. Prose carries no count now.
+    loose = []
+    for label, path in (("README", ROOT / "README.md"),
+                        ("the systems note",
+                         ROOT / "docs/assets/systems-note/note.html")):
+        if not path.exists():
+            continue
+        for m in re.finditer(r"(\d+)\s+suites", path.read_text()):
+            if int(m.group(1)) != total:
+                loose.append(f"{label} says {m.group(1)} suites")
+    suite("no stale suite count in prose", not loose,
+          "; ".join(loose) + f" — verify runs {total}" if loose else "")
+
+    if len(results) != total:
+        print(f"verify: tallied {total} suites but ran {len(results)} — "
+              f"PENDING is stale, fix it before trusting the published counts",
+              file=sys.stderr)
+        bad += 1
 
     print("verify:"); print("\n".join(results))
     if bad:

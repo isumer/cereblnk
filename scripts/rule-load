@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """rule-load (CB-108) — how many constraint files one edited file pulls.
 
-Rules attach by glob. Nothing has ever counted how many attach to the
-same file type, so the input cost of the constraint layer was never a
-number — only an impression.
-
-It should have been. Splitting `orchestration.md` by domain took a
-Kubernetes ruleset off every `.yaml` in the repository, and that gain
-was invisible until it was measured.
-
-This reports; it does not fail. A shared glob is not automatically a
-defect: three data rules land on `**/entity/**/*` and all three say
-different true things about a domain entity. Eleven files on `**/*.tsx`
-is a different claim, and which parts of it are layering versus
-duplication is a design question, not a mechanical one. Setting a
-threshold before that question is answered would encode a guess as a
-gate.
+It reports without a threshold: shared globs may be layering or duplication.
 
 Usage:
   rule-load              rank every glob by how many rule files share it

@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """test-exec-floor — acceptance run for ExecLedger and ExecFloor (CB-113).
 
-Drives both hooks with synthetic hook input in a throwaway project
-(CLAUDE_PROJECT_DIR), asserting exit codes, ledger contents, and the
-block message. Covers recording, blocking, the satisfied path, the
-unconfigured-surface skip, loop safety, and the nudge cap.
-
-Requires bash + python3 on PATH (the hooks' own runtime contract).
-
 Usage: scripts/test-exec-floor    Exit: 0 all pass · 1 any failure
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile
@@ -61,9 +54,12 @@ def main():
             return json.dumps({"agent_type": agent, "tool_name": "Write",
                                "tool_input": {"file_path": path, "content": "x"}})
 
-        def bash_in(cmd, agent="frontend-agent"):
-            return json.dumps({"agent_type": agent, "tool_name": "Bash",
-                               "tool_input": {"command": cmd}})
+        def bash_in(cmd, agent="frontend-agent", response=None):
+            data = {"agent_type": agent, "tool_name": "Bash",
+                    "tool_input": {"command": cmd}}
+            if response is not None:
+                data["tool_response"] = response
+            return json.dumps(data)
 
         def stop_in(agent="frontend-agent", active=False):
             d = {"agent_type": agent}
@@ -91,6 +87,32 @@ def main():
              any(l.split("\t")[2:] == ["exec", "ui"] for l in lines()),
              "got %r" % lines())
 
+        reset(commands={"api": "npm test"})
+        run("exec-ledger.sh", bash_in("npm test"), proj)
+        case("ledger: exact matching command records exec",
+             any(l.split("\t")[2:] == ["exec", "api"] for l in lines()),
+             "got %r" % lines())
+
+        reset(commands={"api": "npm test"})
+        wrapped = "FOO=1 sudo env BAR=2 nohup timeout 30 nice -n 5 command exec npm test --silent"
+        run("exec-ledger.sh", bash_in(wrapped), proj)
+        case("ledger: assignments and transparent wrappers still record exec",
+             any(l.split("\t")[2:] == ["exec", "api"] for l in lines()),
+             "got %r" % lines())
+
+        reset(commands={"api": "npm test"})
+        run("exec-ledger.sh", bash_in("echo 'npm test'"), proj)
+        case("ledger: echoed command records nothing", lines() == [], "got %r" % lines())
+
+        reset(commands={"api": "npm test"})
+        run("exec-ledger.sh", bash_in("git commit -m 'npm test now green'"), proj)
+        case("ledger: commit message records nothing", lines() == [], "got %r" % lines())
+
+        reset(commands={"api": "npm test"})
+        failed = "Error: Exit code 1\nnpm test failed"
+        run("exec-ledger.sh", bash_in("npm test", response=failed), proj)
+        case("ledger: failed matching command records nothing", lines() == [], "got %r" % lines())
+
         reset(commands={"ui": "npm run build"})
         run("exec-ledger.sh", bash_in("git status"), proj)
         case("ledger: unrelated command records nothing", lines() == [], "got %r" % lines())
@@ -107,10 +129,7 @@ def main():
         r = run("exec-floor.sh", stop_in(), proj)
         case("floor: executed surface passes", r.returncode == 0, "rc=%d" % r.returncode)
 
-        # F-32: the difference was timeless — a set of edited surfaces
-        # minus a set of executed ones. Running the check and THEN editing
-        # counted as covered, which is exactly the case the floor exists
-        # to catch: the last state of the surface was never run.
+        # F-32: a timeless set let execution before the final edit count as coverage.
         reset(["1\tfrontend-agent\texec\tui\n", "2\tfrontend-agent\tedit\tui\n"],
               {"ui": "npm run build"})
         r = run("exec-floor.sh", stop_in(), proj)

@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
-# SkillFloorHook (SubagentStop) — CB-097, hard enforcement.
-#
-# The floor computed by scripts/select-agents is written to the run
-# ledger as skills-required.yaml. A specialist that finishes without
-# loading its floor has reasoned about a stack from general knowledge:
-# false-competence trap #11, at the one moment it is cheapest to catch.
-#
-# SubagentStop blocks on exit 2 — the subagent does not stop, it reads
-# stderr and continues. That is the whole mechanism.
-#
-# Loop safety, in run-guard.sh's shape and for the same reason:
-#   1. stop_hook_active in stdin -> always allow the stop.
-#   2. Nudge state is keyed to run dir + agent; a stale file from an
-#      older run never insta-disarms a fresh one.
-#   3. Hard cap MAX_NUDGES per agent per run, then allow the stop —
-#      a specialist that will not load its skills is a question for the
-#      user, not a loop.
-#   4. Fail open on every error path: no project root, no interpreter,
-#      no required file, unparseable input -> exit 0.
+# SkillFloorHook (SubagentStop) — CB-097. Exit 2 enforces the recorded skill floor.
+# Re-entry is bounded per run/agent; recursion and errors fail open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -36,19 +19,8 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-# Identity, matched on the last segment (F-10, F-32).
-#
-# The baseline is written with policy role names; SubagentStop hands
-# back whatever the harness has. Measured in a real session: a bare hex
-# id (`a9ca0309334d10b0e`, via the agent_id fallback because agent_type
-# was absent) and the harness label `general-purpose`. Neither is a
-# policy role, so the lookup returned nothing and the floor exited
-# 0 — silently, for every real subagent, while a synthetic payload
-# carrying `backend-agent` engaged correctly.
-#
-# The baseline now carries qualified names too
-# (`cereblnk:engineering:backend-agent`), so matching happens on the
-# last colon-segment from both directions.
+# F-10/F-32: harness identities may be qualified names, labels, or opaque IDs;
+# match the last segment, but never claim the floor ran for an opaque ID.
 agent = d.get("agent_type") or d.get("agent_id") or ""
 if not agent:
     sys.exit(0)
@@ -57,29 +29,22 @@ run = pathlib.Path(os.environ["CB_RUN"])
 
 req = {}
 for line in (run / "skills-required.yaml").read_text(encoding="utf-8").splitlines():
-    # `[\w-]+` did not admit the colon, so a qualified key parsed as
-    # nothing at all and the whole map came back empty.
+    # The old `[\w-]+` rejected qualified keys and silently emptied the map.
     m = re.match(r"^\s{2}([\w:-]+):\s*\[(.*)\]\s*$", line)
     if m:
         req[m.group(1).rsplit(":", 1)[-1]] = [
             s.strip() for s in m.group(2).split(",") if s.strip()]
 need = req.get(agent_key) or []
 if not need and req and agent_key not in req:
-    # Neither identity nor baseline is at fault when the harness hands
-    # back an opaque id: the floor simply cannot tell who finished. It
-    # still must not pretend it checked.
-    # WARN: goes to stdout because the wrapper discards this block
-    # stderr; the wrapper routes the prefix to stderr and exits 0. It
-    # must not block — a floor that cannot identify the subagent has no
-    # grounds to fail it, only grounds to say it did not check.
+    # The wrapper discards inner stderr, so WARN travels via stdout; an
+    # unidentifiable agent cannot be blocked, but the missed check stays visible.
     print("WARN:cereblnk skill-floor: cannot match subagent %r against "
           "the baseline (%s). The skill floor did NOT run for this "
           "subagent." % (agent, ", ".join(sorted(req))))
 if not need:
     sys.exit(0)
 
-# Judged against the lines written since the previous stop of this
-# agent: the ledger is append-only for the whole run.
+# Judge only ledger lines since the previous stop for this agent.
 log = run / "skills-loaded.log"
 lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 mark_f = run / ("skill-floor.%s.mark" % agent)
@@ -101,7 +66,6 @@ missing = [s for s in need if s not in loaded]
 
 state = run / ("skill-floor.%s.state" % agent)
 if not missing:
-    # Clean stop: advance the mark, clear the counter.
     try:
         mark_f.write_text(str(len(lines)), encoding="utf-8")
         state.unlink()

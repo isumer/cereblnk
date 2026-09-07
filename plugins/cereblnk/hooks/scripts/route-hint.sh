@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
-# RouteHintHook (UserPromptSubmit) — CB-149, F-57.
-#
-# TOPOLOGY.md says cb-dispatch routes automatically when a request
-# touches a codebase without naming a /cb- command. Measured over a
-# whole session of codebase work: zero automatic invocations —
-# description matching is the host model's discretion, not a
-# mechanism, and nothing else pushed.
-#
-# Supplies the push and only the push. It does NOT decide the workflow:
-# that table lives in skills/dispatch, and a second copy would diverge.
-#
-# Never blocks — a routing hint that can stop a turn is worse than the
-# problem it solves.
+# RouteHintHook (UserPromptSubmit) — CB-149/F-57. Host matching produced zero routes.
+# Nudge toward dispatch without deciding a workflow or blocking.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -32,30 +21,23 @@ sys.stdout.write(" ".join(p.split())[:600])
 
 [ -n "$PROMPT" ] || exit 0
 
-# ---- silence conditions, in order of authority --------------------------
-# 1. An explicit command wins (dispatch rule 4).
 case "$PROMPT" in *"/cb-"*) exit 0 ;; esac
 
-# 2. A run is armed: a workflow already owns this turn.
 [ -f "$CB_DIR/flags/run-active" ] && exit 0
 
-# 3. Opt-out, same shape as the careful/boundary flags.
 [ -f "$CB_DIR/flags/no-route-hint" ] && exit 0
 
 SEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/select-agents"
 [ -x "$SEL" ] || exit 0
 
-# The same selector every workflow runs, so a hint cannot disagree with
-# the routing it points at. Timeout: this is the keystroke path.
+# Use the workflow selector; the keystroke path needs a timeout.
 OUT="$(timeout 10 "$SEL" --text "$PROMPT" 2>/dev/null || true)"
 [ -n "$OUT" ] || exit 0
 
-# 4. Unresolved is silence, never a guess: `unresolved: true` means no
-#    rule matched and the selector exits 3 with a roster, not a guess.
+# Unresolved means silence, not a guess; the selector exits 3 with a roster.
 case "$OUT" in *"unresolved: true"*) exit 0 ;; esac
 
-# What the hook routed on, so a wrong specialist can be traced to the
-# text that produced it rather than guessed at.
+# Log the triggering text so a wrong route is traceable.
 if [ -n "${CB_DIR:-}" ]; then
   mkdir -p "$CB_DIR/telemetry" 2>/dev/null || true
   printf '%s\tprompt=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S)" \
@@ -63,8 +45,7 @@ if [ -n "${CB_DIR:-}" ]; then
     >> "$CB_DIR/telemetry/route-hint.log" 2>/dev/null || true
 fi
 
-# Heredoc, not -c: the parser below needs single quotes of its own, and
-# a -c block wrapped in them ends at the first one it contains.
+# A heredoc preserves the parser's own single quotes; a quoted -c block would not.
 CEREBLNK_SEL_OUT="$OUT" $PYBIN - <<'PY' 2>/dev/null || true
 import json, os, re, sys
 out = os.environ.get("CEREBLNK_SEL_OUT") or ""

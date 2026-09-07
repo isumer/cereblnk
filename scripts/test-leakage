@@ -1,28 +1,6 @@
 #!/usr/bin/env python3
 """test-leakage (CB-108) — the leakage checker's own acceptance.
 
-A checker that has only ever been run on a clean tree is untested: it
-proves nothing about the case it exists for. This asserts the failure
-path, the skip path, and the boundary the regex has to respect
-(Part II trap #8 — "all tests pass" on tests that never encoded the
-failure mode).
-
-Cases:
-  T-1  clean tree            → exit 0
-  T-2  seeded tree           → exit 1, both occurrences reported
-  T-3  absent wordlist       → exit 3, never 0 (skip is not a pass)
-  T-4  empty wordlist        → exit 3
-  T-5  word boundary         → a longer word containing an entry is
-                               not a finding
-  T-6  case insensitivity    → a differently-cased occurrence is found
-  T-7  output hygiene        → the matched string never appears in the
-                               output; only path, line, and entry number
-  T-8  tracked wordlist      → exit 1 (L-3)
-
-The wordlist is written to a temporary directory rather than committed
-as a fixture, because L-3 makes a tracked wordlist a hard failure and a
-test may not require the thing it forbids.
-
 Exit: 0 all cases pass · 1 any case failed
 """
 import pathlib
@@ -78,10 +56,7 @@ def main():
         r = run(empty, CLEAN)
         case("T-4 empty wordlist exits 3", r.returncode == 3, f"rc={r.returncode}")
 
-        # T-5 / T-6 read off the seeded fixture: it carries one lowercase
-        # occurrence, one mixed-case occurrence, and one longer word that
-        # must not match. Two findings means the boundary held and the
-        # case fold worked.
+        # T-5/T-6 expect two seeded case-folded word-boundary matches.
         r = run(good, DIRTY)
         out = r.stdout + r.stderr
         case("T-5 longer word is not a finding", out.count("L-2  ") == 2,

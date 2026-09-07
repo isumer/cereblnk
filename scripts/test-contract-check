@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 """test-contract-check — acceptance run for cross-surface contracts (CB-116).
 
-The scenario is the one that motivated the task: a REST API migrated to
-a message protocol, where each leg is internally correct and the two
-disagree. The UI sends on the new channel and never subscribes to the
-one the server publishes; both specialists would otherwise report
-complete.
-
-Covers reconciliation in both directions (the new channel present, the
-old path gone), per-surface isolation so parallel work is not
-serialised, the deferred escape hatch, the no-contract skip, and the
-hook including loop safety and the nudge cap.
-
 Usage: scripts/test-contract-check   Exit: 0 all pass · 1 any failure
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile
@@ -19,6 +8,8 @@ import json, os, pathlib, shutil, subprocess, sys, tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CHECK = ROOT / "plugins/cereblnk/scripts/contract-check"
 HOOK = ROOT / "plugins/cereblnk/hooks/scripts/contract-floor.sh"
+RUN_FLAG = ROOT / "plugins/cereblnk/scripts/run-flag"
+FIXTURES = ROOT / "tests/fixtures/contract-check"
 
 CONTRACT = """contract: chat-stomp
 version: 1
@@ -102,6 +93,19 @@ def main():
         rc, out = check(base)
         case("deferred rows are not enforced", rc == 0 and not out, "rc=%d out=%r" % (rc, out))
 
+        build(base, UI_GOOD, API_GOOD,
+              contract=(FIXTURES / "channels-deferred.md").read_text(encoding="utf-8"))
+        rc, out = check(base, "ui")
+        case("deferred Channels rows are not enforced",
+             rc == 0 and not out, "rc=%d out=%r" % (rc, out))
+
+        build(base, UI_GOOD, API_GOOD,
+              contract=(FIXTURES / "channels-unbacked.md").read_text(encoding="utf-8"))
+        rc, out = check(base, "ui")
+        case("non-deferred unbacked Channels rows are reported",
+             rc == 1 and any("/topic/unbacked" in l for l in out),
+             "rc=%d out=%r" % (rc, out))
+
         shutil.rmtree(base / ".claude/cereblnk/memory/contracts")
         rc, out = check(base)
         case("no contract is a skip, not a pass", rc == 3, "rc=%d" % rc)
@@ -120,10 +124,16 @@ def main():
             runctx.mkdir(parents=True)
             ledger = runctx / "exec.log"
 
-            def reset(lines):
+            def reset(lines, baseline=""):
                 ledger.write_text("".join(lines), encoding="utf-8")
                 for f in runctx.glob("contract-floor.*.state"):
                     f.unlink()
+                baseline_file = runctx / "contract-baseline.txt"
+                if baseline is None:
+                    if baseline_file.exists():
+                        baseline_file.unlink()
+                else:
+                    baseline_file.write_text(baseline, encoding="utf-8")
 
             def run_hook(agent="frontend-agent", active=False, extra=None):
                 d = {"agent_type": agent}
@@ -137,9 +147,39 @@ def main():
 
             reset(["1\tfrontend-agent\tedit\tui\n"])
             r = run_hook()
-            case("hook: unmatched surface blocks the stop", r.returncode == 2, "rc=%d" % r.returncode)
+            case("hook: empty baseline makes an unmatched surface new",
+                 r.returncode == 2, "rc=%d" % r.returncode)
             case("hook: message names the channel", "/topic/messages" in r.stderr,
                  r.stderr.strip()[:90])
+
+            rc, existing = check(proj, "ui")
+            reset(["1\tfrontend-agent\tedit\tui\n"],
+                  "\n".join(sorted(existing)) + "\n")
+            r = run_hook()
+            case("hook: pre-existing contract failure does not block",
+                 rc == 1 and r.returncode == 0, "check=%d hook=%d" % (rc, r.returncode))
+            case("hook: pre-existing contract failure is a risk note",
+                 "Pre-existing contract risk" in r.stderr
+                 and "/topic/messages" in r.stderr, r.stderr.strip()[:120])
+
+            build(proj, UI_GOOD, API_GOOD)
+            rc, clean = check(proj, "ui")
+            reset(["1\tfrontend-agent\tedit\tui\n"],
+                  "\n".join(sorted(clean)))
+            write(proj / "src/components/Chat.tsx", UI_MISSING_SUB)
+            r = run_hook()
+            case("hook: a contract break introduced after baseline blocks",
+                 rc == 0 and r.returncode == 2, "check=%d hook=%d" % (rc, r.returncode))
+            case("hook: introduced break names the channel",
+                 "/topic/messages" in r.stderr, r.stderr.strip()[:120])
+
+            reset(["1\tfrontend-agent\tedit\tui\n"], baseline=None)
+            r = run_hook()
+            case("hook: missing baseline fails open", r.returncode == 0,
+                 "rc=%d" % r.returncode)
+            case("hook: missing baseline reports comparison risk",
+                 "missing or unreadable" in r.stderr and "/topic/messages" in r.stderr,
+                 r.stderr.strip()[:120])
 
             reset(["1\tbackend-agent\tedit\tapi\n"])
             r = run_hook(agent="backend-agent")
@@ -157,6 +197,49 @@ def main():
             reset(["1\tfrontend-agent\tedit\tui\n"])
             r = run_hook()
             case("hook: no contract means no floor", r.returncode == 0, "rc=%d" % r.returncode)
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = pathlib.Path(td) / "proj"
+            build(proj, UI_MISSING_SUB, API_GOOD)
+            cbdir = proj / ".claude/cereblnk"
+            run_id = "R-CONTRACT-BASELINE"
+            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            armed = subprocess.run(
+                ["bash", str(RUN_FLAG), "arm", str(cbdir), run_id],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+            baseline_file = cbdir / "context" / run_id / "contract-baseline.txt"
+            expected_rc, expected = check(proj)
+            actual = (baseline_file.read_text(encoding="utf-8").splitlines()
+                      if baseline_file.is_file() else None)
+            case("run-flag: arm writes a sorted contract baseline",
+                 armed.returncode == 0 and expected_rc == 1
+                 and actual == sorted(set(expected)),
+                 "arm=%d baseline=%r" % (armed.returncode, actual))
+            completed = subprocess.run(
+                ["bash", str(RUN_FLAG), "complete", str(cbdir)],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+            case("run-flag: complete removes the contract baseline",
+                 completed.returncode == 0 and not baseline_file.exists(),
+                 "rc=%d exists=%r" % (completed.returncode, baseline_file.exists()))
+
+            shutil.rmtree(cbdir / "memory/contracts")
+            empty_id = "R-EMPTY-CONTRACT-BASELINE"
+            armed = subprocess.run(
+                ["bash", str(RUN_FLAG), "arm", str(cbdir), empty_id],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+            empty_file = cbdir / "context" / empty_id / "contract-baseline.txt"
+            case("run-flag: nothing-to-check writes an empty baseline",
+                 armed.returncode == 0 and empty_file.is_file()
+                 and empty_file.read_text(encoding="utf-8") == "",
+                 "rc=%d content=%r" % (armed.returncode,
+                                        empty_file.read_text(encoding="utf-8")
+                                        if empty_file.is_file() else None))
+            disarmed = subprocess.run(
+                ["bash", str(RUN_FLAG), "disarm", str(cbdir)],
+                capture_output=True, text=True, env=env, cwd=str(proj))
+            case("run-flag: disarm removes the contract baseline",
+                 disarmed.returncode == 0 and not empty_file.exists(),
+                 "rc=%d exists=%r" % (disarmed.returncode, empty_file.exists()))
 
     if fails:
         print("test-contract-check: %d/%d FAILED" % (len(fails), ran))

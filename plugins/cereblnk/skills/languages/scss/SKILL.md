@@ -99,7 +99,7 @@ yields `derived`.
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/scss/`:
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/scss/`:
 `coding-style` · `patterns`.
 
 Before producing or reviewing stylesheets, read the files whose

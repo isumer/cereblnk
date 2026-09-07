@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# EditBoundaryHook — opt-in via $CB_DIR/flags/boundary
-# The flag file contains one allowed path prefix per line (relative to cwd).
-# Blocks Write/Edit outside the declared boundary. This blocks TOOLS, not
-# shell side-effects — accident prevention, not a sandbox (documented).
+# EditBoundaryHook blocks Write/Edit outside opt-in prefixes (exit 2).
+# Limit: shell side effects bypass it; this is not a sandbox.
+
 # shellcheck source=../../scripts/lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh"
 [ -n "$CB_DIR" ] || exit 0  # no project root resolved: never write outside the project

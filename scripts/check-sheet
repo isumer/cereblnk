@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""check-sheet — layout gate for the systems-note poster: text against its
+box, spacing against the sheet's scale, strokes against glyphs.
+
+Usage: scripts/check-sheet [path] [--no-pixels]
+Exit:  0 clean · 1 findings · 2 cannot run
+"""
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+
+import sheetlayout                                          # noqa: E402
+import sheetink                                             # noqa: E402
+
+DEFAULT = ROOT / "docs/assets/systems-note/note.html"
+
+
+def main(argv):
+    pixels = "--no-pixels" not in argv
+    args = [a for a in argv if not a.startswith("--")]
+    path = pathlib.Path(args[0]) if args else DEFAULT
+
+    if not path.exists():
+        print("check-sheet: no sheet at %s" % path, file=sys.stderr)
+        return 2
+    try:
+        fonts = sheetlayout.load_fonts()
+    except sheetlayout.FontUnavailable as e:
+        print("check-sheet: SKIP — DejaVu faces not installed (%s); the "
+              "sheet cannot be measured without them" % e)
+        return 0
+
+    sheet = sheetlayout.parse(str(path), fonts)
+    findings = (sheetlayout.geometry_findings(sheet)
+                + sheetlayout.consistency_findings(sheet))
+
+    ink_note = ""
+    if pixels:
+        if sheetink.available():
+            try:
+                findings += sheetink.ink_findings(sheet.source)
+            except sheetink.RendererUnavailable as e:
+                ink_note = "pixel pass could not run: %s" % e
+        else:
+            ink_note = ("pixel pass skipped — needs rsvg-convert and Pillow")
+    else:
+        ink_note = "pixel pass skipped by request"
+
+    findings = sheetlayout.sort_findings(findings)
+    hard = [f for f in findings if f[0] in sheetlayout.HARD]
+
+    print("check-sheet: %s" % path.relative_to(ROOT)
+          if str(path).startswith(str(ROOT)) else "check-sheet: %s" % path)
+    print("  canvas %.0fx%.0f · %d panels · %d text runs · %d boxes"
+          % (sheet.width, sheet.height, len(sheet.panels),
+             len(sheet.texts), len(sheet.rects)))
+    if ink_note:
+        print("  note: %s" % ink_note)
+    print()
+    for kind, line, msg in findings:
+        print("  %-9s %-9s %s" % (kind, line, msg))
+    if findings:
+        print()
+
+    if hard:
+        print("check-sheet: %d finding(s) — the sheet is not publishable"
+              % len(hard), file=sys.stderr)
+        return 1
+    warn = len(findings) - len(hard)
+    print("check-sheet: clean%s"
+          % (" (%d tight spot(s) noted)" % warn if warn else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

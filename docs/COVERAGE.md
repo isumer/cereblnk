@@ -19,9 +19,9 @@
 | Refactoring | `/cb-refactor` + RefactoringAgent | 2 | **shipped** |
 | Security audit | `/cb-security-audit` + owasp-threat-modeling skill | 2 | **shipped** |
 | Documentation sync | `/cb-docs` + docs/technicalwriter agents | 2 | **shipped** |
-| Safety guardrails | 4 hooks (destructive, boundary, post-edit test, secret guard) | 1 | **shipped** |
-| Specialist expertise ("modes") | 20 subagents with isolated context + Law 1 boundaries (not persona prompts — 08 §7.1) | 1–2 | **shipped** |
-| Stack thinking styles | 28 domain skills, 09 Part IV philosophies | 2 | **shipped** |
+| Safety guardrails | 22 hook scripts across eight events; six ordered SubagentStop finish checks | 1–2 | **shipped** |
+| Specialist expertise ("modes") | 27 subagents with isolated context + Law 1 boundaries (not persona prompts — 08 §7.1) | 1–2 | **shipped** |
+| Stack thinking styles | 77 domain skills, 09 Part IV philosophies | 2 | **shipped** |
 | Product gate ("CEO review" class) | `/cb-product-gate` | 3 | deferred by design |
 | UX gate ("design review" class) | `/cb-ux-gate` | 3 | deferred by design |
 | Plan pipeline + readiness dashboard | `/cb-plan-pipeline` | 3 | deferred by design |
@@ -30,7 +30,8 @@
 | Incident response | `/cb-incident` | 3 | deferred by design |
 | Retro / metrics | `/cb-retro` | 3 | deferred by design |
 | ADR / changelog / health score | `/cb-adr`, `/cb-changelog`, `/cb-health` | 3 | deferred by design |
-| Session memory / continuity | `/cb-memory`, `/cb-save`, `/cb-resume` | 4 | deferred by design |
+| Interrupted-run recovery / retirement | `/cb-resume`, `run-flag complete` / `abandon`, `archive/<run_id>/` | 2 | **shipped** |
+| Broader session snapshots / memory UI | `/cb-memory`, `/cb-save` | 4 | deferred by design |
 | Real-browser / live-device QA | none | — | **F-class**: no plugin-compatible mechanism confirmed (05 Reality Map, 08 §7.4); /cb-qa ships evidence-based instead |
 | Remaining catalog skills (kotlin, go, python, nodejs, nextjs, oracle, redis, elasticsearch, nginx, linux-ops, cloud-architecture, observability, release-engineering, artifact-management, event-driven-architecture, microservices, performance-engineering, accessibility, technical-writing, legacy-modernization) | skills catalog 08 §5 | 3 | deferred by design |
 

@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
-# ExecFloorHook (SubagentStop) — CB-113, hard enforcement.
-#
-# Every other gate in a run is static: Verifier reads code, Challenger
-# attacks reasoning, Consistency compares claims. None of them touches a
-# running program. A specialist can write a module, never execute it, and
-# close green — the claim "it works" is then unfalsifiable rather than
-# verified.
-#
-# ExecLedgerHook records which surfaces an agent edited and which it ran.
-# This hook asks the one question nothing else asks: did you run what you
-# changed.
-#
-# A surface with no configured check command is recorded as skipped and
-# allowed through. The gap becomes visible in the ledger instead of being
-# silently absent — a floor that turns a project red for a command it was
-# never given would be a worse failure than the one it prevents.
-#
-# SubagentStop blocks on exit 2 — the subagent does not stop, it reads
-# stderr and continues. That is the whole mechanism.
-#
-# Loop safety, in skill-floor.sh's shape and for the same reason:
-#   1. stop_hook_active in stdin -> always allow the stop.
-#   2. Nudge state is keyed to run dir + agent; a stale file from an
-#      older run never insta-disarms a fresh one.
-#   3. Hard cap MAX_NUDGES per agent per run, then allow the stop.
-#   4. Fail open on every error path.
+# ExecFloorHook (SubagentStop) — CB-113. Exit 2 requires checks after the last surface edit.
+# Missing commands are logged as skipped; re-entry is bounded and errors fail open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
@@ -52,18 +28,8 @@ if not agent:
 run = pathlib.Path(os.environ["CB_RUN"])
 cfg = pathlib.Path(os.environ["CB_CFG"])
 
-# F-32: this was a set difference — surfaces edited, minus surfaces
-# executed — and a set difference has no order in it. An agent that ran
-# the check and THEN edited the file was recorded as covered, which is
-# precisely the case this floor exists to catch: the state that shipped
-# was never run. The ledger already carried what the test needs, in
-# parts[0]. A surface is unrun when it has no exec at all, or when its
-# last edit is later than its last exec.
-#
-# Position in the file breaks ties, because two events in the same
-# second are ordered by the order they were appended, not by their
-# equal timestamps. The per-agent filter below is untouched: it was
-# verified correct.
+# F-32: set difference treated edit-after-test as covered; compare event order.
+# File position breaks same-second timestamp ties.
 edited, executed = [], {}
 last_edit = {}
 for pos, line in enumerate(

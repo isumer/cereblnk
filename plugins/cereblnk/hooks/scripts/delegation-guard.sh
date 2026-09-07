@@ -1,66 +1,14 @@
 #!/usr/bin/env bash
-# DelegationGuardHook (PreToolUse: Edit|Write|MultiEdit|NotebookEdit)
-#
-# While a Cereblnk run is active, file edits belong to surface
-# specialist subagents; the conducting conversation never implements.
-#
-# Decision table (safe under BOTH known platform behaviors):
-#   run-active flag absent            -> allow (no run; normal editing)
-#   hook input carries agent identity -> allow (a subagent is editing —
-#     (top-level agent_id/agent_type)    exactly what delegation wants)
-#   flag armed + no agent identity    -> BLOCK (exit 2): the conductor
-#                                        tried to implement; stderr
-#                                        tells the model to spawn the
-#                                        surface specialist instead
-# Identity is read from the PARSED hook input's top-level keys — never
-# by substring over the raw JSON, because the raw payload contains
-# tool_input.content/new_source, so any file that merely MENTIONS
-# "agent_id" would otherwise let the conductor through.
-# Old platform versions where subagent tool calls bypass hooks
-# entirely are equally safe: those edits never reach this guard.
-# Failure semantics, honestly: fail-open only when no project root or
-# no armed flag. With a run armed, input whose agent identity cannot
-# be determined (unparseable JSON, or no Python — substring fallback
-# finding no identity anywhere) is treated as the conductor and
-# blocked — conservative for DELEGATION (the model is told exactly how
-# to proceed), and it cannot brick a session: it acts only mid-run and
-# the escape hatch is the same flag every workflow already manages.
+# DelegationGuardHook: IDLE allows, COMPLETED routes source, and ARMED blocks conductor edits.
+# Parse top-level identity: raw checks once let content mentioning `agent_id` bypass it.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbowner.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
+[ "$(type -t cb_run_state 2>/dev/null || true)" = "function" ] || exit 0
 
-# Armed state, with staleness bounds on both arming flags. A run is
-# live while the flag is recent OR the run ledger is still growing; an
-# aged flag over a cold ledger is treated as absent. Deliberately an
-# OR, so a run resumed after a long pause keeps its protection as long
-# as it is still writing blocks.
-#
-# run-active covers the run itself. run-completed covers
-# the follow-up window AFTER final synthesis — the seam where the
-# dispatch skill's own trap list predicted the failure ("follow-up
-# handled freehand because the last workflow finished") while this
-# guard was, by trigger scope, switched off. It is TTL-bounded so a
-# forgotten flag can never brick a project: past the window it is
-# ignored, fail-open, exactly like no flag at all.
-# The block must carry its own handoff. A guard that says "delegate"
-# without naming the specialist, its skills, and the file leaves the
-# model to reconstruct all of it — and the cheapest path out of a block
-# is never the one that costs the most work. Computed from the blocked
-# path through the same selector the orchestrator uses; silent fallback
-# to the generic instruction when anything is unavailable.
-# The conductor owns its own control surface. run-discipline §? puts it
-# plainly: the conductor holds intent, plan, digests, verdicts and
-# synthesis. Blocking it from writing the plan told it to delegate the
-# plan to a specialist, which is a category error — and the block
-# message said "the conductor holds plan" in the same breath.
-#
-# The conductor-ownership table lives in scripts/lib/cbowner.sh, because
-# the shell path (below) asks the same question about the same files
-# and a second copy would drift from the first — which is the defect
-# CB-122 fixed. Sourced above with cbenv; if it is missing, every path
-# reads as unowned and the guard blocks conductor writes it should
-# allow, so the absence is loud rather than silent.
+# COMPLETED routes only repository source; block messages compute a concrete handoff.
+# CB-122: edit and shell ownership drifted, so both source cbowner; its absence is loud.
 
 cb_handoff() {
   _p="${CB_BLOCKED_PATH:-}"
@@ -70,10 +18,7 @@ cb_handoff() {
     _out="$(bash "$_sel" "$_p" 2>/dev/null || true)"
   fi
   if [ -n "$_out" ]; then
-    # CB-132: the name must be the one the spawn API accepts —
-    # cereblnk:engineering:docs-agent, not docs-agent. This handoff
-    # printed the bare form and a run spawned exactly what it was told
-    # to, four times, against an API that does not know that name.
+    # CB-132: a bare role caused four failed spawns; keep the qualified API name.
     _role="$(printf '%s' "$_out" | sed -n 's/^  - \([a-z:-]*-agent\).*/\1/p' | head -1)"
     _skills="$(printf '%s' "$_out" | sed -n "s/^  ${_role}: \[\(.*\)\].*/\1/p" | head -1)"
   fi
@@ -83,48 +28,12 @@ cb_handoff() {
   printf ', and let it write inside its own context.'
 }
 
-MODE=""
-_active_ttl_h="${CB_ACTIVE_TTL_HOURS:-8}"
-_active_cut=$(( _active_ttl_h * 60 ))
-_armed=""; _fresh=""
-for _f in run-active run-active.nudged; do
-  [ -f "$CB_DIR/flags/$_f" ] || continue
-  _armed=1
-  [ -n "$(find "$CB_DIR/flags" -name "$_f" -mmin "-$_active_cut" 2>/dev/null)" ] && _fresh=1
-done
-# a live run keeps writing to its ledger; a cold ledger is a dead run
-if [ -n "$_armed" ] && [ -z "$_fresh" ] && [ -d "$CB_DIR/context" ]; then
-  [ -n "$(find "$CB_DIR/context" -mmin "-$_active_cut" 2>/dev/null | head -1)" ] && _fresh=1
-fi
-# Human escape hatch. Deliberate, separately named, and absent from
-# every model-facing message on purpose: the previous message ended by
-# naming the flag to delete, and a blocked model reads the last
-# sentence as the instruction. It took the bypass instead of
-# delegating. The way out now costs an explicit act by the person.
+# Keep the human-only override out of model messages: naming it previously
+# taught a blocked model to bypass delegation.
 if [ -f "$CB_DIR/flags/conductor-override" ] && \
    [ -n "$(find "$CB_DIR/flags" -name conductor-override -mmin "-${CB_OVERRIDE_TTL_MIN:-60}" 2>/dev/null)" ]; then
   exit 0
 fi
-
-if [ -n "$_armed" ] && [ -n "$_fresh" ]; then
-  MODE="active"
-elif [ -z "$_armed" ] && [ ! -f "$CB_DIR/flags/run-completed" ] && \
-     [ -f "$CB_DIR/flags/run-active.witness" ] && \
-     [ -n "$(find "$CB_DIR/flags" -name run-active.witness -mmin "-$_active_cut" 2>/dev/null)" ] && \
-     [ -d "$CB_DIR/context" ] && \
-     [ -n "$(find "$CB_DIR/context" -mmin "-$_active_cut" 2>/dev/null | head -1)" ]; then
-  # The arming flag vanished while the ledger was still being written.
-  # A run does not end by deleting its own flag — workflows write
-  # run-completed. This is the disarm-and-continue path, observed live.
-  MODE="disarmed"
-elif [ -f "$CB_DIR/flags/run-completed" ]; then
-  _ttl_h="${CB_COMPLETED_TTL_HOURS:-8}"
-  _cutoff=$(( _ttl_h * 60 ))
-  if [ -n "$(find "$CB_DIR/flags" -name run-completed -mmin "-$_cutoff" 2>/dev/null)" ]; then
-    MODE="completed"
-  fi
-fi
-[ -n "$MODE" ] || exit 0
 
 INPUT="$(cat 2>/dev/null || true)"
 if [ -n "${PYBIN:-}" ]; then
@@ -138,7 +47,6 @@ sys.exit(0 if isinstance(d, dict) and ("agent_id" in d or "agent_type" in d) els
 '; then
     exit 0   # subagent editing: allowed
   fi
-  # conductor edit: capture the target so the block can name its owner
   CB_BLOCKED_PATH="$(printf '%s' "$INPUT" | $PYBIN -c '
 import json, sys
 try:
@@ -153,14 +61,8 @@ for k in ("file_path", "path", "notebook_path"):
         break
 ' 2>/dev/null || true)"
   export CB_BLOCKED_PATH
-  # CB-123 — the shell reaches the same files. A Bash call carries no
-  # file_path, so without this branch the guard would either wave every
-  # command through (the hole a blocked run announced it would use) or
-  # block all of them, including the detect-stack / select-agents /
-  # run-quiet / git calls run-discipline requires the conductor to make.
-  # So: ask what the command writes. Nothing -> allow. Targets the
-  # conductor owns -> allow. Anything else, including a write whose
-  # target cannot be resolved -> block, on the same terms as an edit.
+  # CB-123: Bash carries no file_path, and a blocked run announced this bypass.
+  # Parse writes; allow read-only/owned targets and block unresolved/unowned ones.
   CB_SHELL_WRITES=""
   if [ "$(printf '%s' "$INPUT" | $PYBIN -c '
 import json, sys
@@ -169,60 +71,67 @@ try:
 except Exception:
     print("")
 ' 2>/dev/null || true)" = "Bash" ]; then
+    RUN_STATE="$(cb_run_state)"
+    [ "$RUN_STATE" != "IDLE" ] || exit 0
     _sw="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/shellwrite.py"
     CB_SHELL_WRITES="$(printf '%s' "$INPUT" | $PYBIN "$_sw" 2>/dev/null || true)"
     [ -n "$CB_SHELL_WRITES" ] || exit 0   # a read-only command
     _unowned=""
     while IFS= read -r _t; do
       [ -n "$_t" ] || continue
-      cb_is_conductor_owned "$_t" || { _unowned="$_t"; break; }
+      cb_is_conductor_owned "$_t" && continue
+      if [ "$RUN_STATE" = "COMPLETED" ]; then
+        # An unresolved shell target is not proof of a source-tree write.
+        [ "$_t" = "!" ] || [ "$_t" = "?" ] || cb_is_repo_source "$_t" || continue
+      fi
+      _unowned="$_t"; break
     done <<EOF
 $CB_SHELL_WRITES
 EOF
     [ -n "$_unowned" ] || exit 0          # every target is the conductor's own
     if [ "$_unowned" = "!" ]; then
-      # shellwrite could not tokenise the command at all, so no write
-      # was ever determined — a different claim from a parsed write to
-      # an unowned target, and it gets its own message and next action.
+      # An unparseable command is unknown, not a known write to an unowned target.
       echo "Cereblnk DelegationGuard: a run is active — this command could not be parsed, so whether it writes is unknown. NEXT ACTION: simplify or split the command so it can be parsed, then retry." >&2
       exit 2
     fi
     CB_BLOCKED_PATH="$_unowned"
     export CB_BLOCKED_PATH
     [ "$CB_BLOCKED_PATH" = "?" ] && CB_BLOCKED_PATH="" && export CB_BLOCKED_PATH
-    echo "Cereblnk DelegationGuard: a run is active — this command writes, and file edits belong to the surface specialist subagent (agent-selection-policy §1/§3b), not the conducting conversation. Reaching the file through the shell is the same edit under another tool.$(cb_handoff)" >&2
+    if [ "$RUN_STATE" = "COMPLETED" ]; then
+      echo "Cereblnk DelegationGuard: the last run completed — this is a follow-up, and follow-ups re-enter routing at the top (dispatch step 1), they are not handled freehand.$(cb_handoff)" >&2
+    else
+      echo "Cereblnk DelegationGuard: a run is active — this command writes, and file edits belong to the surface specialist subagent (agent-selection-policy §1/§3b), not the conducting conversation. Reaching the file through the shell is the same edit under another tool.$(cb_handoff)" >&2
+    fi
     exit 2
   fi
+  RUN_STATE="$(cb_run_state)"
+  [ "$RUN_STATE" != "IDLE" ] || exit 0
   if cb_is_conductor_owned "$CB_BLOCKED_PATH"; then
     exit 0   # the conductor's own plan/state/flags/telemetry
   fi
+  if [ "$RUN_STATE" = "COMPLETED" ] && ! cb_is_repo_source "$CB_BLOCKED_PATH"; then
+    exit 0   # follow-up routing owns repository source, not control notes or scratch
+  fi
 else
-  # Degraded fallback without Python: substring check. Weaker (a file
-  # body mentioning the keys passes), but never blocks a legitimate
-  # subagent — and cbenv-equipped installs always have PYBIN.
+  # Without Python, substring identity checks can be bypassed by file content;
+  # installed environments normally provide PYBIN.
   case "$INPUT" in
     *'"agent_id"'*|*'"agent_type"'*) exit 0 ;;
   esac
-  # Without Python the path cannot be extracted cleanly. A conductor
-  # blocked from writing its own plan cannot run at all, so this errs
-  # toward allowing: a body that merely mentions the plan passes, which
-  # is the cheaper mistake.
+  RUN_STATE="$(cb_run_state)"
+  [ "$RUN_STATE" = "ARMED" ] || exit 0
+  # Path extraction is unavailable, so plan mentions fail open to avoid deadlock.
   case "$INPUT" in
     *cereblnk*plan.md*|*cereblnk*state.md*) exit 0 ;;
   esac
-  # The shell branch needs a parser it does not have here. Blocking
-  # every command instead would stop the conductor running the scripts
-  # run-discipline requires of it, so this path fails open and the
-  # shell boundary is simply unenforced without Python. Stated, not
-  # implied: cbenv-equipped installs always have PYBIN.
+  # Shell writes are unenforced without Python; blocking all Bash would prevent
+  # required conductor scripts, so this rejected fallback fails open.
   case "$INPUT" in
     *'"tool_name"'*'"Bash"'*|*'"command"'*) exit 0 ;;
   esac
 fi
 
-if [ "$MODE" = "disarmed" ]; then
-  echo "Cereblnk DelegationGuard: the run-active flag was removed while the run ledger was still being written. A run ends by completing, not by disarming its own guard. Finish the run through its workflow.$(cb_handoff)" >&2
-elif [ "$MODE" = "completed" ]; then
+if [ "$RUN_STATE" = "COMPLETED" ]; then
   echo "Cereblnk DelegationGuard: the last run completed — this is a follow-up, and follow-ups re-enter routing at the top (dispatch step 1), they are not handled freehand.$(cb_handoff)" >&2
 else
   touch "$CB_DIR/flags/run-active.witness" 2>/dev/null || true

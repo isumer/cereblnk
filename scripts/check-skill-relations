@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 """check-skill-relations — validate the skill relations graph.
 
-M-class checker for skill-relations-policy.md. ConsistencyAgent applies
-the same rules at runtime; this script applies them at commit/CI time,
-which is where a broken knowledge map is cheapest to catch.
-
-Rules enforced (policy §1, §4):
-  1. Every requires/complements target resolves to an existing skill.
-  2. The `requires` graph is acyclic.
-  3. No relations line carries a static confidence token.
-  4. escalate_to entries name a target and a "(when)" condition.
-
 Usage: scripts/check-skill-relations [skills_root]
 Exit: 0 clean · 1 violations found
 """

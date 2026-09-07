@@ -96,7 +96,7 @@ revalidation setting.
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/frameworks/nextjs/`.
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/frameworks/nextjs/`.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/select-rules <path>` for the files
 the task touches; it returns the constraint files to read, applying both
 the glob and the stack gate. Read `rules/common/` once per run. Cite a

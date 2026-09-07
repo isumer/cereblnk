@@ -1,34 +1,13 @@
 #!/usr/bin/env bash
-# ScratchGuardHook (PreToolUse:Write) — CB-107.
-#
-# A run left debug.txt, debug2.txt and medium.txt at the repository root.
-# None were deliverables; all three were working notes that outlived the
-# thought. Nothing swept them, so they became someone's diff.
-#
-# The signal is not the filename. `medium.txt` looks like a document and
-# `debug2.txt` looks like scratch, but both are the same mistake, and a
-# pattern list would have caught one of them. What they share is shape:
-# a NEW file, at the repository ROOT, created mid-run. Real work lands
-# in a subdirectory the project already has; root-level files are added
-# rarely and deliberately, almost never while a run is executing.
-#
-# So: block a new untracked file at the root during an active run, and
-# name the place scratch actually belongs.
-#
-# Two nudges, then allow — the digest-cap idiom. Adding a genuine
-# root-level file mid-run is rare but not impossible, and a guard that
-# can never be satisfied stops being a guard and becomes an obstacle.
-#
-# Fail-open everywhere: no run, no interpreter, no root, unreadable
-# input. A scratch file is untidy; a blocked legitimate write is worse.
+# ScratchGuardHook (PreToolUse: Write) — CB-107. One run left three root scratch files.
+# New untracked root files exit 2; two nudges allow legitimate additions, errors fail open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${CB_ROOT:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
-# Only while a run is executing, and only while its flag is fresh — the
-# same TTL discipline the delegation guard uses, for the same reason.
+# Require a fresh active-run flag, as delegation-guard does.
 [ -f "$CB_DIR/flags/run-active" ] || exit 0
 [ -n "$(find "$CB_DIR/flags" -name run-active -mmin "-${CB_RUN_TTL_MIN:-240}" 2>/dev/null)" ] || exit 0
 
@@ -52,7 +31,6 @@ if not raw:
 root = pathlib.Path(os.environ["CB_ROOT"])
 norm = raw.replace("\\\\", "/")
 
-# Root-level means: a bare name, or a path whose parent is the root.
 if "/" in norm:
     try:
         parent = pathlib.Path(norm).parent.resolve()
@@ -71,7 +49,7 @@ target = root / name
 if target.exists():
     sys.exit(0)          # editing something that already lives here
 
-# Tracked files are the project deciding, not the run inventing.
+# Existing tracked paths are deliberate project files.
 try:
     r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", name],
                        cwd=str(root), capture_output=True, text=True, timeout=10)

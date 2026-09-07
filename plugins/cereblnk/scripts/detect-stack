@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
-# detect-stack (CB-097) — what this project is actually built from.
-#
-# The skill pool covers many stacks; a project uses few. Without this,
-# a text signal saying "component" cannot tell React from Angular and
-# the floor either guesses or loads both. Manifests answer it from
-# evidence, once per change.
-#
-# Reads manifest FILES (presence) and their dependency text (content),
-# emits stack tokens consumed by select-agents through the `stack:`
-# field of policies/skill-selection.yaml.
-#
-# Cached at $CB_DIR/context/stack-profile.yaml and reused while every
-# recorded manifest keeps its size and mtime — a repo scan per agent
-# spawn would cost more than the skills it saves.
-#
+# detect-stack (CB-097) distinguishes ambiguous stack terms using manifest evidence.
+# Cache remains valid while every recorded manifest keeps its size and mtime.
 # Usage: detect-stack [--force] [repo_root]
 # Exit:  0 profile written or reused · 2 usage/interpreter error
 set -euo pipefail

@@ -1,29 +1,7 @@
 #!/usr/bin/env python3
 """check-leakage (CB-108) — reference strings must not survive to a push.
 
-Originality is a standing rule (00 §6, 01 §7) and it has been enforced
-by reading. Reading does not scale across 79 skills and 174 rule files,
-and it does not run on a branch nobody opened.
-
-The wordlist is deliberately NOT committed. Committing the list of
-strings you are hiding publishes them in the same repository — the
-check would become the leak. The list lives outside version control and
-its path is supplied at run time; the absence of a list is reported as
-a skip, never as a pass.
-
-Asserts:
-  L-1  the wordlist resolves, is readable, and holds at least one entry
-       (absent → exit 3, reported by verify as SKIP, never as PASS)
-  L-2  no tracked file under the scanned root contains a listed string,
-       matched case-insensitively on word boundaries
-  L-3  the wordlist itself is not tracked by git — a committed wordlist
-       defeats the entire mechanism and is a hard failure
-
-Findings print `path:line` and the wordlist ENTRY NUMBER, never the
-matched string. A CI log or a pasted terminal is an unbounded audience;
-the finding tells the owner where to look without republishing what was
-found. This is the same reasoning that removed the bypass sentence from
-DelegationGuard's block message (CB-099).
+The wordlist stays uncommitted: publishing the protected strings would leak them.
 
 Usage:
   check-leakage [--wordlist PATH] [ROOT]
@@ -97,9 +75,7 @@ def read_entries(path):
 
 
 def tracked_files(root):
-    """Tracked files under root. Untracked work-in-progress is not a leak
-    until it is committed, and failing on it would make the suite unusable
-    while editing."""
+    """Tracked files only; untracked work is not a leak until committed."""
     try:
         out = subprocess.run(
             ["git", "ls-files", "-z", "--", str(root)],
@@ -170,6 +146,8 @@ def main():
               f"{len({f[2] for f in findings})} wordlist entr(ies) in tracked files.",
               file=sys.stderr)
         for rel, lineno, idx in findings[:50]:
+            # Entry number, never the matched string: a CI log is an
+            # unbounded audience, so printing it here would be the leak.
             print(f"  L-2  {rel}:{lineno}  (wordlist entry #{idx})", file=sys.stderr)
         if len(findings) > 50:
             print(f"  ... {len(findings) - 50} more", file=sys.stderr)
