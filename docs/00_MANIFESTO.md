@@ -55,7 +55,7 @@ Compare with reference philosophies we learned from (but do not copy):
 - Thinking-first systems organize around *how to reason*.
 
 Cereblnk unifies all three under a runtime, and adds what none of them have:
-**evidence-driven verification as a hard gate before any answer reaches the user.**
+**evidence-driven verification as a workflow gate before any answer reaches the user.**
 
 ---
 
@@ -144,6 +144,10 @@ Conclusions travel with their evidence or they do not travel.
 **Law 3 — Verified synthesis only.**
 No synthesis reaches the user without at least one independent verification.
 Risk level determines how many verifications are required (see Quality Gates).
+Enforcement is partial. `GateFloorHook` blocks the conductor's stop while
+a risk-required gate role has produced no verification block, so "the gates
+ran" is mechanical. That the verdicts were *good* is not: the floor reads
+presence, never verdict value, and `run-flag complete` inspects neither.
 
 **Law 4 — Context is not shared. Knowledge is shared.**
 No agent reads the whole conversation or the whole repository.

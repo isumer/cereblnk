@@ -1,33 +1,7 @@
 #!/usr/bin/env python3
 """check-agent-skills — the agent<->skill graph has a checker (CB-097).
 
-Nothing read agents/ before this script existed: a skill could be wired
-to a misspelled name, or to no agent at all, and every suite stayed
-green. 22 of 77 skills were in that state when this was written. The
-project's own rule is that a rule without a checker is a wish.
-
-Rules enforced:
-  A-1  every agent frontmatter `skills:` entry resolves to a real skill
-  A-2  preload stays inside the budget: <= MAX_PRELOAD skills and
-       <= MAX_PRELOAD_TOKENS per agent (frontmatter preload is injected
-       on EVERY spawn, so it is charged against the agent's budget
-       before it reads anything — 03 section 2)
-  A-3  every domain skill is REACHABLE: preloaded by an agent, or
-       carried by a rule in policies/skill-selection.yaml
-  A-4  every map rule names an existing skill and existing roles
-  A-5  every discovery target resolves to an existing skill
-  A-6  entry-point skills (cb- prefixed) are neither preloaded nor mapped
-  A-7  no agent is denied a tool its own workflow requires. Concretely:
-       `disallowedTools` may not name `Write`, because run-discipline
-       §1 binds EVERY subagent to write its Response Block to
-       `$CB_DIR/context/<run_id>/<task_id>.yaml`, and /cb-design makes
-       architect-agent and qa-agent author spec sections to disk on top
-       of that (F-24). A denial the workflow contradicts is not a
-       restriction — it is a detour: the measured run wrote the files
-       through `cat > file <<'EOF'` and the work happened anyway.
-  A-8  every group directory holding nested skills is declared in
-       plugin.json `skills` — discovery reaches one level only, so an
-       undeclared group loads for nobody (F-09)
+The first audit found 22 of 77 skills unreachable from any agent or map rule.
 
 Usage: check-agent-skills [plugin_root]
 Exit:  0 clean · 1 violations found
@@ -68,10 +42,7 @@ def parse_list(raw):
 
 
 def main(argv):
-    # Anchored to the plugin it checks, not to a repository layout —
-    # it now ships inside that plugin, and an install has no
-    # `plugins/cereblnk/` above it. An explicit argument still wins so
-    # the repo can point it anywhere.
+    # Anchor to the installed plugin; installs have no `plugins/cereblnk/` parent.
     plugin = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else \
         pathlib.Path(__file__).resolve().parent.parent
     skills_root = plugin / "skills"
@@ -153,19 +124,8 @@ def main(argv):
             bad.append("A-3 %s: unreachable — no agent preloads it and no "
                        "rule in skill-selection.yaml selects it" % name)
 
-    # A-7: the definition may not forbid what the workflow commands.
-    #
-    # Eight agents shipped `disallowedTools: Write, Edit, NotebookEdit`
-    # while run-discipline §1 required each of them to write a Response
-    # Block to the run ledger, planner-agent to write `plan.md`, and
-    # architect-agent and qa-agent to author spec sections for
-    # /cb-design. None of that is optional, so the restriction did not
-    # stop the work — it only decided which tool did it. Measured: the
-    # architect authored four sections through a Bash heredoc.
-    #
-    # `Edit` and `NotebookEdit` stay denied and are not checked here:
-    # those roles decide and record, they never modify existing source.
-    # That is the shape the context agents already shipped with.
+    # A-7/F-24: eight agents denied required Write; one used Bash for four sections.
+    # Edit/NotebookEdit may stay denied because these roles do not modify source.
     for name, tools in sorted(denied.items()):
         if "Write" not in tools:
             continue
@@ -175,15 +135,8 @@ def main(argv):
                    "the run ledger. Deny Edit/NotebookEdit if the intent is "
                    "that it must not modify existing files." % rel)
 
-    # A-8: a shipped skill the host cannot see is not shipped.
-    # Discovery walks ONE level under a declared root: `<root>/<name>/SKILL.md`.
-    # 77 of this plugin's skills sit a level deeper, under six group
-    # directories, and were unreachable — `Skill(spring-boot)` answered
-    # `Unknown skill` while the file sat on disk (F-09). plugin.json's
-    # `skills` field declares extra scan roots, which is why the files do
-    # not have to move. This rule keeps the manifest and the tree in step:
-    # add a group directory without declaring it and the skills inside it
-    # are invisible, silently, exactly as before.
+    # A-8/F-09: discovery scans one level; 77 nested skills once returned
+    # `Unknown skill`. plugin.json must declare every group as a scan root.
     manifest_path = plugin / ".claude-plugin/plugin.json"
     declared = set()
     try:

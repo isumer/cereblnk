@@ -1,38 +1,18 @@
 #!/usr/bin/env python3
 """test-run-identity — the run directory is carried, not guessed (CB-147).
 
-F-31: eight hooks each derived the run directory with `ls -1dt
-context/*/ | head -1` — newest by mtime, re-evaluated per invocation. An
-agent that edits source and only then writes its Response Block creates
-a NEWER run directory than the one its edits were recorded in, so at
-SubagentStop the floor read an empty directory, found no exec.log, and
-exited 0. The edits were on disk the whole time, in the run the agent
-actually belonged to.
-
-The fix carries the identity on flags/run-active and resolves it through
-one validated cb_run_dir() in lib/cbenv.sh. This suite is that
-resolver's acceptance run, plus the F-31 regression through a real hook.
-
-The ordering of the F-31 case is the whole test: record the edits, THEN
-create the newer directory, THEN invoke the floor. Any other ordering
-passes against the old code and proves nothing.
-
-Requires bash + python3 on PATH (the hooks' own runtime contract).
-
 Usage: scripts/test-run-identity   Exit: 0 all pass · 1 any failure
 """
-import json, os, pathlib, shutil, subprocess, sys, tempfile
+import json, os, pathlib, re, shutil, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 H = ROOT / "plugins/cereblnk/hooks/scripts"
 CBENV = ROOT / "plugins/cereblnk/scripts/lib/cbenv.sh"
 
-# Every hook that resolves a run directory, with a payload it accepts.
-# The list is the scope of the change: if a ninth hook starts resolving
-# a run, it belongs here.
+# This list defines resolver scope; any new hook that resolves a run belongs here.
 HOOKS = ("skill-floor.sh", "exec-floor.sh", "reach-floor.sh",
-         "contract-floor.sh", "exec-ledger.sh", "skill-ledger.sh",
-         "digest-cap.sh", "run-guard.sh")
+         "contract-floor.sh", "ground-floor.sh", "exec-ledger.sh",
+         "skill-ledger.sh", "digest-cap.sh", "run-guard.sh")
 
 
 def hook(script, stdin, proj):
@@ -79,9 +59,7 @@ def main():
         return d
 
     def age(d, mtime):
-        # Writing a file inside a directory bumps that directory's mtime.
-        # The age must therefore be stamped AFTER the contents exist, or
-        # the fixture quietly stops reproducing the mtime race it is for.
+        # Stamp age after contents; creating them bumps the directory mtime.
         os.utime(d, (mtime, mtime))
         return d
 
@@ -124,9 +102,7 @@ def main():
         case("F-31: resolver returns the pinned run",
              got.rstrip("/").endswith("R-2026-08-24-002"), "got %r" % got)
 
-        # ---- 3. a dead pin falls back to the scan (HIGH) ---------------
-        # An unvalidated pin sends ledger writes into a removed directory
-        # silently, which is worse than the guess it replaced.
+        # A dead pin must fall back; otherwise ledger writes target a removed directory.
         proj = project(td, "dead")
         live = ctx(proj, "R-2026-08-24-002")
         (live / "exec.log").write_text(
@@ -145,9 +121,7 @@ def main():
         case("dead pin: the floor still enforces against the live run",
              r.returncode == 2, "rc=%d" % r.returncode)
 
-        # ---- 4. traversal is rejected (MEDIUM) ------------------------
-        # flags/run-active is written by more than one path and is read
-        # as a path component.
+        # Reject traversal because flags/run-active becomes a path component.
         proj = project(td, "traverse")
         ctx(proj, "R-2026-08-24-002", mtime=1787653000)
         for hostile in ("../../etc", "..", "../R-2026-08-25-001",
@@ -176,9 +150,7 @@ def main():
         case("no flag falls back to the newest directory",
              got.rstrip("/").endswith("R-2026-08-25-001"), "got %r" % got)
 
-        # ---- 5. fail-open is preserved in all eight hooks (MEDIUM) ----
-        # One shared resolver widens the blast radius of any error in it
-        # from one hook to the whole record layer. Empty result, exit 0.
+        # The shared resolver must fail open for all nine hooks: empty output, exit 0.
         proj = project(td, "failopen")
         arm(proj, "R-does-not-exist")     # pin dead AND no directory to scan
         got, rc = resolve(proj)
@@ -189,8 +161,8 @@ def main():
             case("fail-open: %s exits 0 on an empty resolver result" % script,
                  r.returncode == 0,
                  "rc=%d stderr=%r" % (r.returncode, r.stderr[:80]))
-        case("fail-open: all eight resolving hooks are covered",
-             len(HOOKS) == 8, "%d listed" % len(HOOKS))
+        case("fail-open: all nine resolving hooks are covered",
+             len(HOOKS) == 9, "%d listed" % len(HOOKS))
 
         # ---- run-flag records the identity ----------------------------
         proj = project(td, "armflag")
@@ -207,6 +179,47 @@ def main():
              and flag.read_text(encoding="utf-8").strip() == "R-2026-08-25-001",
              "rc=%d content=%r" % (rf.returncode,
                                    flag.read_text(encoding="utf-8") if flag.is_file() else None))
+
+        # CB-171: resume is idempotent; a refused pin change must not touch the timestamp.
+        before = flag.stat()
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir), "R-2026-08-25-001"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag re-arm of the same run is allowed and silent",
+             rf.returncode == 0 and not rf.stdout and not rf.stderr,
+             "rc=%d stdout=%r stderr=%r" %
+             (rf.returncode, rf.stdout, rf.stderr))
+        case("run-flag re-arm of the same run does not touch the flag",
+             flag.stat().st_mtime_ns == before.st_mtime_ns,
+             "before=%d after=%d" %
+             (before.st_mtime_ns, flag.stat().st_mtime_ns))
+
+        before = flag.stat()
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir), "R-2026-08-25-002"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        refusal = rf.stderr + rf.stdout
+        case("run-flag arm refuses to replace a different live pin",
+             rf.returncode == 1, "rc=%d message=%r" % (rf.returncode, refusal))
+        case("run-flag conflicting-pin refusal names both runs and cleanup",
+             "R-2026-08-25-001" in refusal
+             and "R-2026-08-25-002" in refusal
+             and "run-flag disarm" in refusal
+             and "run-flag complete" in refusal,
+             refusal[:240])
+        case("run-flag conflicting-pin refusal leaves the flag untouched",
+             flag.read_text(encoding="utf-8").strip() == "R-2026-08-25-001"
+             and flag.stat().st_mtime_ns == before.st_mtime_ns,
+             "content=%r before=%d after=%d" %
+             (flag.read_text(encoding="utf-8"), before.st_mtime_ns,
+              flag.stat().st_mtime_ns))
+        case("run-flag conflicting-pin refusal creates no new run directory",
+             not (cbdir / "context/R-2026-08-25-002").exists())
+
         rf = subprocess.run(
             ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
              "arm", str(cbdir), "../../etc"],
@@ -224,6 +237,473 @@ def main():
             env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
         case("run-flag arm without an id still arms (unpinned)",
              rf.returncode == 0 and flag.is_file(), "rc=%d" % rf.returncode)
+
+        # An invalid flag pins nothing, so a visible in-place repair is allowed.
+        proj = project(td, "armflag-garbage")
+        cbdir = proj / ".claude/cereblnk"
+        flag = cbdir / "flags/run-active"
+        flag.write_text("../../not-a-pin\n", encoding="utf-8")
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "arm", str(cbdir), "R-2026-08-25-003"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag arm replaces a garbage pin with a warning",
+             rf.returncode == 0 and "warning" in rf.stderr.lower()
+             and "unpinned or invalid" in rf.stderr,
+             "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("run-flag arm writes the requested id over a garbage pin",
+             flag.read_text(encoding="utf-8").strip() == "R-2026-08-25-003",
+             "content=%r" % flag.read_text(encoding="utf-8"))
+
+        # ---- CB-169: complete owns the telemetry append --------------
+        proj = project(td, "completion-telemetry")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-001"
+        run = ctx(proj, run_id)
+        (run / "plan.md").write_text(
+            "- spec: none — direct request (/cb-do via dispatch)\n"
+            "- goal: Ship a compact review ledger without loading diffs.\n"
+            "- request risk: **MED**\n\n"
+            "### [x] Task 1\n- risk: HIGH\n", encoding="utf-8")
+        (run / "T-001.yaml").write_text(
+            "kind: response\nbudget_report:\n"
+            "  tokens_received: 2000\n  tokens_used: 1200\n"
+            "artifacts: [src/ignored-ledger-is-authoritative.py]\n",
+            encoding="utf-8")
+        (run / "T-002.yaml").write_text(
+            "kind: response\n"
+            "budget_report: {tokens_received: 500, tokens_used: 300}\n",
+            encoding="utf-8")
+        (run / "V-001.yaml").write_text(
+            "kind: verification\nbudget_report.tokens_used: 25\n",
+            encoding="utf-8")
+        edited_paths = ["src/file-%02d.py" % n for n in range(12, 0, -1)]
+        edited_paths.append("src/file-05.py")
+        (run / "edited-files.log").write_text(
+            "".join("1788200000\tbackend-agent\t%s\n" % (proj / path)
+                    for path in edited_paths), encoding="utf-8")
+        arm(proj, run_id)
+        for stale in ("run-active.state", "run-active.nudged",
+                      "run-active.witness"):
+            (cbdir / "flags" / stale).write_text("stale\n", encoding="utf-8")
+        baseline = run / "contract-baseline.txt"
+        baseline.write_text("old baseline\n", encoding="utf-8")
+        (run / "exec-floor.backend-agent.state").write_text(
+            "2\n", encoding="utf-8")
+        (run / "run-guard.last-progress").write_text(
+            "2\n", encoding="utf-8")
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir), run_id,
+             "--decision", "merge-safe", "--gate", "V pass-with-risk"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj),
+                     CLAUDE_SESSION_ID="session-complete-178"), cwd=str(proj))
+        runs_log = cbdir / "telemetry/runs.log"
+        lines = runs_log.read_text(encoding="utf-8").splitlines() \
+            if runs_log.is_file() else []
+        expected = (f"{run_id} · /cb-do · medium · V pass-with-risk · "
+                    "decision merge-safe · tokens_total=1525 · tasks_shipped=2")
+        review_log = cbdir / "telemetry/review-ledger.log"
+        review_lines = review_log.read_text(encoding="utf-8").splitlines() \
+            if review_log.is_file() else []
+        review_files = ",".join("src/file-%02d.py" % n
+                                for n in range(1, 11)) + ",+2 more"
+        review_pattern = (r"\d{4}-\d{2}-\d{2} · %s · reviewed=no · files=%s · %s"
+                          % (re.escape(run_id), re.escape(review_files),
+                             re.escape("Ship a compact review ledger without loading diffs.")))
+        case("run-flag complete exits 0 with telemetry metadata",
+             rf.returncode == 0, "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("run-flag complete appends exactly one formatted telemetry line",
+             lines == [expected], "lines=%r" % lines)
+        case("shipping completion appends exactly one review-ledger line",
+             len(review_lines) == 1
+             and re.fullmatch(review_pattern, review_lines[0]) is not None,
+             "lines=%r" % review_lines)
+        case("run-flag complete preserves handoff and cleanup behavior",
+             (cbdir / "flags/run-completed").is_file()
+             and not (cbdir / "flags/run-active").exists()
+             and not any((cbdir / "flags" / stale).exists() for stale in
+                         ("run-active.state", "run-active.nudged",
+                          "run-active.witness"))
+             and not baseline.exists())
+        archived = cbdir / "archive" / run_id
+        pointer = archived / "archive-pointer.txt"
+        pointer_text = pointer.read_text(encoding="utf-8") \
+            if pointer.is_file() else ""
+        case("run-flag complete moves the intact run context to archive",
+             not run.exists() and archived.is_dir()
+             and (archived / "plan.md").is_file()
+             and (archived / "T-001.yaml").is_file(),
+             "stdout=%r stderr=%r" % (rf.stdout, rf.stderr))
+        case("completed archive prefers CLAUDE_SESSION_ID for pointer metadata",
+             (f"run_id: {run_id}\n" in pointer_text
+              and "session_id: session-complete-178\n" in pointer_text
+              and "spec: none — direct request (/cb-do via dispatch)\n" in
+                  pointer_text
+              and re.search(r"archived_at: \d{4}-\d{2}-\d{2}T", pointer_text)),
+             "pointer=%r" % pointer_text)
+        case("completed archive drops per-run transient markers",
+             not (archived / "contract-baseline.txt").exists()
+             and not (archived / "exec-floor.backend-agent.state").exists()
+             and not (archived / "run-guard.last-progress").exists())
+
+        # ---- CB-178: abandon retires without successful handoff -------
+        proj = project(td, "abandon-run")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-09-01-002"
+        run = ctx(proj, run_id)
+        (run / "plan.md").write_text(
+            "- spec: memory/specs/archive-lifecycle.md\n"
+            "- goal: Retire a dead run without undoing memory.\n\n"
+            "### [ ] Task 1: unfinished\n- risk: MED\n", encoding="utf-8")
+        (run / "inbox.md").write_text(
+            "- [ ] class: correction — unfinished\n", encoding="utf-8")
+        (cbdir / "state.md").write_text(
+            f"run_id: {run_id}\n"
+            "stage: executing\n"
+            "spec: memory/specs/archive-lifecycle.md\n"
+            f"plan: context/{run_id}/plan.md\n", encoding="utf-8")
+        memory_files = [
+            cbdir / "memory/contracts/api.md",
+            cbdir / "memory/briefs/archive.md",
+            cbdir / "memory/requirements/archive.md",
+        ]
+        for memory_file in memory_files:
+            memory_file.parent.mkdir(parents=True, exist_ok=True)
+            memory_file.write_text("durable\n", encoding="utf-8")
+        recorded = memory_files + [proj / "src/not-memory.py"]
+        (run / "edited-files.log").write_text(
+            "".join("1788200000\tbackend-agent\t%s\n" % path
+                    for path in recorded), encoding="utf-8")
+        for transient in ("contract-baseline.txt",
+                          "skill-floor.backend-agent.state",
+                          "run-guard.last-progress"):
+            (run / transient).write_text("stale\n", encoding="utf-8")
+        arm(proj, run_id)
+        for stale in ("run-active.state", "run-active.nudged",
+                      "run-active.witness", "run-completed"):
+            (cbdir / "flags" / stale).write_text("stale\n", encoding="utf-8")
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj),
+                     CLAUDE_SESSION_ID="session-abandon-178"), cwd=str(proj))
+        archived = cbdir / "archive" / run_id
+        output = rf.stdout + rf.stderr
+        case("run-flag abandon resolves the active pin and exits 0",
+             rf.returncode == 0, "rc=%d output=%r" % (rf.returncode, output))
+        case("run-flag abandon moves context and preserves durable evidence",
+             not run.exists() and archived.is_dir()
+             and (archived / "plan.md").is_file()
+             and (archived / "edited-files.log").is_file())
+        case("run-flag abandon clears flags without run-completed",
+             not any((cbdir / "flags" / stale).exists() for stale in
+                     ("run-active", "run-active.state", "run-active.nudged",
+                      "run-active.witness", "run-completed")))
+        case("run-flag abandon clears all run transient state",
+             not (archived / "contract-baseline.txt").exists()
+             and not (archived / "skill-floor.backend-agent.state").exists()
+             and not (archived / "run-guard.last-progress").exists())
+        case("run-flag abandon lists only durable memory touch classes",
+             all("memory/%s/" % part in output
+                 for part in ("contracts", "briefs", "requirements"))
+             and "src/not-memory.py" not in output,
+             "output=%r" % output)
+        case("run-flag abandon never reverts touched memory",
+             all(path.read_text(encoding="utf-8") == "durable\n"
+                 for path in memory_files))
+        case("run-flag abandon writes no completion telemetry",
+             not (cbdir / "telemetry/runs.log").exists()
+             and not (cbdir / "telemetry/review-ledger.log").exists())
+        state_text = (cbdir / "state.md").read_text(encoding="utf-8")
+        status = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-status"),
+             str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("archival rewrites the global live plan pointer",
+             "stage: archived\n" in state_text
+             and f"plan: archive/{run_id}/plan.md\n" in state_text,
+             "state=%r" % state_text)
+        case("run-status resolves archived plan progress and inbox",
+             status.returncode == 0
+             and "progress: 0/1 checked" in status.stdout
+             and "inbox: 1 unresolved (1 blocking)" in status.stdout,
+             "rc=%d stdout=%r stderr=%r" %
+             (status.returncode, status.stdout, status.stderr))
+        abandon_pointer = (archived / "archive-pointer.txt").read_text(
+            encoding="utf-8") if (archived / "archive-pointer.txt").is_file() else ""
+        case("abandoned archive carries session, spec, and date pointer",
+             "session_id: session-abandon-178\n" in abandon_pointer
+             and "spec: memory/specs/archive-lifecycle.md\n" in abandon_pointer
+             and re.search(r"archived_at: \d{4}-\d{2}-\d{2}T", abandon_pointer)
+             is not None,
+             "pointer=%r" % abandon_pointer)
+
+        # CB-183: one dated archive is unambiguous fallback evidence when session state lacks the id.
+        proj = project(td, "archive-history-session")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-09-01-006"
+        ctx(proj, run_id)
+        history = cbdir / "history"
+        history.mkdir()
+        (history / "20260901-130000-auto-hist183a.jsonl").write_text(
+            "{}\n", encoding="utf-8")
+        (history / "20260831-235959-auto-old183aa.jsonl").write_text(
+            "{}\n", encoding="utf-8")
+        arm(proj, run_id)
+        archive_env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+        archive_env.pop("CLAUDE_SESSION_ID", None)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir)], capture_output=True, text=True,
+            env=archive_env, cwd=str(proj))
+        history_pointer = (cbdir / "archive" / run_id /
+                           "archive-pointer.txt").read_text(encoding="utf-8")
+        case("archive pointer falls back to the matching history filename",
+             rf.returncode == 0
+             and "session_id: hist183a\n" in history_pointer,
+             "rc=%d pointer=%r" % (rf.returncode, history_pointer))
+
+        proj = project(td, "archive-context-session")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-09-02-001"
+        run = ctx(proj, run_id)
+        (run / "inbox.md").write_text(
+            "request:\n  sessionId: context-183\n", encoding="utf-8")
+        arm(proj, run_id)
+        archive_env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+        archive_env.pop("CLAUDE_SESSION_ID", None)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir)], capture_output=True, text=True,
+            env=archive_env, cwd=str(proj))
+        context_pointer = (cbdir / "archive" / run_id /
+                           "archive-pointer.txt").read_text(encoding="utf-8")
+        case("archive pointer falls back to a run-context session key",
+             rf.returncode == 0
+             and "session_id: context-183\n" in context_pointer,
+             "rc=%d pointer=%r" % (rf.returncode, context_pointer))
+
+        proj = project(td, "archive-missing-session")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-09-03-001"
+        ctx(proj, run_id)
+        arm(proj, run_id)
+        archive_env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+        archive_env.pop("CLAUDE_SESSION_ID", None)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir)], capture_output=True, text=True,
+            env=archive_env, cwd=str(proj))
+        missing_pointer = (cbdir / "archive" / run_id /
+                           "archive-pointer.txt").read_text(encoding="utf-8")
+        case("archive pointer keeps the missing-session sentinel",
+             rf.returncode == 0 and "session_id: -\n" in missing_pointer,
+             "rc=%d pointer=%r" % (rf.returncode, missing_pointer))
+
+        # Predictable archive failures are rejected before lifecycle state
+        # changes. A retry can therefore fix the collision and proceed.
+        proj = project(td, "abandon-collision")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-09-01-003"
+        run = ctx(proj, run_id)
+        existing_archive = cbdir / "archive" / run_id
+        existing_archive.mkdir(parents=True)
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag abandon refuses an existing archive destination",
+             rf.returncode == 1 and "already exists" in rf.stderr,
+             "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("archive collision leaves the live run and flag untouched",
+             run.is_dir()
+             and (cbdir / "flags/run-active").read_text(
+                 encoding="utf-8").strip() == run_id)
+
+        proj = project(td, "abandon-wrong-pin")
+        cbdir = proj / ".claude/cereblnk"
+        live_id = "R-2026-09-01-004"
+        other_id = "R-2026-09-01-005"
+        ctx(proj, live_id)
+        other = ctx(proj, other_id)
+        arm(proj, live_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "abandon", str(cbdir), other_id], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        case("run-flag abandon refuses an id different from the live pin",
+             rf.returncode == 1 and live_id in rf.stderr
+             and other_id in rf.stderr,
+             "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("mismatched abandon leaves both contexts and the pin intact",
+             other.is_dir()
+             and (cbdir / "context" / live_id).is_dir()
+             and (cbdir / "flags/run-active").read_text(
+                 encoding="utf-8").strip() == live_id)
+
+        # Runs without an exec ledger recover touched files from response
+        # artifacts, including deterministic sorting and deduplication.
+        proj = project(td, "completion-artifact-fallback")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-004"
+        run = ctx(proj, run_id)
+        (run / "T-001.yaml").write_text(
+            "kind: response\n"
+            "artifacts:\n"
+            "  - src/z.py\n"
+            "  - src/a.py\n"
+            "  - src/a.py\n"
+            f"  - .claude/cereblnk/context/{run_id}/T-001.yaml\n"
+            "  - plan.md\n", encoding="utf-8")
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir), "--decision", "ship fallback record"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        fallback_lines = (cbdir / "telemetry/review-ledger.log").read_text(
+            encoding="utf-8").splitlines()
+        fallback_pattern = (r"\d{4}-\d{2}-\d{2} · %s · reviewed=no · "
+                            r"files=src/a\.py,src/z\.py · ship fallback record"
+                            % re.escape(run_id))
+        case("review ledger falls back to response artifacts",
+             rf.returncode == 0 and len(fallback_lines) == 1
+             and re.fullmatch(fallback_pattern, fallback_lines[0]) is not None,
+             "rc=%d lines=%r stderr=%r" %
+             (rf.returncode, fallback_lines, rf.stderr))
+
+        # An edit-only run ships, but its review list excludes Cereblnk bookkeeping.
+        proj = project(td, "completion-edit-only")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-005"
+        run = ctx(proj, run_id)
+        (run / "plan.md").write_text(
+            "- goal: Ship an edit-only run.\n", encoding="utf-8")
+        (run / "V-001.yaml").write_text(
+            "kind: verification\n", encoding="utf-8")
+        (run / "edited-files.log").write_text(
+            "1788200000\tbackend-agent\tsrc/Foo.java\n"
+            f"1788200001\tbackend-agent\t.claude/cereblnk/context/{run_id}/T-1.yaml\n"
+            "1788200002\tbackend-agent\tplan.md\n", encoding="utf-8")
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        edit_only_lines = (cbdir / "telemetry/review-ledger.log").read_text(
+            encoding="utf-8").splitlines()
+        case("non-empty edit ledger writes a review record with zero tasks",
+             rf.returncode == 0 and len(edit_only_lines) == 1
+             and " · files=src/Foo.java · Ship an edit-only run." in
+             edit_only_lines[0],
+             "rc=%d lines=%r stderr=%r" %
+             (rf.returncode, edit_only_lines, rf.stderr))
+
+        # Bookkeeping-only edits do not make a zero-task run shipping. The
+        # completion still belongs in runs.log, but not in review-ledger.log.
+        proj = project(td, "completion-bookkeeping-only")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-007"
+        run = ctx(proj, run_id)
+        (run / "V-001.yaml").write_text(
+            "kind: verification\n", encoding="utf-8")
+        (run / "edited-files.log").write_text(
+            f"1788200000\tbackend-agent\t.claude/cereblnk/context/{run_id}/T-001.yaml\n"
+            "1788200001\tbackend-agent\t.claude/cereblnk/state.md\n",
+            encoding="utf-8")
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir), "--decision", "bookkeeping only"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        bookkeeping_runs = (cbdir / "telemetry/runs.log").read_text(
+            encoding="utf-8").splitlines()
+        bookkeeping_review = cbdir / "telemetry/review-ledger.log"
+        case("bookkeeping-only edit ledger writes no review record",
+             rf.returncode == 0
+             and (not bookkeeping_review.exists()
+                  or not bookkeeping_review.read_text(encoding="utf-8"))
+             and bookkeeping_runs == [
+                 f"{run_id} · - · - · - · decision bookkeeping only · "
+                 "tasks_shipped=0"],
+             "rc=%d runs=%r review_exists=%r stderr=%r" %
+             (rf.returncode, bookkeeping_runs, bookkeeping_review.exists(),
+              rf.stderr))
+
+        # A review/think completion remains in runs.log but does not create a
+        # review-ledger record when it has neither response tasks nor edits.
+        proj = project(td, "completion-non-shipping")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-006"
+        run = ctx(proj, run_id)
+        (run / "plan.md").write_text(
+            "- workflow: /cb-review\n"
+            "- request risk: LOW\n"
+            "- goal: Review the change without shipping files.\n",
+            encoding="utf-8")
+        (run / "V-001.yaml").write_text(
+            "kind: verification\n", encoding="utf-8")
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir), "--decision", "analysis-only"],
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        nonshipping_runs = (cbdir / "telemetry/runs.log").read_text(
+            encoding="utf-8").splitlines()
+        nonshipping_review = cbdir / "telemetry/review-ledger.log"
+        case("non-shipping completion writes no review-ledger line",
+             rf.returncode == 0
+             and (not nonshipping_review.exists()
+                  or not nonshipping_review.read_text(encoding="utf-8"))
+             and nonshipping_runs == [
+                 f"{run_id} · /cb-review · low · - · decision analysis-only · "
+                 "tasks_shipped=0"],
+             "rc=%d runs=%r review_exists=%r stderr=%r" %
+             (rf.returncode, nonshipping_runs, nonshipping_review.exists(),
+              rf.stderr))
+
+        # Missing context and identity are telemetry degradation paths, not
+        # reasons to skip the record or fail an otherwise valid completion.
+        proj = project(td, "completion-minimal")
+        cbdir = proj / ".claude/cereblnk"
+        shutil.rmtree(cbdir / "context")
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        minimal = (cbdir / "telemetry/runs.log").read_text(
+            encoding="utf-8").splitlines()
+        case("run-flag complete without a context directory exits 0",
+             rf.returncode == 0, "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("run-flag complete without a resolved run writes a partial line",
+             minimal == ["- · - · - · - · decision -"],
+             "lines=%r" % minimal)
+
+        # A context directory makes the task count knowable even when no
+        # budget is present; the unavailable token field stays absent.
+        proj = project(td, "completion-no-budget")
+        cbdir = proj / ".claude/cereblnk"
+        run_id = "R-2026-08-31-002"
+        run = ctx(proj, run_id)
+        (run / "T-001.yaml").write_text("kind: response\n", encoding="utf-8")
+        arm(proj, run_id)
+        rf = subprocess.run(
+            ["bash", str(ROOT / "plugins/cereblnk/scripts/run-flag"),
+             "complete", str(cbdir)], capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)), cwd=str(proj))
+        partial = (cbdir / "telemetry/runs.log").read_text(
+            encoding="utf-8").splitlines()
+        case("run-flag complete without budget fields exits 0",
+             rf.returncode == 0, "rc=%d stderr=%r" % (rf.returncode, rf.stderr))
+        case("missing budget produces a partial line with the known task count",
+             partial == [f"{run_id} · - · - · - · decision - · tasks_shipped=1"]
+             and "tokens_total=" not in partial[0], "lines=%r" % partial)
 
     if fails:
         print("test-run-identity: %d/%d FAILED" % (len(fails), ran))

@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
-# select-agents (CB-081, extended CB-097) — deterministic specialist AND
-# skill selection, the scriptable subset of agent-selection-policy.md
-# §1 + §3b + §4c.
-#
-# A weak conductor pipes `git diff --name-only <range>` in and reads the
-# answer instead of reasoning about the routing table. The policy stays
-# authoritative for signals a path cannot carry (task semantics, money,
-# prod-config intent); this script never DOWNGRADES — it emits the floor.
-#
-# CB-097 adds two things paths alone could not do:
-#   --text  route from the REQUEST when nothing has changed yet (design,
-#           new build). A path-only selector is blind at exactly the
-#           moment a spec is being written.
-#   skills_required  per role, from policies/skill-selection.yaml, gated
-#           by the stack profile. The agent loads these at run start;
-#           SubagentStop blocks the run if it did not.
-#
-# CB-143 adds the missing direction. A stack token was a veto only, so
-# a project being a Spring Boot project never PUT a skill on a role. A
-# role already routed now also receives the stack-declared skills its
-# own map rules own (bounded stack completion, below), and a TEXT rule
-# names server-side behaviour so the implementer is routed at all.
-#
+# select-agents (CB-081/CB-097) emits the deterministic routing floor; policy handles semantics paths lack.
+# CB-143: stack tokens once only vetoed skills, so confirmed stacks added nothing to routed roles.
 # Usage: select-agents <file>...
 #        git diff --name-only main... | select-agents
 #        select-agents --text "add idempotency to the payment service"
@@ -43,9 +22,7 @@ CB_LIB="$CB_SCRIPTS/lib"
 CB_EMIT=""
 if [ "${1:-}" = "--emit-floor" ]; then CB_EMIT=1; shift; fi
 
-# --roster reads no diff and runs no rule: it lists what select-agents
-# already knows how to spawn, next to what each one decides, so a
-# conductor can match a job to a role without opening 27 agent files.
+# --roster exposes spawnable names and decision domains without running selection.
 CB_ROSTER=""
 if [ "${1:-}" = "--roster" ]; then CB_ROSTER=1; shift; fi
 
@@ -59,9 +36,7 @@ if [ $# -ge 1 ]; then CB_PATHS="$(printf '%s\n' "$@")"
 elif [ -n "$CB_TEXT" ]; then CB_PATHS=""
 elif [ -n "$CB_ROSTER" ]; then CB_PATHS=""
 else CB_PATHS="$(cat)"; fi
-# The floor is what judges the subagent, so it is written only to a
-# PINNED run — cb_run_dir falls back to a newest-directory guess, and a
-# guessed destination for the judge's own input is how a ledger splits.
+# Persist floors only to a pinned run; guessing the judge's destination splits ledgers.
 CB_RUN=""
 if [ -n "$CB_EMIT" ] && [ -n "${CB_DIR:-}" ] && [ -s "$CB_DIR/flags/run-active" ]; then
   CB_RUN="$(cb_run_dir)"
@@ -74,15 +49,7 @@ sys.path.insert(0, os.environ["CB_LIB"])
 import cbmap  # noqa: E402
 
 
-# ---- roster: spawnable name -> declared decision domain, no rule runs ----
-# The frontmatter `description` on every agent file already states what
-# it decides; nothing before this read it. Carrying the whole field (27
-# agents, ~830 words together) on every invocation would flood a budget
-# that a conductor is watching, so only the opening sentence is kept —
-# in this codebase's descriptions that sentence states the decision
-# domain and everything after it is elaboration (an "Invoke when..."
-# clause, or worked examples) that a reader picks the role first and
-# reads later, from that role's own file.
+# Keep only each description's decision-domain opening; all 27 full fields total ~830 words.
 def _agent_description(path):
     """First sentence of the frontmatter `description:`, or '' if none.
 
@@ -133,9 +100,20 @@ def _build_roster():
     return sorted(roster)
 
 
+ROSTER = None
+
+
+def _roster():
+    """Build the shared roster only for paths that need its domains."""
+    global ROSTER
+    if ROSTER is None:
+        ROSTER = _build_roster()
+    return ROSTER
+
+
 def _print_roster():
     print("roster:")
-    for _stem, _qname, _desc in _build_roster():
+    for _stem, _qname, _desc in _roster():
         _esc = _desc.replace("\\", "\\\\").replace('"', '\\"')
         print('  %s: "%s"' % (_qname, _esc))
 
@@ -167,41 +145,22 @@ RULES = [
      ["backend-agent"], 1),   # only if no UI rule matched the same file (handled below)
     ("test surface",          r'(?i)(/tests?/|\.test\.|\.spec\.|_test\.(go|py)$|Test\.java$)',
      ["qa-agent"], 1),
-    # F-21: shell, YAML and XML resolved to nothing. The journal read
-    # this as a regex-compilation fault because skill-selection.yaml
-    # defines a shell rule; it does not. That table attaches SKILLS to
-    # an agent already chosen. This table CHOOSES the agent, and it had
-    # no row for any of the three — so the shell skill could never fire,
-    # because nothing was selected for it to attach to.
-    #
-    # The surfaces that went missing were not arbitrary: infrastructure,
-    # configuration and schema. Cereblnk's own tree is mostly shell.
+    # F-21: shell, YAML, and XML had skill rows but no role-routing rows, so resolved to nothing.
     ("shell/automation",      r'(?i)(\.(sh|bash|zsh)$|(^|/)Makefile$|(^|/)Justfile$)',
      ["infra-agent"], 2),
     ("config/serialisation",  r'(?i)\.(ya?ml|toml|ini|properties|xml)$',
      ["infra-agent"], 2),
-    # F-21 second effect, and the gap that started it: a request to
-    # restructure the AI configuration itself resolved to nothing, and
-    # the two failure messages sent the caller back and forth. Agent,
-    # skill and rule files are authored documents about how work is
-    # done — the technical writer's surface, not a code surface.
+    # F-21: AI configuration is an authored-document surface, not a code surface.
     ("ai configuration",      r'(?i)((^|[/\\])\.claude([/\\]|$)|(^|[/\\])CLAUDE\.md$|(^|[/\\])GUIDELINES\.md$|(^|[/\\])(agents|skills)[/\\].*\.md$)',
      ["technicalwriter-agent"], 1),
     ("documentation",         r'(?i)\.md$',
      ["docs-agent"], 1),
-    # Documentation splits by WHO owns the artifact, not by extension.
-    # docs-agent reviews docs against a diff inside a code workflow;
-    # technicalwriter-agent owns the document when the document IS the
-    # deliverable. memory/specs and memory/briefs only exist while one
-    # is being authored, so the path settles it. Both separators: the
-    # blocked path arrives as the platform wrote it.
+    # Documentation routes by ownership: docs-agent reviews; technicalwriter-agent authors.
+    # Match both separators because host payloads preserve platform paths.
     ("authored documentation", r'(?i)(?:^|[/\\])memory[/\\](specs|briefs)[/\\]',
      ["technicalwriter-agent"], 1),
 ]
-# By name, not by index. These were RULES[5] and RULES[10]; adding three
-# rows above them silently repointed both at the wrong pattern, and the
-# only thing that noticed was a fixture two suites away. A table meant
-# to grow must not be addressed by position.
+# Adding three rules silently repointed former indexes 5 and 10; address growing tables by name.
 def _rx(name):
     for n, rx, _ag, _gl in RULES:
         if n == name:
@@ -230,24 +189,8 @@ TEXT_RULES = [
      ["frontend-agent"], 1),
     ("api contract",   r'(?i)(\bapi\b|endpoint|contract|versioning)',
      ["apidesign-agent"], 2),
-    # CB-143 / F-07. Twenty map rules carry backend-agent and every one
-    # of them is a LANGUAGE or FRAMEWORK rule whose topics are
-    # technology names -- java, spring boot, jpa. None carries request
-    # semantics. So "add a REST endpoint for user registration" matched
-    # the contract row and nothing else: the surface's designer was
-    # selected and its implementer never was, which §1 (server-side
-    # logic -> backend-agent, mandatory) and §3b (the owner of a surface
-    # is in every stage that shapes it) both forbid.
-    #
-    # This row names the WORK, not the stack. It pairs with the contract
-    # row rather than replacing it -- union, never max-only (§2.1): the
-    # designer owns the contract, the implementer owns the behaviour
-    # behind it, and a request for an endpoint asks for both. Level 2 is
-    # §1's floor for server-side logic.
-    #
-    # Deliberately excluded: bare "repository". A request to restructure
-    # the repository is configuration, not persistence, and CB-132
-    # already paid for routing that case wrongly.
+    # CB-143/F-07: endpoint requests selected the designer but omitted the backend implementer.
+    # This work-semantic row unions both roles; bare "repository" stays configuration.
     ("server-side behavior",
      r'(?i)(endpoint|\bhandler\b|controller|[A-Za-z]*[Ss]ervices?\b|\bbackend\b|server-?side|business logic|persist|background job|\bworker\b|\bcron\b|webhook|\bmiddleware\b)',
      ["backend-agent"], 2),
@@ -263,9 +206,7 @@ TEXT_RULES = [
     ("documentation",  r'(?i)(\bdocs?\b|documentation|readme|changelog|docstring'
                        r'|\bguide\b|tutorial)',
      ["docs-agent"], 1),
-    # A rewrite reads the old code before anything is designed, so the
-    # analyst is selected from the request rather than from a diff --
-    # there is no diff yet. Level 3: the blast radius is the module.
+    # Rewrites select the analyst from request text because no diff exists yet.
     ("rewrite/legacy", r'(?i)(rewrite|re-?write|legacy|modernis|moderniz|from scratch|redesign)',
      ["legacy-analyst-agent", "architect-agent"], 3),
 ]
@@ -293,9 +234,7 @@ for p in paths:
     for name, rx, ag, gl in RULES:
         if name == "plain js/ts backend" and UI.search(p):
             continue
-        # An authored spec is not also a diff-driven doc review. Adding
-        # docs-agent here would not raise a floor, it would name the
-        # wrong specialist alongside the right one.
+        # An authored spec is not also a diff-driven documentation review.
         if name == "documentation" and AUTHORED.search(p):
             continue
         if re.search(rx, p):
@@ -326,10 +265,7 @@ if errors:
     raise SystemExit(2)
 
 skills, skill_why = {}, []
-# role -> [(trigger, skill)], one hop from the rules that actually matched.
-# Not the transitive closure: chasing it from `java` yields 29 pairs that
-# reach React, Redux and express() through generic hubs like docker, which
-# is the whole graph rather than a set about this task.
+# Discovery is one hop; transitive closure from Java reaches 29 unrelated pairs via generic hubs.
 watch = {}
 
 
@@ -371,34 +307,8 @@ for r in rules:
     skill_why.append("%s <- %s" % (r["skill"], hit))
     watch_add(r)
 
-# ---- bounded stack completion (CB-143 / F-07) -------------------------
-# In the loop above a declared stack token is a veto: it can only ever
-# subtract. A project BEING a Spring Boot project therefore added
-# nothing, and a routed backend-agent arrived with an empty skill floor
-# unless the request text happened to name the technology. Nobody
-# writing "add a REST endpoint for user registration" writes
-# "hibernate"; the pom.xml says it instead.
-#
-# Completion is the narrow inverse: a role the rules ALREADY routed
-# gains the skills whose declared stack token the profile confirms.
-# Three bounds keep it from becoming "a stack token triggers", the
-# version that would load java for a typo fix in a README:
-#
-#   1. it never adds a ROLE. Only roles already in `agents` gain
-#      skills, so the floor's membership is still decided by path and
-#      topic rules alone. docs-agent is in no stack rule's roles, so a
-#      docs-only change in a Java repository is untouched.
-#   2. it fires only for rules that DECLARE a stack token AND only when
-#      the profile confirms that token. A rule with no token is
-#      unaffected; an absent profile (stack is None) disables it
-#      entirely, so the "no stack gate, never a wrong guess" rule above
-#      still holds.
-#   3. it runs BEFORE the unresolved branch below, so an unroutable
-#      request still gets nothing rather than a completed guess.
-#
-# What this buys is the §3b guarantee in mechanism rather than in prose:
-# the specialist that owns the surface is selected, and it is selected
-# WITH the skill closure that surface needs in this repository.
+# CB-143/F-07: confirmed stack skills complete roles already routed; they never add roles.
+# Absent profiles disable completion, and unresolved requests remain unresolved.
 if stack:
     for r in rules:
         if not r["stack"] or r["stack"] not in stack:
@@ -414,19 +324,8 @@ if stack:
                 watch_add(r)
 
 if not agents:
-    # The mechanical floor has nothing left to force: no path rule and
-    # no text rule matched. Say so on the first line, emit no guessed
-    # specialist, and hand the roster to the conductor so it picks a
-    # role by the job it owns and cites the roster line that justifies
-    # it. A selection without that citation is an assertion, not a
-    # routing.
-    #
-    # This branch runs only when `agents` is still empty here — every
-    # rule above that DID match already added its agents and raised the
-    # floor, so nothing mandatory (auth, schema/migration, terraform
-    # state, money, deletion) is ever routed through this branch: those
-    # all match through RULES or TEXT_RULES before this point, or they
-    # do not appear in the request at all.
+    # No path/text rule matched: emit no guess, hand off the roster, and require a cited choice.
+    # Mandatory risk signals match before this branch or are absent from the request.
     print("unresolved: true   # no rule matched")
     if text:
         print("reason: --text was supplied and no rule matched it — the "
@@ -441,28 +340,8 @@ if not agents:
     raise SystemExit(3)
 
 print("# select-agents — floor, never a ceiling (policy §1/§3b/§4c authoritative)")
-# ---- spawnable names (CB-132) ----
-# The platform addresses an agent as plugin:directory:file —
-# `cereblnk:engineering:docs-agent`. This script owns the roster and
-# knows where each file lives, so it is the one place that can say the
-# spawnable name. It did not: it emitted `docs-agent`, DelegationGuard
-# copied that into `NEXT ACTION: spawn docs-agent`, and a run followed
-# the instruction exactly. Four spawns failed with `Agent type
-# 'docs-agent' not found`, each answering with the full 27-agent
-# roster, until the model worked out the shape from the error text.
-#
-# Nothing in the tree carried the qualified form — not the agent
-# frontmatter, not TOPOLOGY, not the policies. It existed only as a
-# directory path nobody surfaced. A routing table whose output cannot
-# be handed to the spawn API is not routing, it is a suggestion.
-#
-# Unknown names fall through unchanged rather than being guessed at:
-# `challenger-agent` is printed by this script as a literal, and an
-# agent added outside agents/ should read as itself, not as a fiction.
-# __file__ is unusable here: the body runs from a heredoc, so it
-# resolves against the caller's directory and the map came back
-# empty in silence. CB_LIB is exported by the wrapper above and
-# points at scripts/lib, so the plugin root is two levels up.
+# CB-132: bare names caused four failed spawns; emit plugin:directory:file names.
+# The heredoc makes __file__ caller-relative, so derive the plugin root from exported CB_LIB.
 AGENT_DIR = pathlib.Path(os.environ["CB_LIB"]).resolve().parent.parent / "agents"
 _QUALIFIED = {}
 if AGENT_DIR.is_dir():
@@ -476,10 +355,14 @@ def qualify(name):
 
 
 print("specialists:")
-for a in agents:
-    print("  - %s" % qualify(a))
+mandated_agents = list(agents)
 if level == 3:
-    print("  - %s   # mandatory at gate level 3" % qualify("challenger-agent"))
+    mandated_agents.append("challenger-agent")
+for a in mandated_agents:
+    if a == "challenger-agent" and level == 3:
+        print("  - %s   # mandatory at gate level 3" % qualify(a))
+    else:
+        print("  - %s" % qualify(a))
 print("gate_level: %d" % level)
 print("stack_source: %s" % stack_note)
 floor_lines = []
@@ -493,10 +376,7 @@ print("skills_required:")
 for line in floor_lines:
     print(line)
 
-# --emit-floor writes the block the SubagentStop floor reads, so the
-# list exists in exactly one place. Without a pinned run there is
-# nowhere to write it, and a query-only invocation must not create
-# files, so this is opt-in and silent when it cannot apply.
+# --emit-floor is opt-in and silent without a pinned destination; queries create no files.
 if os.environ.get("CB_EMIT"):
     run = (os.environ.get("CB_RUN") or "").rstrip("/")
     if not run:
@@ -504,21 +384,35 @@ if os.environ.get("CB_EMIT"):
               "(scripts/run-flag arm \"\" <run_id>). The floor is not "
               "written to a guessed directory.", file=sys.stderr)
     else:
-        dest = pathlib.Path(run) / "skills-required.yaml"
+        skill_dest = pathlib.Path(run) / "skills-required.yaml"
+        agent_dest = pathlib.Path(run) / "agents-required.yaml"
+        roster_domains = {stem: desc for stem, _qname, desc in _roster()}
+        agent_lines = []
+        for role in mandated_agents:
+            desc = (roster_domains.get(role)
+                    or "(no description declared in frontmatter)")
+            escaped = desc.replace("\\", "\\\\").replace('"', '\\"')
+            agent_lines.append("  - agent: %s" % qualify(role))
+            agent_lines.append('    domain: "%s"' % escaped)
         try:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text("skills_required:\n" + "\n".join(floor_lines) + "\n",
-                            encoding="utf-8")
-            print("emit_floor: %s" % dest)
+            skill_dest.parent.mkdir(parents=True, exist_ok=True)
+            skill_dest.write_text(
+                "skills_required:\n" + "\n".join(floor_lines) + "\n",
+                encoding="utf-8")
+            # A plan-less run has no other on-disk risk signal; GateFloor
+            # reads this when there is no plan.md to take it from.
+            agent_dest.write_text(
+                "agents_required:\n" + "\n".join(agent_lines) + "\n"
+                + "gate_level: %d\n" % level,
+                encoding="utf-8")
+            print("emit_floor: %s" % skill_dest)
+            print("emit_agents: %s" % agent_dest)
         except OSError as e:
-            print("emit_floor: could NOT write %s (%s) — the skill floor "
-                  "has nothing to read and will not run." % (dest, e),
+            print("emit_floor: could NOT write required run inputs (%s) — "
+                  "the selection has no durable floor." % e,
                   file=sys.stderr)
             raise SystemExit(1)
-# The floor above is everything the request text and the file paths can
-# justify before anything is read. These are the triggers that only become
-# visible once the specialist opens a file, so they travel into its Task
-# Block instead of being resolved here.
+# File-content triggers travel in the Task Block; selection cannot resolve them before reading.
 watch_lines = []
 for role in agents:
     got = watch.get(role) or []

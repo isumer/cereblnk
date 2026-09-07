@@ -1,23 +1,6 @@
 #!/usr/bin/env python3
 """test-docindex — acceptance run for the document index (CB-112).
 
-Two things are under test and they fail differently.
-
-`docindex` must put each document in the right segmentation layer. That
-is the claim the manifest makes to every downstream reader, and a
-document silently demoted from `known` to `assumed` — or worse,
-promoted — is a wrong epistemic label travelling with real content.
-Each case asserts the layer AND its label, not merely that a file was
-produced.
-
-`doc-floor.sh` must block an unbounded read of a large indexed document
-and allow everything else. Both directions are asserted: a guard tested
-only on its block path is a guard that may block everything.
-
-Fixtures are built here rather than committed. They are plain text with
-no interesting bytes, and a committed fixture whose only content is
-"Madde 1" would be a golden file that tests nothing about parsing.
-
 Usage: scripts/test-docindex     Exit: 0 all pass · 1 any failure
 """
 import json
@@ -69,10 +52,7 @@ def main():
         structural.write_text(
             "# Alpha\n\nbody one\n\n## Beta\n\nbody two\n", encoding="utf-8")
 
-        # The keyword is read from the shipped policy rather than
-        # written here: hardcoding one would test a literal this suite
-        # invented, and would say nothing about whether docindex is
-        # actually reading policies/document-sections.yaml.
+        # Read the shipped keyword; a fixture literal would not prove policy loading.
         policy = (ROOT / "plugins/cereblnk/policies/document-sections.yaml")
         kw = re.search(r"^keywords\s*:\s*\[\s*([^,\]]+)",
                        policy.read_text(encoding="utf-8"), re.M)
@@ -108,9 +88,7 @@ def main():
             check(f"{path.name} -> {label}", seg["label"] == label,
                   f"got {seg['label']}")
 
-        # A .docx carries its structure in heading styles; the index must
-        # read it as declared, not guess at it (CB-112 changed the parser
-        # so this is available at all).
+        # CB-112 made DOCX heading styles available; do not guess their structure.
         r = index(FX / "d2-headings.docx", "--json")
         check("docx headings -> structural",
               r.returncode == 0 and
@@ -198,10 +176,7 @@ def main():
         check("nudges are capped", r.returncode == 0,
               "the floor never stops asking")
 
-        # --- citations resolve against the index (ACP A1) --------------
-        # A doc: reference is only worth writing if something can refuse
-        # it. Both halves are asserted: the pointer resolving, and the
-        # quote actually being on the lines the pointer names.
+        # ACP A1 checks both pointer resolution and that its cited lines contain the quote.
         cited = json.loads(index(structural, "--json").stdout)
         body = pathlib.Path(cited["text"]).read_text(
             encoding="utf-8").splitlines()
@@ -245,9 +220,7 @@ def main():
         check("absent quote is reported as G-3", "G-3" in r.stderr,
               "a resolvable-but-unsupported citation passed as G-2")
 
-        # A quote must be checked against ITS OWN reference, not a
-        # neighbour's — otherwise two facts in one block launder each
-        # other's evidence.
+        # Each quote uses its own reference; adjacent facts must not launder evidence.
         r = ground(f'facts:\n  known:\n    - id: F-1\n'
                    f'      evidence: [doc:{did}#L1-1]\n'
                    f'      quote: "{phrase.strip()}"\n'

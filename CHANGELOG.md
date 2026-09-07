@@ -7,6 +7,153 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Frozen core documents (00–09) change only through explicit amendments
 recorded in their own Amendment Logs; this file records what shipped.
 
+## [1.6.0] — A floor for new damage and a receipt for every shipped run
+
+### Added
+
+- **Runs now retire through an explicit archival lifecycle (CB-178).**
+  Accepted completions append `runs.log` and the shipping review ledger,
+  hand off to `run-completed`, then move the intact live ledger from
+  `context/<run_id>/` to `archive/<run_id>/` with a session/spec/date
+  pointer. The new `run-flag abandon` route retires a crashed or stale run
+  without a completion sentinel or completion telemetry, clears transient
+  floor/nudge state, and lists touched contracts, briefs, and requirements
+  for operator review without reverting durable memory. `/cb-resume`
+  continues the validated live pin from `plan-status`'s first unchecked
+  task. Ten synthesis-ending workflows now ask whether anything needs
+  improvement before completion, and StaleRun names resume and abandon as
+  the two recovery routes. The stronger memory-snapshot rollback remains an
+  explicit `/cb-design` question and is not implemented.
+
+- **Planning now enforces every mandated specialist (CB-177).**
+  `plan-lint` reads the pinned run's `agents-required.yaml` and refuses
+  Task 1 until each listed agent is assigned as a lead or reviewer, or has
+  an exact `merged: <agent> into <agent> because <reason>` header waiver.
+  Qualified and short agent names match on their stem; runs without the
+  CB-176 roster retain their prior behavior. `run-guard` also names mandated
+  agents with no Response Block as the plan-less `/cb-do` Stop backstop.
+
+- **Agent selection now persists the mandated roster (CB-176).**
+  `select-agents --emit-floor` writes `agents-required.yaml` beside the
+  existing skill floor in the pinned run, listing every required specialist
+  once with the decision domain already exposed by `--roster`. Unarmed
+  invocations retain the existing refusal and never guess a run directory.
+
+- **Unreviewed shipping runs now have a catch-up entry point (CB-173).**
+  `/cb-catchup` summarizes the review ledger by directory and walks its
+  unreviewed runs oldest-first without loading diffs. The new
+  `review-ledger` helper lists only `reviewed=no` records and changes one
+  exact run to `reviewed=yes` only after operator acknowledgement;
+  `scripts/test-review-ledger` covers filtering, exact matching, and the
+  no-op paths.
+
+- **Shipping runs now leave a comprehension review record (CB-172).**
+  `run-flag complete` appends one compact `review-ledger.log` line with the
+  run id, `reviewed=no`, touched files, and goal summary. It prefers the
+  edit ledger, falls back to Response Block artifacts, deduplicates and
+  caps the file list, and omits non-shipping runs; telemetry append failures
+  remain non-fatal.
+
+- **Stale run cleanup is explicit and visible (CB-171).** `run-flag arm`
+  now refuses to replace a live pin with a different run id, names both
+  runs and the `disarm`/`complete` routes, and leaves the existing flag
+  untouched. Re-arming the same run is a silent idempotent resume; an
+  unpinned, invalid, or dead flag may be repaired with a warning. A new
+  fail-open `SessionStart` hook reports a pinned ledger older than 12 hours
+  (configurable with `CB_STALE_RUN_HOURS`) when its plan has no checked
+  task. The hook never blocks, never changes the flag, and never falls back
+  to a different run directory.
+
+- **Completing a run now records what it cost and shipped (CB-169).**
+  `run-flag complete` accepts `--decision` and `--gate` and appends the
+  existing `runs.log` format with workflow, risk, gate, decision, summed
+  `budget_report.tokens_used`, and a count of Response Blocks. Missing
+  context or budget fields produce a partial record instead of failing
+  completion.
+
+- **Grounding is now a SubagentStop floor (CB-167).** `ground-floor.sh`
+  finds the stopping specialist's response-like YAML blocks in the pinned
+  run, runs the shipped `ground-check` against each, and refuses the stop
+  when a cited file, indexed document line, or quote does not resolve.
+  Like the other floors, it fails open on missing inputs or checker errors,
+  bypasses recursive stop-hook calls, and releases after the per-agent
+  nudge cap. `scripts/test-ground-floor` drives both grounding fixtures
+  through the real hook and covers the fail-open and loop-safety paths.
+
+- **Contract floors now distinguish inherited debt from new damage
+  (CB-166).** `run-flag arm` snapshots sorted `contract-check` findings in
+  the pinned run, and `contract-floor` blocks only findings absent from that
+  baseline. Pre-existing findings become a risk note, an unavailable
+  baseline fails open, and disarm or completion removes the snapshot.
+
+- **A Channels row may now declare itself deferred (CB-165).** The optional
+  fourth `status` column mirrors Migration rows: `deferred` skips the
+  channel-presence check, while every other status remains enforced. An
+  unimplementable channel can therefore stay explicit and machine-checkable
+  instead of disappearing from the contract.
+
+### Changed
+
+- internal: run-flag's telemetry and archival helpers moved to lib/run-lifecycle.sh (no behaviour change)
+
+### Fixed
+
+- **Archived runs recover more session identities (CB-183; closes F-D).**
+  Archive pointers now fall back from the environment and matching state to
+  an unambiguous run-date history filename, then to session metadata in the
+  run context; they retain `session_id: -` only when every source is empty.
+
+- **Review receipts now name source files only (CB-182; closes F-C).**
+  Completion filters Cereblnk context and bookkeeping paths from both the
+  edit-ledger and Response Block fallbacks, and bookkeeping-only runs no
+  longer create a shipping review record.
+
+- **Every returned ACP block now reaches the run ledger (CB-181; closes
+  F-A/F-B).** The all-agent `SubagentStop` digest hook recognizes response,
+  verification, and challenge blocks in final assistant text and persists an
+  isolatable block as `context/<run_id>/<task_id>.yaml`. Markdown fences and
+  leading digest prose are removed, malformed or ambiguous text remains only
+  in the retained digest, and exclusive creation preserves any block the
+  specialist already wrote. Late-persisted response blocks are therefore
+  visible to both the CB-177 run-guard backstop and the grounding floor without
+  granting the conductor ownership of specialist ledger files.
+
+- **Run setup now precedes surface selection (CB-174).** Entry-point
+  skills arm the run flag with its id before invoking `select-agents`
+  with `--emit-floor`, so the selector can write the pinned skill floor
+  without requiring the conductor to backtrack.
+
+- **Run progress now counts real artifacts without spending nudges on
+  growth (CB-170).** `run-guard` counts `kind: response` YAML blocks against
+  plan checkboxes, or reports a bare Response Block count when no plan is
+  present. Only a stop with no new Response Block advances the bounded
+  nudge counter; ledger growth records progress without consuming budget.
+
+- **DelegationGuard now has one run-state answer (CB-168).** The shared
+  `cb_run_state` resolver returns `ARMED` only for `run-active`,
+  `COMPLETED` only when `run-completed` exists without `run-active`, and
+  `IDLE` for neither. Write/Edit and Bash use that same resolver, so a
+  completed run can no longer be reported as active by the shell path.
+  Completed-run routing is limited to repository source: `.claude/`, run
+  context notes, and paths outside the repository remain writable. The
+  ARMED source block, shell-write detection, specialist-owned Response
+  Blocks and memory, human override, and existing diagnostics remain.
+  This deliberately removes DelegationGuard's private active/completed
+  TTLs and ledger-mtime inference: an aged sentinel no longer silently
+  changes state. In particular, a forgotten `run-active` stays `ARMED`
+  until `run-flag disarm`, `run-flag complete`, or `run-flag abandon`
+  removes it, or the explicit `conductor-override` hatch is active.
+  Stale-state mitigation is explicit cleanup, not timeout-based fail-open.
+
+### Documentation
+
+- **The 1.6.0 reference surface was swept against the tree (CB-179).**
+  Counts, finish-floor order, presence-only run state, archival and
+  recovery, telemetry/review ledgers, contract baseline/deferred rows,
+  and mandated-agent planning enforcement now trace to their scripts.
+  **NOTE:** `docs/assets/cereblnk-systems-note.png` predates these
+  changes and needs a redraw; surrounding text is authoritative.
+
 ## [1.5.2] — A guard that named a write it never found
 
 Two commands reached DelegationGuard through the shell path CB-123
@@ -186,12 +333,12 @@ emitted changes shape.
   session) rather than the conducting session's; when neither resolves
   to a file, nothing is measured or written and the stop is allowed.
 
-## [1.4.3] — The seventeen entry points the manifest stopped declaring
+## [1.4.3] — The entry-point set the manifest stopped declaring
 
 CB-141 added a `skills` array to the manifest so the host could see the
 77 group skills under `skills/<group>/<name>/`. On Claude Code 2.1.92
 that declaration REPLACES the default scan rather than extending it, so
-the seventeen entry points at `skills/<name>/` — every `/cb-` command —
+the entry points present at `skills/<name>/` — every `/cb-` command —
 disappeared. They were still on disk, byte-identical to 1.3.5.
 
 Bracketed on the reporting host across four versions:
@@ -624,7 +771,7 @@ identity was inferred rather than carried, and the inference is wrong
 for any agent whose Response Block lands after its edits — which is
 every agent that finishes normally.
 
-### Eight hooks shared the guess
+### Every run-reading hook shared the guess
 
 `skill-floor`, `exec-floor`, `reach-floor`, `contract-floor`,
 `exec-ledger`, `skill-ledger`, `digest-cap` and `run-guard` each derived
@@ -643,10 +790,11 @@ of directories does not record which run an agent belongs to.
 - **The run id is carried on the flag, and resolved in one place.**
   `run-flag arm "" <run_id>` writes the id into
   `flags/run-active`. `cb_run_dir()` in `scripts/lib/cbenv.sh` reads it
-  and is now the only thing that answers "which run is this"; all eight
-  hooks call it. The pin is validated rather than trusted: anything that
-  is not a bare run id is rejected, and an id whose directory no longer
-  exists is discarded. Both cases fall back to the old mtime scan, which
+  and is now the only thing that answers "which run is this"; every
+  run-reading hook calls it. The pin is validated rather than trusted:
+  anything that is not a bare run id is rejected, and an id whose
+  directory no longer exists is discarded. Both cases fall back to the
+  old mtime scan, which
   is still correct whenever one run directory exists. A stale pin is
   asymmetric — for the floors it means reading an old ledger, but for
   the ledgers it means writing into a dead directory, silently, which is
@@ -669,7 +817,7 @@ fixture reproduces the mtime race before trusting the result — the first
 draft did not, because writing `exec.log` bumped the old directory's
 mtime past the new one and the test passed for the wrong reason. Beyond
 the regression it covers a removed pin falling back, six hostile flag
-values rejected including `../../etc`, and all eight hooks exiting 0 on
+values rejected including `../../etc`, and every hook reader exiting 0 on
 an empty resolver result. That last one is the price of sharing: an
 error in `cb_run_dir` now reaches the whole record layer rather than one
 hook, so every caller's fail-open path is asserted rather than assumed.
@@ -1412,7 +1560,7 @@ surface, and mixing them would put two failure budgets in one checker.
 
 ## [1.3.0] — A rewrite that transcribes is not a rewrite
 
-The four floors before this one ask whether a change works. This one
+The earlier validation floors ask whether a change works. This one
 asks whether it was the change that was called for.
 
 A rewrite is requested because the current design is wrong. It fails by
@@ -1516,7 +1664,7 @@ sets of specs. Prose cannot be checked against code. A file can.
   copy of the parser.
 - `docs/05_EXECUTION_REALITY_MAP.md` gains cross-surface contract (M/D)
   and cross-surface parallelism (M) rows.
-- README contents line: 18 hooks, 27 verify suites.
+- README contents line synchronized with that release's tree.
 
 ### Parallelism is preserved deliberately
 
@@ -1566,7 +1714,7 @@ requires the surfaces running at the same time.
 - `docs/05_EXECUTION_REALITY_MAP.md` gains environment lifecycle,
   health-gated attribution and teardown rows (M), and restates the
   browser row as the separate F-class mechanism it is.
-- README contents line: 17 hooks, 26 verify suites.
+- README contents line synchronized with that release's tree.
 
 ### Safety property
 
@@ -1609,7 +1757,7 @@ complete.
 - `docs/05_EXECUTION_REALITY_MAP.md` gains a reachability floor row (M),
   stating the recall limit rather than implying coverage: transitive
   orphans, where dead code references dead code, are not detected.
-- README contents line: 16 hooks, 25 verify suites.
+- README contents line synchronized with that release's tree.
 
 ## [1.2.0] — Something in the run finally executes
 
@@ -1752,7 +1900,7 @@ subagents, and refuses to hand back an answer that nothing checked.
 
 ### What ships
 
-- **16 entry points.** `/cb-dispatch` reads a plain-language request and
+- **Entry points.** `/cb-dispatch` reads a plain-language request and
   routes it; the rest are typed directly — deciding (`think`, `frame`,
   `requirements`, `design`), building (`do`, `implement`, `refactor`),
   checking (`pr-review`, `bug`, `qa`, `security-audit`, `docs`), and two

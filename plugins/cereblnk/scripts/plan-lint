@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# plan-lint (CB-051) — refuses malformed plan files per plan-format.md.
-# Dependency-free ($PYBIN stdlib). Exit 0 = plan admissible; exit 1 =
-# violations (one per line to stderr). Usage: plan-lint <plan.md>
+# plan-lint refuses malformed plans per plan-format.md (CB-051).
+# Usage: plan-lint <plan.md> · Exit: 0 admissible · 1 violations · 2 usage
 set -euo pipefail
 # shellcheck source=../lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
@@ -10,6 +9,7 @@ cb_require_python
 [ $# -ge 1 ] || { echo "usage: plan-lint <plan.md>" >&2; exit 2; }
 [ -f "$1" ] || { echo "plan-lint: no such file: $1" >&2; exit 2; }
 export PLAN="$1"
+export CB_RUN="$(cb_run_dir)"
 $PYBIN << 'PY'
 import os, re, sys
 
@@ -26,9 +26,7 @@ for key in ("spec", "goal", "out_of_scope", "recomposition_check"):
     else:
         header[key] = m.group(1).split("#")[0].strip()
 
-# ---- R7: the declared spec resolves, and the plan is not behind it ----
-# `spec:` may name a path or say `none`. A path is resolved and read;
-# `@v<N>` on the end is checked against the spec's own `spec_version`.
+# R7 resolves a declared spec and checks an optional @vN pin.
 spec_decl = header.get("spec", "")
 if spec_decl and not spec_decl.lower().startswith("none"):
     spec_path, _, want_v = spec_decl.partition("@")
@@ -63,6 +61,46 @@ task_hdr = re.compile(r'^###\s*\[( |x|X)\]\s*Task\s+(\S+)\s*:', re.M)
 tasks = list(task_hdr.finditer(text))
 if not tasks:
     V.append("no tasks found (expected '### [ ] Task N: ...')")
+
+# R8/CB-176 enforces persisted rosters; older rosterless runs retain prior behavior.
+# Compare short stems because plans may use qualified or bare names.
+run = os.environ.get("CB_RUN", "").rstrip("/\\")
+agents_path = os.path.join(run, "agents-required.yaml") if run else ""
+if agents_path and os.path.isfile(agents_path):
+    required = []
+    for line in open(agents_path):
+        m = re.match(r'^\s*-\s*agent\s*:\s*([^\s#]+)', line)
+        if m:
+            stem = m.group(1).rsplit(":", 1)[-1]
+            if stem not in required:
+                required.append(stem)
+
+    assigned = set()
+    for i, m in enumerate(tasks):
+        start = m.end()
+        end = tasks[i+1].start() if i+1 < len(tasks) else len(text)
+        body = text[start:end]
+        for am in re.finditer(r'^\s*-\s*agent\s*:\s*(.+)$', body, re.M | re.I):
+            value = am.group(1).split("#", 1)[0]
+            for name in re.findall(r'(?:[A-Za-z0-9_.-]+:)*[A-Za-z0-9_.-]+-agent\b', value,
+                                   re.I):
+                assigned.add(name.rsplit(":", 1)[-1].lower())
+
+    header_text = text[:tasks[0].start()] if tasks else text
+    waived = set()
+    waiver = re.compile(
+        r'^\s*merged:\s+([^\s]+)\s+into\s+([^\s]+)\s+because\s+(.+\S|\S)\s*$',
+        re.M)
+    for wm in waiver.finditer(header_text):
+        waived.add(wm.group(1).rsplit(":", 1)[-1].lower())
+
+    missing = [name for name in required
+               if name.lower() not in assigned and name.lower() not in waived]
+    for name in missing:
+        V.append(f"R8: mandated specialist {name} is unassigned and unwaived")
+    if missing:
+        V.append("R8: waive one missing specialist per header line with: "
+                 "merged: <missing-agent> into <covering-agent> because <reason text>")
 
 PLACEHOLDERS = ("todo", "...", "similar to", "same as above", "implement similarly", "<placeholder>")
 DESTRUCTIVE = re.compile(r'\b(drop|truncate|delete\s+from|alter\s+table|rm\s+-rf|migrat|\.sql\b|schema)\b', re.I)

@@ -1,22 +1,6 @@
 #!/usr/bin/env bash
-# cereblnk shell runtime helpers. Sourced by scripts/ and hooks/scripts/.
-#
-#   PYBIN   — resolved Python 3 interpreter ("" if none usable).
-#   CB_DIR  — this project's Cereblnk runtime state directory.
-#   cb_require_python — call in USER-INVOKED scripts to hard-fail
-#                       (exit 2) when PYBIN is empty. Hooks must NOT
-#                       call it: a hook that exits non-zero BLOCKS the
-#                       tool call, so a missing interpreter would brick
-#                       every Write/Edit. Hooks fail OPEN with a
-#                       warning instead.
-#
-# Windows notes:
-# - Windows ships App Execution Aliases for python.exe/python3.exe that
-#   are Store stubs: they ARE on PATH (so `command -v` finds them) and
-#   running one opens the Microsoft Store instead of executing code.
-#   Stubs live under ...\Microsoft\WindowsApps\ — we detect that path
-#   and skip them WITHOUT running them.
-# - Candidate order tries `py` (the real launcher) first on Windows.
+# Runtime helpers for scripts and hooks. Hooks must fail open without Python; user commands exit 2.
+# WindowsApps Python aliases open the Store, so skip them and prefer the real `py` launcher.
 
 _cb_is_stub() {
   case "$(command -v "$1" 2>/dev/null)" in
@@ -48,15 +32,8 @@ cb_require_python() {
   fi
 }
 
-# Runtime state is anchored to the project. Resolution order:
-#   1. CLAUDE_PROJECT_DIR (set by Claude Code for hooks)
-#   2. walk up from $PWD to the nearest dir containing .git or .claude —
-#      but NEVER selecting $HOME or anything above it ($HOME/.claude is
-#      Claude Code's own config dir, not a project marker)
-#   3. fall back to $PWD itself and CREATE .claude/ there — so a brand
-#      new project without .git just works — EXCEPT when $PWD is a temp
-#      location or $HOME itself: there CB_ROOT stays empty and callers
-#      skip writes (hooks spawned with a temp cwd must not litter).
+# Resolve from the host project, nearest cwd marker, or a safe new-project cwd.
+# Never treat $HOME/.claude or a temporary directory as a project marker.
 _cb_under() { case "$1" in "$2"|"$2"/*) return 0;; *) return 1;; esac; }
 _cb_is_forbidden_root() {
   [ -n "${HOME:-}" ] && [ "$1" = "$HOME" ] && return 0
@@ -74,31 +51,8 @@ _cb_find_root() {
   done
   return 1
 }
-# F-01: CLAUDE_PROJECT_DIR won unconditionally, and only hooks receive
-# it. A script run by an agent walked up from $PWD instead, so in a
-# session opened ABOVE the project the two answers differed:
-#
-#   scripts (cwd inside the project)  -> <workspace>/cb-testbed/.claude/cereblnk
-#   hooks   (CLAUDE_PROJECT_DIR)      -> <workspace>/.claude/cereblnk
-#
-# select-agents writes the skill baseline under one; skill-floor looks
-# for it under the other, does not find it, and exits 0. Every floor
-# reads the run directory the same way, so the whole enforcement layer
-# went quiet — not weakened, absent, with nothing saying so. The same
-# split disabled /cb-careful and /cb-boundary, which reported
-# themselves as enabled while writing to a tree no hook reads.
-#
-# Resolution: prefer the nearest project marker at or below
-# CLAUDE_PROJECT_DIR. A nested project is more specific than the
-# session directory and is what both sides mean by "this project";
-# when the walk finds nothing under it, CLAUDE_PROJECT_DIR stands. A
-# marker OUTSIDE it is ignored — the session boundary is still a
-# boundary.
-#
-# It cannot converge every case: a hook whose cwd is the session root
-# and a script whose cwd is the nested project will still disagree.
-# CB_ROOT_HINT records the other candidate so callers can say so
-# instead of failing open in silence.
+# F-01: hook-only CLAUDE_PROJECT_DIR split scripts and hooks across trees, silencing every floor.
+# Prefer a nested marker within the session boundary; CB_ROOT_HINT exposes cases still ambiguous.
 CB_ROOT_HINT=""
 if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
   CB_ROOT="$CLAUDE_PROJECT_DIR"
@@ -115,9 +69,7 @@ else
     CB_ROOT="$PWD"
     mkdir -p "$CB_ROOT/.claude" 2>/dev/null || CB_ROOT=""
   fi
-  # Absolute last resort: cwd is temp (or $HOME itself) and no project
-  # anywhere — better to function under $HOME than to drop work or
-  # litter temp. Project locations always win when they exist.
+  # Last resort uses $HOME rather than dropping work or littering a temporary cwd.
   if [ -z "$CB_ROOT" ] && [ -n "${HOME:-}" ]; then
     CB_ROOT="$HOME"
     mkdir -p "$CB_ROOT/.claude" 2>/dev/null || CB_ROOT=""
@@ -125,33 +77,26 @@ else
 fi
 CB_DIR="${CB_ROOT:+$CB_ROOT/.claude/cereblnk}"
 
-# Runtime state is not source. It was landing in commits because nothing
-# ever said otherwise — the plugin creates this directory inside the
-# user's repository and never asked git to leave it alone.
-#
-# A self-ignoring directory rather than an edit to the user's
-# .gitignore: their file is theirs, and a plugin that rewrites it earns
-# a merge conflict in someone else's repo. `*` also ignores this file,
-# so the directory disappears from git entirely.
+# Runtime state once landed in commits; self-ignore instead of rewriting the user's .gitignore.
 if [ -n "${CB_DIR:-}" ] && [ -d "$CB_DIR" ] && [ ! -f "$CB_DIR/.gitignore" ]; then
   printf '*\n' > "$CB_DIR/.gitignore" 2>/dev/null || true
 fi
 
-# cb_run_dir — which run is this. Prints the run directory WITH a
-# trailing slash (the shape `ls -1dt .../context/*/` produced, which
-# callers index as "$RUN/exec.log" and "$RUN"*.yaml), or nothing.
-# Always exits 0: eight hooks depend on this and a hook that exits
-# non-zero blocks the tool call it was watching.
-#
-# Identity is carried, not inferred: "newest directory by mtime" does
-# not encode which run an agent belongs to, because a writer can create
-# a newer directory between the edit and the stop. The run id lives in
-# flags/run-active, whose content `run-flag arm` sets.
-#
-# The pin is validated, never trusted. It is read here as a path
-# component, so anything that is not a bare run id is rejected. A
-# rejected or dead pin falls back to the mtime scan — that is the floor
-# of this function, not an error path.
+# Prints ARMED, COMPLETED, or IDLE; always exits 0 so hooks fail open.
+# run-active wins if both sentinels exist; completed is never active.
+cb_run_state() {
+  if [ -n "${CB_DIR:-}" ] && [ -f "$CB_DIR/flags/run-active" ]; then
+    printf 'ARMED\n'
+  elif [ -n "${CB_DIR:-}" ] && [ -f "$CB_DIR/flags/run-completed" ]; then
+    printf 'COMPLETED\n'
+  else
+    printf 'IDLE\n'
+  fi
+  return 0
+}
+
+# Prints a trailing-slash run directory or nothing and always exits 0 for nine hook callers.
+# CB-147: carry and validate the flag pin; mtime guessing lost runs created during agent work.
 cb_run_dir() {
   [ -n "${CB_DIR:-}" ] || return 0
   _cb_rd_pin=""
@@ -172,9 +117,7 @@ cb_run_dir() {
     return 0
   fi
   unset _cb_rd_pin
-  # No usable pin: the pre-CB-147 guess, which is still right whenever
-  # only one run directory exists. `|| true` because head closes the
-  # pipe on ls and pipefail would otherwise make this a failure.
+  # Fall back to mtime; `head` closes the pipe, so neutralize pipefail.
   ls -1dt "$CB_DIR"/context/*/ 2>/dev/null | head -n 1 || true
   return 0
 }

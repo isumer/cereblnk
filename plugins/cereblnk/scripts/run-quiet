@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 # run-quiet (CB-085) — the tool-output gate.
-#
-# Runs a shell command, writes FULL output to a run-scoped log, and
-# prints only a bounded digest (max 20 lines). The executing agent
-# never reads the raw stream; if it needs more than the digest, it
-# greps the log — it never cats it (run-discipline §7).
-#
+# Writes full output to a run log and prints at most 20 digest lines; agents grep, never cat (§7).
 # Usage:  run-quiet <task_id> <command> [args...]
 # Log:    $CB_RUN_LOG_DIR/<task_id>.log
 #         (default: $CB_DIR/context/$RUN_ID/logs, else ./.cb-logs)
 # Exit:   the wrapped command's exit code, always propagated.
 #
-# Digest contents, in order (each section only when non-empty):
+# Digest order when non-empty:
 #   1. header      exit code · log path · total line count
 #   2. tests       failing "Tests run:" lines from surefire reports
 #   3. compile     deduplicated file:line error lines

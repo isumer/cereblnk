@@ -87,7 +87,7 @@ only against race detector output. Lifetime claims name the stop path.
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/go/`.
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/go/`.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/select-rules <path>` for the files
 the task touches; it returns the constraint files to read, applying both
 the glob and the stack gate. Read `rules/common/` once per run. Cite a

@@ -1,13 +1,13 @@
 # Agent Selection Policy
 
-Class: D — deterministic rules the orchestrator and PlannerAgent apply
-when assigning `assigned_role` and `verification_level` to tasks. This
-is the honest, static form of a "dynamic scheduler": rules, not an
-engine (05 the execution-mechanism map — no plugin mechanism exists for a runtime
-scheduler). **Checker: VerifierAgent** — during gate review it
-confirms every mandatory specialist for the task's signals was
-actually spawned; a missing mandatory specialist is a `weakened`
-verdict on the run and a re-plan trigger.
+Class: M/D — deterministic selection rules, not a dynamic scheduler.
+`scripts/select-agents --emit-floor` persists the mandatory roster in
+`agents-required.yaml`, and `scripts/plan-lint` R8 refuses Task 1 until
+every roster entry is assigned as a lead/reviewer or has a recorded
+`merged:` waiver (M). Planner assignment and the judgment behind a
+waiver remain discipline (D). **Backstops:** RunGuard names mandated
+agents without a Response Block on plan-less runs; VerifierAgent still
+downgrades a missing mandatory specialist at gate review.
 
 ## 1. Signal → specialist mapping (mandatory = must spawn)
 
@@ -82,10 +82,10 @@ closure loaded (§4) — an architect writing React state design from
 general knowledge is trap #11 (authority substituted for
 verification) at the planning stage, where it is cheapest to prevent
 and most expensive to ship.
-**Checker:** unchanged and already in place — VerifierAgent confirms
-during gate review that every mandatory specialist for the task's
-signals was actually spawned; this section extends "task" to
-design/spec stages explicitly.
+**Checker:** `plan-lint` R8 checks the persisted mandatory roster before
+Task 1; RunGuard covers the plan-less path; VerifierAgent confirms at
+gate review that every mandatory specialist actually participated.
+This section extends "task" to design/spec stages explicitly.
 
 **How the floor is computed (CB-143, finding F-07).** This mandate was
 prose only. `scripts/select-agents` fired a rule on a path match or a
@@ -166,9 +166,10 @@ old message ended by naming the flag to delete.
 A person who genuinely needs a conductor edit creates
 `$CB_DIR/flags/conductor-override`. It expires after
 `CB_OVERRIDE_TTL_MIN` minutes, default 60, so it cannot be forgotten
-into a permanent hole. Deleting `run-active` is no longer a route:
-while the run ledger is still being written, the guard re-arms from
-its own witness file.
+into a permanent hole. Run state itself is presence-only: removing
+`run-active` makes the state `IDLE`; normal workflows use `run-flag
+disarm`, `complete`, or `abandon` so the lifecycle transition is
+explicit and verified.
 
 
 ## 4c. Task-scoped skill resolution (CB-097)
@@ -186,10 +187,11 @@ Resolution order, per run:
    stack profile, through `policies/skill-selection.yaml`. It emits
    `skills_required` per role, and `discovery_watch` per role for the
    triggers no signal available here could resolve.
-3. The orchestrator copies `skills_required` to
-   `$CB_DIR/context/<run_id>/skills-required.yaml` — that file is the
-   floor `SkillFloorHook` reads — and writes both blocks into each
-   role's Task Block.
+3. With the run pinned by id, `scripts/select-agents --emit-floor`
+   writes `$CB_DIR/context/<run_id>/skills-required.yaml` for
+   SkillFloorHook and `agents-required.yaml` for plan-lint R8. Task
+   Blocks point to the skill file; plans assign every agent in the
+   roster or record one exact `merged:` waiver per omitted agent.
 4. The specialist loads the floor with the Skill tool and reports every
    load in `skills_loaded`. While it reads, a `discovery_watch` trigger
    that appears in a file is its cue to load that skill too and record
@@ -233,8 +235,9 @@ says so). Make the load automatic and C-1 fails by name, which is the
 signal to revisit this section rather than leave it stale.
 
 **Checkers.** `SkillLedgerHook` records each load; `SkillFloorHook`
-blocks a SubagentStop whose floor is unmet; **VerifierAgent** compares
-`skills_loaded` against the required list at gate review.
+blocks a SubagentStop whose skill floor is unmet; `plan-lint` R8 checks
+the agent roster before execution; RunGuard and **VerifierAgent**
+backstop participation at Stop and gate review.
 `scripts/check-agent-skills` holds the graph itself: no dangling
 reference, no unreachable skill, no preload above the budget cap.
 

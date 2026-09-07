@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""test-ground-floor — acceptance run for GroundFloorHook (CB-167).
+
+Usage: scripts/test-ground-floor   Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOOK = ROOT / "plugins/cereblnk/hooks/scripts/ground-floor.sh"
+CBENV = ROOT / "plugins/cereblnk/scripts/lib/cbenv.sh"
+FIXTURES = ROOT / "tests/fixtures/grounding"
+
+
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-ground-floor: bash not on PATH — skipping")
+        return 0
+
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        runctx = proj / ".claude/cereblnk/context/R-T"
+        flags = proj / ".claude/cereblnk/flags"
+        runctx.mkdir(parents=True)
+        flags.mkdir(parents=True)
+        write(flags / "run-active", "R-T\n")
+        write(proj / "CHANGELOG.md", "# Changelog\n\nAll notable changes.\n")
+
+        def block(body, role="frontend-agent"):
+            return "kind: response\nrole: %s\n%s" % (role, body)
+
+        def reset(body=None, role="frontend-agent"):
+            for path in runctx.glob("*.yaml"):
+                path.unlink()
+            for path in runctx.glob("ground-floor.*.state"):
+                path.unlink()
+            if body is not None:
+                write(runctx / "T-001.yaml", block(body, role))
+
+        def run_hook(active=False, extra=None, hook=HOOK):
+            payload = {"agent_type": "frontend-agent"}
+            if active:
+                payload["stop_hook_active"] = True
+            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            if extra:
+                env.update(extra)
+            return subprocess.run(
+                ["bash", str(hook)], input=json.dumps(payload),
+                capture_output=True, text=True, env=env, cwd=str(proj))
+
+        ok_body = (FIXTURES / "ok-block.yaml").read_text(encoding="utf-8")
+        bad_body = (FIXTURES / "bad-block.yaml").read_text(encoding="utf-8")
+
+        reset(ok_body)
+        r = run_hook()
+        case("resolvable references allow the stop", r.returncode == 0,
+             "rc=%d stderr=%r" % (r.returncode, r.stderr[:120]))
+
+        reset()
+        r = run_hook()
+        case("a missing Response Block fails open", r.returncode == 0,
+             "rc=%d stderr=%r" % (r.returncode, r.stderr[:120]))
+
+        reset(bad_body, role="backend-agent")
+        r = run_hook()
+        case("another agent's block is not this agent's floor",
+             r.returncode == 0,
+             "rc=%d stderr=%r" % (r.returncode, r.stderr[:120]))
+
+        reset(bad_body)
+        r = run_hook()
+        case("a dangling file reference blocks the stop", r.returncode == 2,
+             "rc=%d" % r.returncode)
+        case("the block returns ground-check stderr",
+             "FAIL G-2" in r.stderr and "src/DoesNotExist.java" in r.stderr,
+             r.stderr.strip()[:120])
+
+        reset(bad_body)
+        rcs = [run_hook(extra={"CB_GROUND_NUDGES": "2"}).returncode
+               for _ in range(3)]
+        case("the nudge cap releases after the limit", rcs == [2, 2, 0],
+             "rcs=%r" % rcs)
+
+        reset(bad_body)
+        missing = pathlib.Path(td) / "missing-plugin"
+        missing_hook = missing / "hooks/scripts/ground-floor.sh"
+        write(missing_hook, HOOK.read_text(encoding="utf-8"))
+        write(missing / "scripts/lib/cbenv.sh", CBENV.read_text(encoding="utf-8"))
+        r = run_hook(hook=missing_hook)
+        case("a missing ground-check fails open", r.returncode == 0,
+             "rc=%d stderr=%r" % (r.returncode, r.stderr[:120]))
+
+        reset(bad_body)
+        r = run_hook(active=True)
+        case("stop_hook_active always allows", r.returncode == 0,
+             "rc=%d" % r.returncode)
+
+    if fails:
+        print("test-ground-floor: %d/%d FAILED" % (len(fails), ran))
+        for failure in fails:
+            print("  FAIL  %s" % failure)
+        return 1
+    print("test-ground-floor: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

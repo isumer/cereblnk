@@ -7,8 +7,9 @@ When Claude Code writes code for you, the quality of the result depends
 on whether the model remembered to check its work. Cereblnk narrows that
 dependency. It ships specialist agents, the constraints they work under,
 and — the part that matters — hooks that block an agent from finishing
-when it skipped a step. A rule here is not a paragraph asking nicely. It
-is a script with an exit code.
+when it skipped a step, for a bounded number of retries. The hooks and
+the gates are scripts with exit codes. The constraint files are prose
+the specialists work under.
 
 > "Context is expensive. Evidence is valuable. Verification is mandatory."
 
@@ -34,7 +35,7 @@ names the script that detects its violation, or is labeled as unenforced.
 The whole system on one sheet — how a request becomes work, who does
 it, and what refuses to let it finish:
 
-![Cereblnk systems note: the request routing loop, the agent pipeline, the nineteen enforcement hooks across seven events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
+![Cereblnk systems note: the request routing loop, the agent pipeline, enforcement hooks across eight events, verification gates by risk, and the runtime ledger on disk](docs/assets/cereblnk-systems-note.png)
 
 There are two ways in, and only one of them is guaranteed.
 
@@ -59,7 +60,7 @@ image on its own for a full-size view.
 
 Four layers, each a directory you can read.
 
-**Entry points** (`skills/*/SKILL.md`) — the sixteen `/cb-*` commands
+**Entry points** (`skills/*/SKILL.md`) — the nineteen `/cb-*` commands
 below. They orchestrate; they do not do the work themselves.
 
 **Agents** (`agents/`) — specialists in four groups. `core/` holds the
@@ -74,16 +75,16 @@ archiving.
 **Constraints** (`rules/`) — loaded per task by `scripts/select-rules`
 rather than all at once, because context is the expensive resource.
 
-**Hooks** (`hooks/`) — nineteen scripts across seven Claude Code events:
+**Hooks** (`hooks/`) — twenty-two scripts across eight Claude Code events:
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`,
-`SubagentStop`, `SessionEnd`. Thirteen of them block; six record or
-observe.
+`SubagentStop`, `SessionStart`, `SessionEnd`. Fifteen of them block;
+seven record or observe.
 
 ### What blocks a tool call
 
 | Hook | Blocks |
 |---|---|
-| `delegation-guard` | A file edit in the conducting conversation while a run is active. Edits belong to surface specialists; this is the mechanism that three PRs of instructions could not achieve |
+| `delegation-guard` | A repository-source edit in the conducting conversation while a run is active, or a source follow-up after completion. Edits belong to surface specialists; `.claude/`, run-context notes, and paths outside the repository remain available to the conductor |
 | `edit-boundary` | A write outside the declared directory during focused work |
 | `destructive-command` | An irreversible shell operation. Opt-in through `/cb-careful`; routine build-artifact cleanups are allowlisted |
 | `secret-guard` | A write whose content looks like a credential |
@@ -94,21 +95,23 @@ observe.
 
 ### What blocks a finish
 
-Five hooks decide whether a specialist may call itself done,
+Six hooks decide whether a specialist may call itself done,
 checked in this order:
 
 | Hook | Refuses the stop when |
 |---|---|
+| `skill-floor` | It finished without the craft its task required |
 | `exec-floor` | The specialist edited a surface and never ran it |
 | `reach-floor` | It declared a symbol nothing references |
-| `contract-floor` | It closed one side of a cross-surface contract |
-| `skill-floor` | It finished without the craft its task required |
-| `digest-cap` | It returned more than ten lines of digest |
+| `contract-floor` | It introduced a cross-surface contract finding after the run-arm baseline; pre-existing findings are reported, not blocked, and deferred Channels rows are exempt |
+| `digest-cap` | It returned more than ten lines of digest — and, when that digest is an ACP block, persists it to the run so the next check can read it |
+| `ground-floor` | Its Response Block cites a file, document line, or quote that does not resolve |
 
-The first four each catch a failure the others cannot —
+The first five each catch a failure the others cannot —
 running a program is the one check no static gate performs; unwired code
 fails by silence, so execution alone misses it; a contract needs both
-directions checked, the new path present *and* the replaced path gone.
+directions checked, the new path present *and* the replaced path gone;
+grounding checks the evidence pointers in the block that reports the work.
 `digest-cap` is different in kind: it protects the conducting
 conversation's headroom, because run discipline caps a subagent's return
 at ten lines and until it existed nothing measured what came back.
@@ -128,9 +131,18 @@ evidence behind them rather than any transcript.
 Nothing flows sideways between specialists, and the conducting
 conversation carries plan, digests and verdicts — nothing else. This is
 also what makes work survive a compaction: `plan-lint` refuses a
-malformed plan, `plan-status` recovers state after a session dies, and
-any single task can go to a fresh executor whose entire world is that one
-task.
+malformed plan or an unassigned specialist from `agents-required.yaml`,
+`plan-status` recovers state after a session dies, and any single task
+can go to a fresh executor whose entire world is that one task.
+
+Runs have three presence-only states: `ARMED` when `run-active` exists,
+`COMPLETED` when only `run-completed` exists, and `IDLE` when neither
+does. There is no TTL. Ten synthesis-ending workflows ask whether
+anything needs improvement; acceptance makes `run-flag complete` append
+`telemetry/runs.log`, append `telemetry/review-ledger.log` for shipping
+runs, and move `context/<run_id>/` to `archive/<run_id>/`. A dead run can
+take the same archival path without completion telemetry through
+`run-flag abandon`; `/cb-resume` continues the pinned live plan.
 
 ## Installation
 
@@ -188,12 +200,12 @@ the session.
 
 ## The commands
 
-Sixteen skills start work. Type them as `/cb-pr-review`. The fully
+Nineteen skills start work. Type them as `/cb-pr-review`. The fully
 qualified form is `/cereblnk:cb-pr-review` — plugin skills are always
 namespaced, and the long form disambiguates if another plugin ships a
 similar name.
 
-Twelve of the sixteen end in the same fixed order: **Decision → Evidence
+Twelve of the nineteen end in the same fixed order: **Decision → Evidence
 → Reasoning → Risk → Confidence**. That ordering is the cognitive
 contract, not a template — the decision comes first so a reader can stop
 after one paragraph, and the risk section names what would falsify it.
@@ -307,6 +319,18 @@ documentation statement the diff made stale, applies the safe updates,
 and surfaces the risky rewrites as questions rather than guessing. Reach
 for it to repair documentation, not to write a new document.
 
+### Session utilities
+
+**`/cb-catchup`** — walks the shipping review ledger oldest-first, one
+unreviewed run at a time. It starts with compact directory counts and
+the recorded file list and summary; diffs and commit logs stay unloaded
+unless you ask. A run changes to reviewed only when you acknowledge that
+you understand it.
+
+**`/cb-resume`** — resumes the currently pinned incomplete run from its
+on-disk plan. It re-arms the same run id, reports `plan-status`, and
+continues at the first unchecked task without replaying completed work.
+
 ### Session guards
 
 **`/cb-careful`** — toggles the destructive-command hook for this
@@ -329,18 +353,32 @@ cereblnk/                        # repo root = marketplace
 │   ├── agents/                  # core / engineering / lifecycle / context
 │   ├── skills/                  # entry points at the top level,
 │   │                            #   domain skills grouped below
-│   ├── rules/                   # constraints — the enforceable form
+│   ├── rules/                   # prose constraints specialists work under
 │   ├── hooks/                   # hard-enforcement hooks
 │   ├── protocols/               # Agent Communication Protocol (ACP)
 │   ├── policies/                # risk model, budgets, quality gates
 │   └── scripts/                 # budget, stack and selection computation
 ├── docs/                        # core documents 00–09
+│   └── assets/systems-note/     # the sheet above, as editable source
 ├── scripts/                     # verify and its suites
+│   ├── check-sheet              #   the systems-note layout gate
+│   └── lib/                     #   font metrics and layout rules
 └── tests/                       # scenarios and checker fixtures
 ```
 
+The systems note at the top of this file is rendered from
+`docs/assets/systems-note/note.html`, a hand-authored SVG. Nothing in a
+browser complains when a label lands outside its box, so the sheet is
+measured rather than eyeballed: `scripts/check-sheet` reads the real DejaVu
+advance widths out of the font files and checks every glyph against its box,
+the spacing against the sheet's own scale, and — when `rsvg-convert` and
+Pillow are present — strokes against glyphs, pixel by pixel. Run it after
+every edit to the sheet; `scripts/verify` runs it too. `scripts/test-sheet-layout`
+covers the rules themselves, including the cases where a difference is
+deliberate and must *not* be reported.
+
 At runtime the plugin writes under `.claude/cereblnk/` in your project —
-`config/`, `context/`, `docs/`, `flags/`, `history/`, `memory/`,
+`archive/`, `config/`, `context/`, `docs/`, `flags/`, `history/`, `memory/`,
 `state/`, `telemetry/`. None of it is shipped. `scripts/ensure-gitignore`
 adds `.claude/` to your `.gitignore` once, skips a repository where it is
 already covered, and can be opted out with a flag file; it is a guard
@@ -354,7 +392,7 @@ reaches agents.
 
 ## Skills
 
-Seventeen entry points sit at the top level. The rest are domain skills
+Nineteen entry points sit at the top level. The rest are domain skills
 grouped under `plugins/cereblnk/skills/`: `languages/` 19 ·
 `frameworks/` 16 · `data/` 7 · `infrastructure/` 8 · `delivery/` 6 ·
 `practices/` 21. Skills load lazily by description; agents pull their set
@@ -423,8 +461,8 @@ migration, money and production-config work is always level 3.
 
 ## Status & maturity
 
-Current contents: **27 agents · 94 skills (17 of them entry points) ·
-176 constraint files · 20 hooks · 28 verify suites** (count them:
+Current contents: **27 agents · 96 skills (19 of them entry points) ·
+163 constraint files · 23 hooks · 51 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
@@ -439,7 +477,7 @@ Claims are labeled the way this platform labels facts:
 
 Honest boundary: `scripts/verify` green does NOT verify workflow
 behavior — treating it as if it did is exactly the "all tests pass" trap
-the manual warns about (09 Part II #8). One of the 28 suites, the
+the manual warns about (09 Part II #8). One of those suites, the
 reference-string leakage scan, skips unless a wordlist is configured; a
 skip is printed and never counted as a pass.
 

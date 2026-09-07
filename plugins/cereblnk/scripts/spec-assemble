@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # spec-assemble (CB-086) — assembly is a script, not an agent.
-#
-# Merges owner-written section files into the spec head in fixed
-# order, enforcing the rules no single window should have to hold:
+# Merges owner-written sections in fixed order and enforces:
 #   A-1  all seven sections present and non-empty
 #   A-2  every section carries at least one epistemic label
 #   A-3  the diagrams section contains at least one fenced block

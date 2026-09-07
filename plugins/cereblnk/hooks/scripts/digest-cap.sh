@@ -1,42 +1,11 @@
 #!/usr/bin/env bash
-# DigestCapHook (SubagentStop) — CB-094, hard enforcement.
-#
-# run-discipline §1 caps a subagent's return at ten lines. Until now
-# that cap was a sentence. Nothing measured what came back, so an
-# oversized return cost the conducting conversation its headroom and
-# the violation was invisible until the run died — which is the
-# failure budget-policy rule 4 was written after, twice.
-#
-# The measurement exists: the subagent's OWN transcript holds its
-# final assistant message, which IS what the conductor receives. That
-# transcript lives under a directory named for the session — the main
-# transcript's filename with its .jsonl suffix removed — at
-# <that session directory>/subagents/agent-<id>.jsonl. The payload may
-# also hand that path back directly as agent_transcript_path; either
-# way it is read, counted, and the stop is blocked when the count
-# exceeds the cap. SubagentStop blocks on exit 2 — the subagent does
-# not stop, it reads stderr and returns a digest instead.
-#
-# The cap comes from scripts/context-budget (digest_lines_max), never
-# from a number written here. CB-094's whole point is that figures are
-# computed; a literal ten in this file would be the same mistake in a
-# new place.
-#
-# Loop safety, in skill-floor.sh's shape and for the same reason:
-#   1. stop_hook_active in stdin -> always allow the stop.
-#   2. Nudge state keyed to run dir + agent; a stale file from an
-#      older run never insta-disarms a fresh one.
-#   3. Hard cap MAX_NUDGES per agent per run, then allow — an agent
-#      that will not shorten is a question for the user, not a loop.
-#   4. Fail open on every error path: no project root, no interpreter,
-#      no transcript, unparseable input -> exit 0. A guard that blocks
-#      when it cannot measure is worse than one that does not run.
+# DigestCapHook (SubagentStop) — CB-094. Exit 2 retains oversized-return agents;
+# context-budget owns the cap, re-entry is bounded, and errors fail open.
 set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/lib/cbenv.sh" 2>/dev/null || true
 [ -n "${CB_DIR:-}" ] || exit 0
 [ -n "${PYBIN:-}" ] || exit 0
 
-# Only inside a Cereblnk run. No ledger, no contract to enforce.
 RUN="$(cb_run_dir)"   # CB-147: the pinned run, not the newest directory
 [ -n "$RUN" ] || exit 0
 
@@ -45,7 +14,7 @@ case "$INPUT" in *'"stop_hook_active"'*true*) exit 0 ;; esac
 
 REASON="$(printf '%s' "$INPUT" | CB_RUN="$RUN" CB_MAX="${CB_DIGEST_NUDGES:-2}" \
   CB_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" $PYBIN -c '
-import json, os, pathlib, re, subprocess, sys, time
+import json, os, pathlib, re, subprocess, sys, textwrap, time
 from datetime import datetime, timezone
 
 try:
@@ -65,17 +34,8 @@ def existing_file(v):
     p = pathlib.Path(v)
     return p if p.is_file() else None
 
-# transcript_path on this payload is the CONDUCTING session, not this
-# subagent — reading it measures the wrong author. Measured on a real
-# session: the subagent transcript is not beside the main file, it is
-# under a directory named for the session, i.e. the main filename with
-# its .jsonl suffix removed:
-#   main:     <projects dir>/<session-id>.jsonl
-#   subagent: <projects dir>/<session-id>/subagents/agent-<id>.jsonl
-# Prefer agent_transcript_path when the payload supplies it directly;
-# fall back to building that path from agent_id, never from a
-# directory scan (CB-147, F-31 — identity must be carried, not
-# guessed). Either candidate is trusted only once confirmed to exist.
+# CB-147/F-31: transcript_path names the conductor, not the subagent.
+# Prefer agent_transcript_path; otherwise derive by agent_id, never scan and guess.
 tp = existing_file(d.get("agent_transcript_path"))
 if tp is None:
     main_tp = d.get("transcript_path") or ""
@@ -88,14 +48,10 @@ if tp is None:
         candidate = session_dir / "subagents" / f"agent-{agent_id}.jsonl"
         tp = existing_file(str(candidate))
 
-# Its own transcript cannot be identified: measuring the conductor
-# instead is the defect this hook exists to fix, so silence beats a
-# wrong measurement. Count nothing, write nothing, allow the
-# stop.
+# If the subagent transcript is unknown, allow rather than measure the conductor.
 if tp is None:
     sys.exit(0)
 
-# The cap is computed, never written here (CB-094).
 cap = None
 try:
     out = subprocess.run(
@@ -109,7 +65,6 @@ except Exception:
 if not cap:
     sys.exit(0)
 
-# The final assistant text block is what the conductor receives.
 last = None
 try:
     for raw in pathlib.Path(tp).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -140,12 +95,8 @@ if last is None:
 run = pathlib.Path(os.environ["CB_RUN"])
 safe = re.sub(r"[^A-Za-z0-9._-]", "_", agent)
 
-# Retain a copy of the digest regardless of cap outcome, one file per
-# digest rather than an appended log: a concurrent SubagentStop from a
-# different agent can never interleave mid-write, and a later scan for
-# a citation opens a file named for its agent and moment instead of
-# locating an offset inside a shared log. Best-effort and silent: a
-# failure here must never affect the stop decision below.
+# One file per digest prevents concurrent SubagentStop writes from interleaving.
+# Archival is best-effort and cannot affect the stop decision.
 try:
     digest_file = run / (
         "digest." + safe + "."
@@ -156,6 +107,82 @@ try:
         "timestamp: " + datetime.now(timezone.utc).isoformat() + "\n"
         "---\n" + last + "\n",
         encoding="utf-8")
+except Exception:
+    pass
+
+# CB-181 (F-A/F-B): persist an unrecorded ACP block conservatively; ambiguous
+# fences or non-YAML tails skip ledger writes while the lossless digest remains.
+def isolate_acp_block(text):
+    anchor = re.compile(r"^[ \t]*(?:acp_version|kind|task_id)[ \t]*:")
+    open_fence = re.compile(r"^[ \t]*```(?:ya?ml)?[ \t]*$", re.I)
+    close_fence = re.compile(r"^[ \t]*```[ \t]*$")
+
+    def candidate(lines):
+        try:
+            start = next(i for i, line in enumerate(lines)
+                         if anchor.match(line))
+        except StopIteration:
+            return None
+        body = textwrap.dedent("\n".join(lines[start:])).strip()
+        if not body or "\x00" in body or "\t" in body:
+            return None
+        body_lines = body.splitlines()
+        if any(line.lstrip().startswith("```") for line in body_lines):
+            return None
+
+        # Reject prose tails without duplicating ACP schema validation.
+        key = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*[ \t]*:")
+        for line in body_lines:
+            if not line or line[0].isspace() or line.startswith("#"):
+                continue
+            if line in ("---", "...") or key.match(line):
+                continue
+            return None
+
+        kind_lines = re.findall(r"^kind[ \t]*:", body, re.M)
+        task_lines = re.findall(r"^task_id[ \t]*:", body, re.M)
+        kind = re.findall(
+            r"^kind[ \t]*:[ \t]*(response|verification|challenge)"
+            r"[ \t]*(?:#.*)?$", body, re.M)
+        task_id = re.findall(
+            r"^task_id[ \t]*:[ \t]*([A-Za-z0-9._-]+)"
+            r"[ \t]*(?:#.*)?$", body, re.M)
+        if (len(kind_lines) != 1 or len(task_lines) != 1
+                or len(kind) != 1 or len(task_id) != 1):
+            return None
+        return body + "\n", task_id[0]
+
+    lines = text.splitlines()
+    fenced = []
+    saw_fence = False
+    i = 0
+    while i < len(lines):
+        if not open_fence.match(lines[i]):
+            i += 1
+            continue
+        saw_fence = True
+        start = i + 1
+        i = start
+        while i < len(lines) and not close_fence.match(lines[i]):
+            i += 1
+        if i >= len(lines):
+            return None
+        block = candidate(lines[start:i])
+        if block is not None:
+            fenced.append(block)
+        i += 1
+    if saw_fence:
+        return fenced[0] if len(fenced) == 1 else None
+    return candidate(lines)
+
+# Exclusive creation makes specialist-authored blocks win races; persistence
+# failures remain independent of cap enforcement.
+try:
+    isolated = isolate_acp_block(last)
+    if isolated is not None:
+        body, task_id = isolated
+        with (run / (task_id + ".yaml")).open("x", encoding="utf-8") as f:
+            f.write(body)
 except Exception:
     pass
 
@@ -175,16 +202,8 @@ try:
 except Exception:
     sys.exit(0)
 
-# Say what to return, not merely that the return was wrong. A block
-# message that only names the violation makes shortening a guess.
-# F-25: this line printed a path an agent could not act on —
-# `{run}<task_id>.yaml`. `<task_id>` is literal text, not a
-# placeholder, and pathlib had already dropped the trailing separator,
-# so the two ran together into one filename outside any run directory.
-# Both specialists who received it declined to follow it and reported
-# the deviation instead; correct behaviour, but from judgement rather
-# than from the protocol. The block belongs beside the others in the
-# run directory, and the id is the one in the block being returned.
+# F-25: `{run}<task_id>.yaml` concatenated into an unusable path; name the
+# run directory and describe the task-id placeholder explicitly.
 print(f"{agent} returned {len(lines)} lines; the cap is {cap} "
       f"(run-discipline \u00a71). Write the full Response Block to "
       f"{run}/<its task_id>.yaml — that directory holds this run, "

@@ -1,30 +1,6 @@
 #!/usr/bin/env python3
 """test-discovery (CB-098) — the cascade must name evidence, not wishes.
 
-A discovery entry says: when an agent sees THIS inside its own window,
-load THAT skill next. The mechanism only works if the trigger is a
-string that actually occurs in real files. A plausible-looking token
-that no file ever contains is worse than no entry — it reads as
-coverage while firing never, which is Part II trap #1 in data form.
-
-The proxy for "observable" is mechanical: the token must appear in the
-fixture corpus under tests/fixtures/discovery/, which holds realistic
-snippets per ecosystem. File NAMES count as evidence alongside file
-contents, because a name is part of what an agent sees when it lists
-or opens a directory.
-
-Asserts:
-  D-1  every discovery token appears in the fixture corpus
-  D-2  no token targets its own skill — a cascade to yourself is a
-       no-op that inflates the entry count and moves nothing
-  D-3  no token is shorter than three characters; a one- or two-char
-       trigger matches everywhere and would fire on every window
-  D-4  every fixture file contributes at least one token, so the
-       corpus cannot rot into unrelated sample code
-
-Target resolution is NOT re-checked here: check-agent-skills A-5 owns
-it, and asserting it twice would let one copy drift unnoticed.
-
 Exit: 0 all pass · 1 any violation (each printed with its D-id).
 """
 import pathlib

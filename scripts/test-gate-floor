@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""test-gate-floor — acceptance run for GateFloorHook.
+
+Usage: scripts/test-gate-floor   Exit: 0 all pass · 1 any failure
+"""
+import json, os, pathlib, shutil, subprocess, sys, tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOOK = ROOT / "plugins/cereblnk/hooks/scripts/gate-floor.sh"
+MANIFEST = ROOT / "plugins/cereblnk/hooks/hooks.json"
+
+
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def main():
+    if shutil.which("bash") is None:
+        print("test-gate-floor: bash not on PATH — skipping")
+        return 0
+
+    fails, ran = [], 0
+
+    def case(name, ok, detail=""):
+        nonlocal ran
+        ran += 1
+        if not ok:
+            fails.append("%s%s" % (name, (": " + detail) if detail else ""))
+
+    with tempfile.TemporaryDirectory() as td:
+        proj = pathlib.Path(td) / "proj"
+        cbdir = proj / ".claude/cereblnk"
+        flags = cbdir / "flags"
+        runctx = cbdir / "context/R-PINNED"
+        decoy = cbdir / "context/R-NEWER"
+        flags.mkdir(parents=True)
+        runctx.mkdir(parents=True)
+        decoy.mkdir(parents=True)
+        write(flags / "run-active", "R-PINNED\n")
+        write(decoy / "plan.md", "- risk: high\n")
+
+        def reset(risk=None):
+            for path in runctx.iterdir():
+                if path.is_file():
+                    path.unlink()
+            if risk is not None:
+                write(runctx / "plan.md", risk)
+
+        def gate(name, role, extra=""):
+            write(runctx / name,
+                  "acp_version: \"1.0\"\n"
+                  "kind: verification\n"
+                  "task_id: GATE\n"
+                  "role: %s\n%s" % (role, extra))
+
+        def response(name, role, extra=""):
+            write(runctx / name,
+                  "kind: response\nrole: %s\n%s" % (role, extra))
+
+        def run_hook(payload=None):
+            env = dict(os.environ, CLAUDE_PROJECT_DIR=str(proj))
+            return subprocess.run(
+                ["bash", str(HOOK)],
+                input=json.dumps({} if payload is None else payload),
+                capture_output=True, text=True, env=env, cwd=str(proj))
+
+        def decision(result):
+            try:
+                return json.loads(result.stdout)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+
+        reset("- risk: medium\n")
+        (flags / "run-active").unlink()
+        r = run_hook()
+        case("no active run allows", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+        write(flags / "run-active", "R-PINNED\n")
+
+        reset("- risk: low\n")
+        r = run_hook()
+        case("low risk without gates allows", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset()
+        r = run_hook()
+        case("missing plan.md fails open", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        # CB-177: a plan-less /cb-do carries its risk only as select-agents'
+        # persisted gate_level, so the floor must read it there.
+        reset()
+        write(runctx / "agents-required.yaml",
+              "agents_required:\n  - agent: cereblnk:core:challenger-agent\n"
+              "gate_level: 3\n")
+        r = run_hook()
+        case("plan-less run blocks on persisted gate_level 3",
+             decision(r).get("decision") == "block"
+             and "challenger-agent" in decision(r).get("reason", ""),
+             "out=%r" % r.stdout[:160])
+
+        reset()
+        write(runctx / "agents-required.yaml",
+              "agents_required:\n  - agent: cereblnk:engineering:backend-agent\n"
+              "gate_level: 1\n")
+        r = run_hook()
+        case("plan-less run at gate_level 1 allows",
+             r.returncode == 0 and not r.stdout, "out=%r" % r.stdout[:120])
+
+        reset("- risk: low\n")
+        write(runctx / "agents-required.yaml",
+              "agents_required:\n  - agent: cereblnk:core:challenger-agent\n"
+              "gate_level: 3\n")
+        r = run_hook()
+        case("a plan's risk wins over the persisted gate_level",
+             r.returncode == 0 and not r.stdout, "out=%r" % r.stdout[:120])
+
+        reset("- request risk: **med**\n")
+        r = run_hook()
+        msg = decision(r).get("reason", "")
+        case("medium risk without verification blocks blocks",
+             decision(r).get("decision") == "block",
+             "rc=%d out=%r" % (r.returncode, r.stdout[:160]))
+        case("medium missing message names verifier and consistency",
+             "verifier-agent" in msg and "consistency-agent" in msg, msg[:160])
+
+        reset("- risk: medium\n")
+        gate("GATE-V.yaml", "cereblnk:core:verifier-agent")
+        r = run_hook()
+        msg = decision(r).get("reason", "")
+        case("medium with verifier only blocks for consistency",
+             decision(r).get("decision") == "block"
+             and "consistency-agent" in msg and "verifier-agent" not in msg,
+             msg[:160])
+
+        gate("GATE-C.yaml", "cereblnk:core:consistency-agent")
+        r = run_hook()
+        case("medium with both required gates allows",
+             r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset("- risk: high\n")
+        gate("GATE-V.yaml", "cereblnk:core:verifier-agent")
+        gate("GATE-C.yaml", "cereblnk:core:consistency-agent")
+        r = run_hook()
+        msg = decision(r).get("reason", "")
+        case("high without challenger blocks for challenger only",
+             decision(r).get("decision") == "block"
+             and "challenger-agent" in msg
+             and "verifier-agent" not in msg
+             and "consistency-agent" not in msg,
+             msg[:160])
+
+        gate("GATE-H.yaml", "cereblnk:core:challenger-agent")
+        r = run_hook()
+        case("high with all required gates allows",
+             r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset("- risk: medium\n")
+        gate("GATE-V.yaml", "cereblnk:core:verifier-agent",
+             "gate_verdict: pass-with-risk\n")
+        gate("GATE-C.yaml", "cereblnk:core:consistency-agent",
+             "verdict: refuted\n")
+        r = run_hook()
+        case("qualified roles match and verdict values are irrelevant",
+             r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset("- risk: medium\n")
+        response("T-01.yaml", "cereblnk:core:verifier-agent",
+                 "verdict: not-merge-safe\n")
+        gate("GATE-C.yaml", "cereblnk:core:consistency-agent")
+        r = run_hook()
+        msg = decision(r).get("reason", "")
+        case("response verdict does not count as a gate",
+             decision(r).get("decision") == "block"
+             and "verifier-agent" in msg and "consistency-agent" not in msg,
+             msg[:160])
+
+        reset("- risk: medium\n")
+        r = run_hook({"stop_hook_active": True})
+        case("stop_hook_active allows", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset("- risk: medium\n")
+        rcs = []
+        decisions = []
+        for _ in range(5):
+            r = run_hook()
+            rcs.append(r.returncode)
+            decisions.append(decision(r).get("decision"))
+        case("nudge cap releases after MAX_NUDGES stagnant stops",
+             rcs == [0, 0, 0, 0, 0]
+             and decisions == ["block", "block", "block", None, None],
+             "rcs=%r decisions=%r" % (rcs, decisions))
+
+        reset("- risk: medium\n")
+        first = run_hook()
+        gate("GATE-V.yaml", "cereblnk:core:verifier-agent")
+        after_shrink = [run_hook() for _ in range(4)]
+        shrink_decisions = [decision(r).get("decision") for r in after_shrink]
+        case("a shrinking missing set resets the nudge counter",
+             decision(first).get("decision") == "block"
+             and shrink_decisions == ["block", "block", "block", None],
+             "after shrink=%r" % shrink_decisions)
+
+        reset("- risk: medium\n")
+        r = subprocess.run(
+            ["bash", str(HOOK)], input="not-json", capture_output=True,
+            text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=str(proj)),
+            cwd=str(proj))
+        case("unparseable input fails open", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        reset("- risk: medium\n")
+        (runctx / "unreadable.yaml").write_bytes(b"kind: verification\nrole: \xff\n")
+        r = run_hook()
+        case("unreadable YAML fails open", r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        write(flags / "run-active", "\n")
+        r = run_hook()
+        case("an unpinned active run fails open",
+             r.returncode == 0 and not r.stdout,
+             "rc=%d out=%r" % (r.returncode, r.stdout[:120]))
+
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        stop = [h.get("command", "") for h in manifest["hooks"]["Stop"][0]["hooks"]]
+        substop = [h.get("command", "") for h in
+                   manifest["hooks"]["SubagentStop"][0]["hooks"]]
+        case("gate floor is registered on Stop only",
+             any("gate-floor.sh" in cmd for cmd in stop)
+             and not any("gate-floor.sh" in cmd for cmd in substop),
+             "Stop=%r SubagentStop=%r" % (stop, substop))
+
+    if fails:
+        print("test-gate-floor: %d/%d FAILED" % (len(fails), ran))
+        for failure in fails:
+            print("  FAIL  %s" % failure)
+        return 1
+    print("test-gate-floor: %d checks passed" % ran)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

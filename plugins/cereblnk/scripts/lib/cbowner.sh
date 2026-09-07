@@ -1,69 +1,44 @@
 #!/usr/bin/env bash
-# cbowner — the conductor-ownership table, in one place.
-#
-# Which runtime files the conducting conversation may write is a policy
-# question, answered by run-discipline §1/§2 and agent-selection-policy
-# §3. It is asked from more than one place now: the edit tools reach
-# these paths through Write/Edit, and the shell reaches them through a
-# redirection. Two copies of a policy table drift, and CB-122 was
-# exactly that drift — the table disagreed with the policy in both
-# directions at once. So there is one table, and both callers source it.
-#
-# Exempt, because the conductor writes these BY DEFINITION:
-#   $CB_DIR/state.md                  run state
-#   $CB_DIR/context/<run>/plan.md     the plan
-#   $CB_DIR/context/<run>/skills-required.yaml
-#                                     the selector's output, copied
-#                                     verbatim by the orchestrator
-#                                     (agent-selection-policy §3)
-#   $CB_DIR/flags/*                   run lifecycle flags
-#   $CB_DIR/telemetry/*               run summaries
-#
-# NOT exempt, and deliberately so:
-#   $CB_DIR/context/<run>/<task>.yaml a subagent's Response Block — a
-#                                     conductor writing one is
-#                                     fabricating a specialist's output
-#   $CB_DIR/memory/**                 promoted knowledge and authored
-#                                     deliverables have their own owners
-#   $CB_DIR/flags/conductor-override  the human escape hatch — the one
-#                                     flag the conductor does not own
-#
-# conductor-override is carved out of the flags exemption, and the
-# carve-out is the whole point. The hatch was designed to cost "an
-# explicit act by the person": its name is kept out of every
-# model-facing message on purpose, because a blocked model reads the
-# last sentence of a block as an instruction. But secrecy is not a
-# mechanism. Blocked from writing a Response Block, a run reached for
-# the hatch itself and the flags exemption granted it; only
-# ScratchGuard happened to be in the way, and ScratchGuard nudges
-# twice and then allows. A guard that permits arming its own bypass
-# enforces nothing it claims to. The person writes this file, or it
-# does not exist.
-#
-# Separators are normalised: the path arrives as the platform wrote it,
-# and on Windows that means backslashes.
+# CB-122: shared conductor-ownership table; duplicate edit/shell copies drifted.
+# Control state is conductor-owned, except specialist blocks/memory and the human override.
+cb_is_repo_source() {
+  [ -n "${1:-}" ] && [ -n "${CB_ROOT:-}" ] && [ -n "${PYBIN:-}" ] || return 1
+  CB_CANDIDATE_PATH="$1" CB_SOURCE_ROOT="$CB_ROOT" $PYBIN -c '
+import os, pathlib, sys
+try:
+    root = pathlib.Path(os.environ["CB_SOURCE_ROOT"]).resolve()
+    raw = pathlib.Path(os.environ["CB_CANDIDATE_PATH"])
+    target = (raw if raw.is_absolute() else pathlib.Path.cwd() / raw).resolve()
+    target.relative_to(root)
+    target.relative_to(root / ".claude")
+except ValueError:
+    try:
+        target.relative_to(root)
+    except (ValueError, UnboundLocalError):
+        sys.exit(1)
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+sys.exit(1)
+' >/dev/null 2>&1
+}
+
 cb_is_conductor_owned() {
   [ -n "${1:-}" ] || return 1
   _n="$(printf '%s' "$1" | tr '\\' '/')"
   case "$_n" in
-    # first match wins: the hatch is refused before flags/* grants it
-    */cereblnk/flags/conductor-override*) return 1 ;;
+    # Refuse the human override before the broader flags grant.
+    .claude/cereblnk/flags/conductor-override*|*/cereblnk/flags/conductor-override*) return 1 ;;
+    .claude/cereblnk/context/*/skills-required.yaml|*/cereblnk/context/*/skills-required.yaml) return 0 ;;
+    # Response Blocks and authored memory remain specialist-owned under .claude/.
+    .claude/cereblnk/context/*/*.yaml|*/cereblnk/context/*/*.yaml) return 1 ;;
+    .claude/cereblnk/memory/*|*/cereblnk/memory/*) return 1 ;;
+    # Specialist refusals precede the broad control-surface grant.
+    .claude/*|*/.claude/*)                return 0 ;;
     */cereblnk/context/*/[Pp]lan.md)      return 0 ;;
-    */cereblnk/context/*/skills-required.yaml) return 0 ;;
     */cereblnk/state.md)                  return 0 ;;
-    # F-06: the block message counts verdicts among what the conductor
-    # holds — "the conductor holds intent, plan, digests, verdicts" —
-    # and the table had no path for one. A run journal is a verdict: no
-    # surface specialist owns it, so "delegate this edit" names nobody.
-    # The three ways out all cost something: the override (a human act
-    # with a TTL), disarming the run (protection gone), or spawning a
-    # specialist for a document outside its domain (a wasted subagent
-    # in the wrong role). The runtime tree is gitignored and holds no
-    # source; source is what the guard is for.
-    # Scoped to the run directory only. memory/specs and memory/briefs
-    # ARE a specialist's surface — the authored-documentation rule
-    # routes them to technicalwriter-agent — so the journal opens the
-    # run ledger and nothing else.
+    # F-06: run journals are conductor-held verdicts with no specialist owner.
+    # Limit this grant to run context; authored memory remains specialist-owned.
     */cereblnk/context/*/*.md)            return 0 ;;
     */cereblnk/flags/*)                   return 0 ;;
     */cereblnk/telemetry/*)               return 0 ;;

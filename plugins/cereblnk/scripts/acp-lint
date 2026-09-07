@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# acp-lint (CB-081) — mechanical validation of ACP Response/Verification
-# Blocks per policies/acp-validation-checklist.md. Turns the checklist's
-# weakest D-class items into M-class: a weak conductor does not need to
-# remember V-1..V-7/V-10 — it runs this and reads the exit code.
-# Dependency-free ($PYBIN stdlib, regex-structural like plan-lint; no
-# YAML library required or used).
-# Exit 0 = block admissible; exit 1 = violations (one per line, named
-# with their checklist ID); exit 2 = usage error.
-# Scope, honestly: V-8 (gate completeness) and V-9 (cross-agent
-# evidence attachment) need run-level context and STAY with the
-# orchestrator; this linter covers the per-block subset.
+# acp-lint (CB-081) checks per-block ACP rules V-1..V-7/V-10 without YAML dependencies.
+# Limit: V-8 gate completeness and V-9 cross-agent evidence require run context.
+# Exit: 0 admissible · 1 named violations · 2 usage
 set -euo pipefail
 # shellcheck source=../lib/cbenv.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/cbenv.sh"
@@ -33,22 +25,10 @@ def top(key):
 # Strip a trailing YAML comment from the scalar.
 kind = (top("kind") or "").split("#")[0].strip() or None
 
-# ---- T-1: Task Block documents: field (ACP A1) ----
-# A task may hand over indexed sections; it may never hand over a bare
-# path, which is an instruction to read the whole file.
-# ---- V-1: the role has to be an agent that exists ----
-# Checked on every kind, Task Blocks included: the assignment is where
-# an invented role is written first. The message names the likely
-# category error — a skill is a capability an agent loads, not an agent.
-#
-# Fails open when agents/ cannot be resolved: acp-lint also runs against
-# blocks outside the plugin tree.
+# ACP A1 forbids bare document paths; V-1 checks roles at assignment, where invention begins.
+# Fail open when agents/ is unavailable because blocks may live outside the plugin tree.
 def _norm(s):
-    # A role may arrive qualified now that select-agents emits the
-    # spawnable form (CB-132): cereblnk:engineering:docs-agent. The
-    # roster is keyed by file stem, so take the last segment before
-    # normalising — otherwise the block that names its agent correctly
-    # is the one the linter rejects.
+    # CB-132: strip qualification before comparing against filename-keyed roles.
     return re.sub(r'[^a-z0-9]', '', (s or '').lower().rsplit(':', 1)[-1])
 
 role = (top("role") or "").split("#")[0].strip()
@@ -67,18 +47,8 @@ if role and roster and _norm(role) not in roster:
              f"to it. Known agents: " + ", ".join(sorted(roster.values())))
 
 
-# ---- T-2: a domain floor beats the level the block was assigned (F-26) ----
-# risk-model.md: the domain floor beats the assigned level. Applied at
-# the ASSIGNMENT, because that is where the wrong number is written
-# first.
-#
-# Scope is deliberately the UNCONDITIONAL floors only. security-agent's
-# whole domain sits on the always-level-3 list, so every task it is
-# given is a level-3 task. database-agent and infra-agent carry floors
-# too, but conditional ones (migrations; destroy/state operations) — a
-# plain query review is honestly level 1, and a checker that cannot
-# read the objective would refuse a well-formed block. Those stay with
-# the orchestrator's routing step, which can.
+# F-26: unconditional domain floors beat assigned levels at assignment time.
+# Conditional database/infra floors stay with routing, which can read the objective.
 FLOORS = {"securityagent": 3}
 
 if kind == "task":
@@ -93,9 +63,7 @@ if kind == "task":
                      f"floor beats the assigned level') — issue the block "
                      f"at {floor}. A smaller scope does not lower it.")
 
-# ---- T-4: revisions are appended, and each one pays for itself (F-54) ----
-# `supersedes` paths are not resolved; only that a revision is
-# attributable and priced.
+# F-54 checks that revisions are attributable and priced, not that supersedes paths resolve.
 rev_m = re.search(r'^revisions\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)
 if rev_m:
     body = rev_m.group(1)
@@ -121,9 +89,7 @@ if rev_m:
                  "`revision:`. Each appended entry is keyed by its revision "
                  "marker so the order on disk is the order they happened.")
 
-# ---- T-3: a gate verdict names the text it was derived from (F-53) ----
-# Presence only: whether the named revision is the current one is the
-# consistency gate's question, not this one.
+# F-53 checks a verdict names source text; currency belongs to the consistency gate.
 if kind in ("verification", "challenge"):
     if not top("target_revision"):
         V.append("T-3: a gate block must carry target_revision — the "
@@ -201,18 +167,13 @@ def items(lbl):
     ids = re.findall(r'^\s*-\s*id\s*:\s*(\S+)', body, re.M)
     return list(zip(ids, parts))
 
-# ---- V-3: every known fact carries an evidence reference ----
-# Two admissible forms: a Context OS bundle (CTX-114#L42-58) or an
-# indexed document (doc:1113d150a553#L1240-1298). Requiring CTX- alone
-# would reject a fact read straight out of the source it names.
+# V-3 accepts line-addressed CTX bundles and indexed documents: requiring
+# CTX- alone would reject a fact read straight out of the source it names.
 for fid, it in items("known"):
     if not re.search(r'evidence\s*:\s*\[[^\]]*(?:CTX-|doc:)', it):
         V.append(f"V-3: known fact {fid} has no CTX or doc: evidence reference")
 
-# ---- V-3: a doc citation names lines, never a section id ----
-# Section boundaries are `known` only under a structural segmentation;
-# under derived/assumed a section id is this platform's own guess, and a
-# claim anchored to one is anchored to nothing the document said.
+# V-3 requires lines; derived/assumed section boundaries are platform guesses.
 for m in re.finditer(r'doc:([0-9a-f]{12})(#L(\d+)-(\d+))?', text):
     if not m.group(2):
         V.append(f"V-3: doc:{m.group(1)} cited without a line range "
@@ -243,9 +204,7 @@ for fid, _ in items("speculative"):
     if re.search(rf'\b{re.escape(fid)}\b', decision_text):
         V.append(f"V-5: decision references speculative fact {fid}")
 
-# ---- V-6: load-bearing assumed facts named in decision text ----
-# Mechanical subset: if the decision cites an assumed fact ID, fine (named);
-# deeper dependence detection stays with VerifierAgent.
+# V-6 checks cited assumed-fact IDs; deeper dependence stays with VerifierAgent.
 
 # ---- V-7: budget honored ----
 br = re.search(r'^budget_report\s*:\s*$(.*?)(?=^\S|\Z)', text, re.M | re.S)

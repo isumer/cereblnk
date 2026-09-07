@@ -461,9 +461,7 @@ class Validator:
         return results
 
     def bind_and_recurse(self, group, mn, mx, kids, node):
-        """After a successful structural match, validate each child
-        against its declaration (name-directed — unambiguous in this
-        subset because decls are matched by qualified name)."""
+        """Validate matched children by qualified-name declaration."""
         decls = {}
 
         def collect(g):

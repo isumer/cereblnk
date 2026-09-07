@@ -1,44 +1,7 @@
 #!/usr/bin/env python3
-"""check-discovery-claim (CB-142, F-08) — discovery is carried, never
-fired, and the tree must keep saying so.
+"""check-discovery-claim (CB-142, F-08) — discovery is carried, never fired.
 
-`policies/skill-selection.yaml` declares 94 `discovery` triggers. They
-name evidence a specialist can only see once it opens a file: `@Entity`
-in a source file means the hibernate-jpa skill is the one this task
-needs, and no amount of reading the request text could have said so.
-
-The tree therefore does exactly one thing with them. `select-agents`
-carries the pairs belonging to the rules that matched into the Task
-Block of each role that owns them, one hop, so the trigger is in the
-specialist's window before it starts reading. Whether a trigger fires
-is decided by the file, and loading the skill is the specialist's act.
-No hook watches for the token. No script loads a skill.
-
-That distinction is the design, and it is only honest while both halves
-agree:
-
-  the tree carries but does not fire  <->  the policy claims no more
-
-This checker holds those two halves together.
-
-  C-1  one emitter, no firing. Nothing under `scripts/`,
-       `plugins/cereblnk/scripts/` or `plugins/cereblnk/hooks/` touches
-       `discovery` except the parser, the validators in VALIDATORS, and
-       the emitters in EMITTERS. A hook is refused outright, whatever it
-       is added to: hooks run on events, so a hook reading these
-       triggers would be firing them, which is the one thing this design
-       does not do.
-  C-2  the map declares its own status — the schema header carries the
-       marker verbatim, so the reader of the data learns it from the
-       data.
-  C-3  `agent-selection-policy.md` §4c carries the same marker, so the
-       prose and the data cannot drift apart silently.
-
-C-1 stays the forcing function. Adding automatic loading fails it by
-name, and the only way back to green is to change what C-2 and C-3
-oblige the map and the policy to say — which is the honest edit that
-such a mechanism would owe its readers. A rule without a checker is a
-wish; so is a non-rule that reads like one.
+Automatic firing is rejected; specialists decide from file evidence.
 
 Exit: 0 the tree and the claim agree · 1 they do not (each printed
 with its C-id).
@@ -51,9 +14,7 @@ PLUGIN = ROOT / "plugins/cereblnk"
 MAP = PLUGIN / "policies/skill-selection.yaml"
 POLICY = PLUGIN / "policies/agent-selection-policy.md"
 
-# The one sentence both files must carry. Deliberately a full clause and
-# not a bare adjective, which survives an edit that guts the meaning
-# around it.
+# Require a full clause; a bare adjective could survive after its meaning is gutted.
 MARKER = "carried into the Task Block; loading remains an agent decision on evidence"
 
 # Files permitted to read `discovery` to judge the triggers, never to act
@@ -65,9 +26,7 @@ VALIDATORS = {
     "plugins/cereblnk/scripts/check-discovery-claim",  # this checker
 }
 
-# Files permitted to put the triggers in front of a specialist. Carrying
-# a pair into a Task Block is not firing it — the file decides that, and
-# the specialist decides what to load.
+# Carrying triggers into a Task Block is not firing them; the specialist still decides.
 EMITTERS = {
     "plugins/cereblnk/scripts/select-agents",        # one hop, matched rules only
 }

@@ -78,7 +78,7 @@ against rendered output; reading the source yields `derived`.
 
 ## Constraints
 
-Enforceable form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/yaml/`:
+The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/yaml/`:
 `coding-style` · `patterns` · `security`.
 
 Before producing or reviewing configuration, read the files whose

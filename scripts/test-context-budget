@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 """test-context-budget (CB-094) — the budget must follow the window.
-
-The failure this guards: a number written into a policy while the
-window was 128K, still there when the window became 96K. Every
-assertion below is about the figures moving with their inputs, and
-about a default never being mistaken for a measurement.
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile
 

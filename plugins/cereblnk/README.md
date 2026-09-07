@@ -2,21 +2,21 @@
 
 Cereblnk turns Claude Code into an engineering organization: it reads
 intent at three levels, decomposes work into independently verifiable
-tasks, spawns specialist agents with isolated context budgets, and never
-lets an answer reach the user without risk-scaled verification.
+tasks, spawns specialist agents with isolated context budgets, and routes
+full-pipeline answers through risk-scaled verification.
 
 ## What ships
 
 | Component | Contents |
 |---|---|
-| `skills/` (top level) | 16 entry points — `cb-dispatch` routes automatically; the rest are typed |
+| `skills/` (top level) | 19 entry points — `cb-dispatch` routes automatically; the rest are typed |
 | `skills/<group>/` | 77 domain skills: languages 19 · frameworks 16 · practices 21 · infrastructure 8 · data 7 · delivery 6 |
-| `rules/` | 176 constraint files — the enforceable form of the skills, attached by glob and by detected stack |
+| `rules/` | 163 prose constraint files specialists work under, attached by glob and by detected stack |
 | `agents/core/` | Planner, Verifier, Challenger, Consistency, Synthesizer |
 | `agents/engineering/` | 13 specialists: Architect, Backend, Frontend, Security, QA, Performance, Database, APIDesign, Refactoring, Debugger, Infra, TestEngineer, XML |
 | `agents/lifecycle/` · `agents/context/` | 3 + 5: TechnicalWriter and the context micro-agents |
-| `hooks/` | 12 hooks — delegation, secrets, destructive commands, edit boundary, digest cap, context monitor, scratch guard, skill floor and ledger, run guard, post-edit test, history archive |
-| `policies/` | 17 policies: risk, budgets, gates, agent selection, consensus, grounding, the run contract |
+| `hooks/` | 22 hooks across eight events — guards, SubagentStop floors, ledgers, lifecycle cleanup, stale-run notice, context monitoring and history archive |
+| `policies/` | 18 policies: risk, budgets, gates, agent selection, consensus, grounding, run discipline and archival |
 | `protocols/` | Agent Communication Protocol templates and schemas |
 
 Lifecycle workflows — release, deploy, incident, retrospective, ADR,
@@ -133,10 +133,11 @@ Everything Cereblnk writes at runtime lives under the **project's own**
 <project root>/.claude/cereblnk/
 ├── memory/      # briefs, promoted knowledge, evidence index
 ├── context/     # per-run ACP block ledger (file-mediated ACP)
-├── telemetry/   # run summaries
-├── flags/       # hook opt-in flags (/cb-careful, /cb-boundary)
+├── archive/     # retired per-run ledgers, keyed by the original run id
+├── telemetry/   # completion costs and shipping review ledger
+├── flags/       # run lifecycle plus opt-in guards
 ├── config/      # e.g. test-command for PostEditTestHook
-└── plans/       # durable implementation plans
+└── state.md     # current run/stage pointer; plans live under context/
 ```
 
 Anchoring rules:
@@ -157,6 +158,14 @@ Anchoring rules:
   `settings.json` above.
 - Per-project state is per-project: two repos never share memory,
   plans, or telemetry.
+
+Run state is presence-only: `run-active` means `ARMED`, only
+`run-completed` means `COMPLETED`, and neither means `IDLE`; no TTL
+changes that answer. Accepted completion records `runs.log`, records a
+shipping run in `review-ledger.log`, and archives its live context.
+`run-flag abandon` archives without claiming completion, `/cb-resume`
+continues the pinned live plan, and `/cb-catchup` walks unreviewed
+shipping records.
 
 ## Context Headroom (long multi-agent runs)
 

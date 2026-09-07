@@ -41,13 +41,12 @@ cereblnk/                                    # repo root = marketplace
 ├── .claude-plugin/marketplace.json
 ├── plugins/cereblnk/
 │   ├── .claude-plugin/plugin.json
-│   ├── commands/                            # thin workflow entry points (§3)
 │   ├── agents/
 │   │   ├── core/                            # runtime agents (§4.1)
 │   │   ├── engineering/                     # specialist agents (§4.2)
 │   │   ├── lifecycle/                       # product/release agents (§4.3)
 │   │   └── context/                         # Context OS micro-agents (§4.4)
-│   ├── skills/
+│   ├── skills/                              # 19 thin entry points at top level
 │   │   ├── languages/                       # §5.1
 │   │   ├── frameworks/                      # §5.2
 │   │   ├── data/                            # §5.3
@@ -69,6 +68,9 @@ cereblnk/                                    # repo root = marketplace
 
 Every workflow: fixed output ordering (Decision → Evidence → Reasoning →
 Risk → Confidence), risk-scaled gates, per-stage budgets.
+
+The current tree exposes 19 entry-point skills. The catalog below also
+retains later-phase workflows that are not shipped entry points.
 
 ### 3.1 Conception & Planning
 
@@ -113,9 +115,10 @@ Risk → Confidence), risk-scaled gates, per-stage budgets.
 | `/cb-retro` | RetrospectiveWorkflow | Data-driven retro from git history: velocity, test-ratio trends, hotspot files, per-contributor breakdowns, growth items. Snapshot persisted for trend comparison | 3 |
 | `/cb-memory` | MemoryWorkflow | Review / search / prune / export what Cereblnk learned about this project (`.claude/cereblnk/memory/`). Stale entries (referencing deleted files) flagged for pruning | 4 |
 
-Session continuity (save/restore working state across sessions) ships as
-two utility commands `/cb-save` and `/cb-resume` backed by
-ContextArchivistAgent — Phase 4.
+Interrupted-run continuity now ships as `/cb-resume`, backed by the
+pinned `context/<run_id>/plan.md`, `plan-status`, and `run-flag arm`.
+The broader `/cb-save` and ContextArchivist snapshot design remains
+Phase 4.
 
 *ProductionWatch depends on log/browse tooling availability → F-class
 until the Reality Map confirms a mechanism; ships degraded (log-file and
@@ -205,17 +208,32 @@ first within Phase 2.
 ## 6. Hooks — Hard Enforcement Layer (Phase 1–2)
 
 Hooks are the scarce real-enforcement resource (Reality Map #3).
-Cereblnk ships exactly seven (Amendments A1–A3):
+Cereblnk ships 22 hook scripts across eight events (Amendment A6):
 
-| Hook | Enforces | Command |
+| Hook | Event | Enforces |
 |---|---|---|
-| DestructiveCommandHook | warns before irreversible shell ops (recursive delete, force-push, hard reset, table drops); routine build-artifact cleanups allowlisted | `/cb-careful` |
-| EditBoundaryHook | blocks Edit/Write outside a declared directory during focused work; auto-engaged by RefactoringWorkflow and BugInvestigationWorkflow | `/cb-boundary <path>` |
-| PostEditTestHook | runs the affected test subset after edits in gate-level-3 work | policy-driven |
-| SecretGuardHook | fail-closed redaction check before any artifact leaves the run | always on |
-| DelegationGuardHook | while a run is armed, blocks Edit/Write from the conducting conversation (no `agent_id` in hook input) — file edits belong to surface specialist subagents; subagent edits pass | always on during runs, flag-released |
-| RunGuardHook | blocks the FIRST stop while `$CB_DIR/flags/run-active` is armed (one continue-nudge for runs whose subagent results land between turns), then disarms itself | always on, self-disarming |
-| HistoryArchiveHook | archives the session transcript to `<project>/.claude/history/` before compaction (manual and auto) discards detail | always on |
+| DelegationGuardHook | PreToolUse | shared presence-only `ARMED`/`COMPLETED`/`IDLE` routing for conductor source writes and follow-ups |
+| ToolFloorHook | PreToolUse | an agent cannot use an in-place shell edit to bypass its own denied edit tools |
+| DestructiveCommandHook | PreToolUse | opt-in block for irreversible shell operations; routine build cleanup remains allowlisted |
+| EditBoundaryHook | PreToolUse | opt-in block for writes outside the declared focused-work path |
+| SecretGuardHook | PreToolUse | blocks likely credentials before a write |
+| ScratchGuardHook | PreToolUse | blocks new untracked root scratch files during a run, with a bounded cap |
+| DocFloorHook | PreToolUse | blocks unbounded reads of indexed documents and hands back the outline |
+| SkillLedgerHook | PreToolUse | records specialist skill loads in the pinned run ledger |
+| PostEditTestHook | PostToolUse | runs configured gate-level-3 checks after edits and reports failures |
+| ExecLedgerHook | PostToolUse | records edited and executed surfaces in the pinned run ledger |
+| HistoryArchiveHook | PreCompact | copies the transcript to `.claude/cereblnk/history/` before compaction |
+| RunGuardHook | Stop | reports plan/Response Block progress and missing mandated responders; only stagnant Stops consume its bounded cap |
+| StaleRunHook | SessionStart | reports an old untouched pin and names resume/abandon recovery without mutating state |
+| EnvTeardownHook | SessionEnd | reaps only an environment this project recorded as starting |
+| SkillFloorHook | SubagentStop | refuses a specialist that omitted its required craft skills |
+| ExecFloorHook | SubagentStop | refuses an edited configured surface that was never executed |
+| ReachFloorHook | SubagentStop | refuses a near-certain newly introduced unreferenced symbol |
+| ContractFloorHook | SubagentStop | refuses only contract findings introduced after the run-arm baseline; deferred Channels rows are exempt |
+| GroundFloorHook | SubagentStop | refuses unresolved file, document-line, or quote evidence references |
+| DigestCapHook | SubagentStop | refuses a return above the computed digest line cap |
+| ContextMonitorHook | UserPromptSubmit | samples context occupancy and warns past the checkpoint without blocking |
+| RouteHintHook | UserPromptSubmit | injects the deterministic specialist/gate hint when automatic routing is applicable |
 
 Honest note: edit-boundary hooks block tools, not shell side-effects —
 accident prevention, not a sandbox. Documented as such.
@@ -318,3 +336,6 @@ BACKLOG.md remains the single live source.
 - Impact: description only. No agent, skill, workflow, policy or gate
   reads `examples/`; reproducible fixtures live under `tests/` and are
   unaffected.
+
+**A6 (v1.5 → v1.6).**
+- §§2, 3 and 6: synchronized the shipped 19-skill entry surface, `/cb-resume` recovery, and all 22 hooks across eight events with the 1.6.0 tree (CB-179).
