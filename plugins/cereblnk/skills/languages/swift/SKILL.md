@@ -94,11 +94,17 @@ observed deallocation.
 ## Constraints
 
 The constraint form lives in `${CLAUDE_PLUGIN_ROOT}/rules/languages/swift/`.
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/select-rules <path>` for the files
-the task touches; it returns the constraint files to read, applying both
-the glob and the stack gate. Read `rules/common/` once per run. Cite a
-violated constraint by file and section. Selection rules:
-agent-selection-policy §4b.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/select-rules --constraints --task "<the
+task in one sentence>" <path>` for the files the task touches. Without
+`--task` the architecture, governance and security rules attach to nothing,
+because they declare a task signal and no file glob. It applies the glob and the stack gate and then
+emits the constraints themselves — do not read the rule files, which costs
+three times the tokens for the same constraints. `rules/common/` already
+arrived at session start. Every block is headed by its source path and keeps
+its section headings, so cite a violated constraint by file and section as
+before. Examples, and the failure shapes outside security, are projected
+away: read the source file when an example is genuinely needed. Selection
+rules: agent-selection-policy §4b.
 
 ## Detection Table
 

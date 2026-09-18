@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .claude/cereblnk/
+# personal, machine-specific permission grants — never shared
+.claude/settings.local.json
 .idea/
 # CB-108: the leakage wordlist is never committed — a tracked wordlist
 # publishes exactly the strings it exists to catch (check-leakage L-3).

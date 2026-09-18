@@ -113,6 +113,40 @@ def main():
         run("exec-ledger.sh", bash_in("npm test", response=failed), proj)
         case("ledger: failed matching command records nothing", lines() == [], "got %r" % lines())
 
+        # The shapes below are copied from real failing Bash results in this
+        # machine's transcript archive, not invented. The exit-status half was
+        # shipped in 1.6.0 against several plausible payload shapes with no live
+        # sample to check, and this is that check: keys are exactly
+        # ['content', 'is_error', 'tool_use_id', 'type'], `content` is a string,
+        # and a genuine shell failure opens it with "Exit code N" and no
+        # "Error:" prefix — which the one earlier test had assumed.
+        reset(commands={"api": "npm test"})
+        run("exec-ledger.sh", bash_in(
+            "npm test",
+            response="Exit code 1\n/bin/bash: line 82: cd: nope: No such file"),
+            proj)
+        case("ledger: observed bare 'Exit code 1' string earns no credit",
+             lines() == [], "got %r" % lines())
+
+        reset(commands={"api": "npm test"})
+        run("exec-ledger.sh", bash_in("npm test", response={
+            "type": "tool_result", "tool_use_id": "toolu_x", "is_error": True,
+            "content": "Exit code 1\nnpm ERR! test failed"}), proj)
+        case("ledger: observed tool_result dict with is_error earns no credit",
+             lines() == [], "got %r" % lines())
+
+        # And the success path must still record, in both shapes, or the floor
+        # would block work that did run.
+        for label, ok_response in (
+                ("string", "PASS  12 tests"),
+                ("dict", {"type": "tool_result", "tool_use_id": "toolu_y",
+                          "is_error": False, "content": "PASS  12 tests"})):
+            reset(commands={"api": "npm test"})
+            run("exec-ledger.sh", bash_in("npm test", response=ok_response), proj)
+            case(f"ledger: a successful run still earns credit ({label})",
+                 any(l.split("\t")[2:3] == ["exec"] for l in lines()),
+                 "got %r" % lines())
+
         reset(commands={"ui": "npm run build"})
         run("exec-ledger.sh", bash_in("git status"), proj)
         case("ledger: unrelated command records nothing", lines() == [], "got %r" % lines())

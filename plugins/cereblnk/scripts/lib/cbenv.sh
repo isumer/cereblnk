@@ -37,6 +37,14 @@ cb_require_python() {
 _cb_under() { case "$1" in "$2"|"$2"/*) return 0;; *) return 1;; esac; }
 _cb_is_forbidden_root() {
   [ -n "${HOME:-}" ] && [ "$1" = "$HOME" ] && return 0
+  # The Claude config tree is never a project, and the plugin's own installed
+  # payload lives inside it. Without this, running a script with the cwd in
+  # that payload took the "no marker found, use $PWD" branch and created
+  # .claude/cereblnk/ under the plugin cache — runtime state written into the
+  # install directory, which then asked for permission to delete.
+  for _c in "${CLAUDE_CONFIG_DIR:-}" "${HOME:+$HOME/.claude}"; do
+    [ -n "$_c" ] && _cb_under "$1" "${_c%/}" && return 0
+  done
   for _t in "${TMPDIR:-}" "${TMP:-}" "${TEMP:-}" /tmp /var/tmp; do
     [ -n "$_t" ] && _cb_under "$1" "${_t%/}" && return 0
   done

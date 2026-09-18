@@ -72,10 +72,12 @@ requirements, documentation intake and technical writing. `context/`
 covers compression, evidence collection, memory building, merging and
 archiving.
 
-**Constraints** (`rules/`) — loaded per task by `scripts/select-rules`
-rather than all at once, because context is the expensive resource.
+**Constraints** (`rules/`) — the technology-neutral floor arrives at
+session start; the rest is selected per task by `scripts/select-rules`,
+which emits the constraints rather than files to read. Context is the
+expensive resource, so both halves are projections, not whole files.
 
-**Hooks** (`hooks/`) — twenty-two scripts across eight Claude Code events:
+**Hooks** (`hooks/`) — twenty-four scripts across eight Claude Code events:
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`,
 `SubagentStop`, `SessionStart`, `SessionEnd`. Fifteen of them block;
 seven record or observe.
@@ -462,7 +464,7 @@ migration, money and production-config work is always level 3.
 ## Status & maturity
 
 Current contents: **27 agents · 96 skills (19 of them entry points) ·
-163 constraint files · 23 hooks · 51 verify suites** (count them:
+163 constraint files · 24 hooks · 53 verify suites** (count them:
 `find plugins/cereblnk/agents -name '*-agent.md' | wc -l`,
 `find plugins/cereblnk/skills -name SKILL.md | wc -l`,
 `ls plugins/cereblnk/hooks/scripts/*.sh | wc -l`). `scripts/check-readme`
