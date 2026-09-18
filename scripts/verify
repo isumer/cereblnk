@@ -3,13 +3,26 @@
 
 Usage: scripts/verify        Exit: 0 all green · 1 any failure
 """
-import os, pathlib, re, subprocess, sys, tempfile
+import os, pathlib, re, shutil, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 S = ROOT / "scripts"; PS = ROOT / "plugins/cereblnk/scripts"
 
 def sh(cmd, stdin=None):
     return subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+
+# Counts get published as words too. Only the range the tree can plausibly
+# reach is listed; an unknown word is skipped rather than guessed at.
+WORD_COUNTS = {f"{t}-{u}": tens + units
+               for t, tens in (("twenty", 20), ("thirty", 30), ("forty", 40),
+                               ("fifty", 50), ("sixty", 60), ("seventy", 70),
+                               ("eighty", 80), ("ninety", 90))
+               for u, units in (("one", 1), ("two", 2), ("three", 3),
+                                ("four", 4), ("five", 5), ("six", 6),
+                                ("seven", 7), ("eight", 8), ("nine", 9))}
+WORD_COUNTS.update({"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+                    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90})
+
 
 def main():
     results, bad = [], 0
@@ -120,6 +133,34 @@ def main():
     outside = root_of(env_root / "proj/sub", env_root / "proj/sub")
     if str(env_root / "proj/sub") not in outside:
         fw.append("an explicit project dir was overridden from below")
+    # Reported from a real 1.6.0 session: running a script with the cwd inside
+    # the plugin's own installed payload took the "no marker, use $PWD" branch
+    # and created .claude/cereblnk/ THERE — runtime state written into the
+    # install directory, which then asked permission to delete its own files.
+    # The config tree is never a project; $HOME stays the deliberate fallback.
+    # NOT under a temp dir: the pre-existing /tmp guard would catch that on its
+    # own and the case would pass against a build with no config-dir guard at
+    # all. This lives under the repo so only the config-dir rule can reject it.
+    cfg = ROOT / ".cb-config-probe" / ".claude"
+    payload = cfg / "plugins/cache/mk/cereblnk/9.9.9/scripts"
+    try:
+        payload.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        env["CLAUDE_CONFIG_DIR"] = str(cfg)
+        # HOME must be the config dir's parent, as it is in reality, or the
+        # upward walk finds this probe's own `.claude` and returns before the
+        # $PWD branch the guard lives in — the case would pass either way.
+        env["HOME"] = str(cfg.parent)
+        r = subprocess.run(["bash", "-c", f'. "{cbenv}"; printf "%s" "$CB_DIR"'],
+                           cwd=str(payload), env=env,
+                           capture_output=True, text=True)
+        if str(payload) in r.stdout:
+            fw.append(f"state lands inside the installed payload: {r.stdout}")
+        if (payload / ".claude").exists():
+            fw.append("a .claude tree was created inside the installed payload")
+    finally:
+        shutil.rmtree(ROOT / ".cb-config-probe", ignore_errors=True)
     suite("run flag is armed by a mechanism", not fw, "; ".join(fw[:3]))
 
     xb = sh([sys.executable, str(S / "check-exec-bit")])
@@ -445,7 +486,7 @@ def main():
     # Published suite counts drifted to 29/30 while verify ran 44.
     # The three count checks below have not appended yet; the reconciliation
     # at the end of main() fails the run if this stops being true.
-    PENDING = 3
+    PENDING = 5
     total = len(results) + PENDING
     stale = []
     for label, path in (("README", ROOT / "README.md"),
@@ -470,13 +511,80 @@ def main():
                          ROOT / "docs/assets/systems-note/note.html")):
         if not path.exists():
             continue
-        m = re.search(r"(\d+)\s+hooks", path.read_text())
-        if not m:
+        body = path.read_text()
+        found = False
+        # Every occurrence, not just the first: the suite check already learned
+        # that a second number in prose is where drift hides.
+        for m in re.finditer(r"(\d+)\s+(?:hooks|hook scripts)", body):
+            found = True
+            if int(m.group(1)) != hooks:
+                hook_stale.append(f"{label} says {m.group(1)}")
+        # Spelled out, which is how "twenty-two scripts" survived a numeric
+        # check for two releases while 24 shipped.
+        for m in re.finditer(r"\b([a-z]+(?:-[a-z]+)?)\s+(?:hooks|scripts)\b",
+                             body, re.I):
+            n = WORD_COUNTS.get(m.group(1).lower())
+            if n is None:
+                continue
+            found = True
+            if n != hooks:
+                hook_stale.append(f"{label} spells {m.group(1)}")
+        if not found:
             hook_stale.append(f"{label} publishes no hook count")
-        elif int(m.group(1)) != hooks:
-            hook_stale.append(f"{label} says {m.group(1)}")
     suite("published hook counts", not hook_stale,
           "; ".join(hook_stale) + f" — {hooks} ship" if hook_stale else "")
+
+    # A stack token a skill declares but detect-stack can never emit is a rule
+    # that vanishes the moment a profile exists, and only --explain says why.
+    # `csharp` was exactly that: a C# project names itself in a per-project
+    # .csproj, PRESENCE matches fixed filenames, so a repo with a Dockerfile
+    # profiled as `docker` alone and lost every csharp rule.
+    ds = (PS / "detect-stack").read_text()
+    emits = set(re.findall(r'found\.add\("([a-z0-9-]+)"\)', ds))
+    for lst in re.findall(r"\[((?:\s*\"[a-z0-9-]+\"\s*,?)+)\]", ds):
+        emits |= set(re.findall(r'"([a-z0-9-]+)"', lst))
+    sys.path.insert(0, str(PS / "lib"))
+    tok_bad = []
+    try:
+        import cbmap
+        declared = {r.get("stack") for r in cbmap.load()[0] if r.get("stack")}
+        if not declared or not emits:
+            tok_bad.append("could not read the declared or emitted tokens")
+        for t in sorted(declared - emits):
+            tok_bad.append(f"{t} is declared but detect-stack never emits it")
+    except Exception as exc:
+        tok_bad.append(f"could not compare: {exc}")
+    suite("every declared stack token is detectable", not tok_bad,
+          "; ".join(tok_bad[:3]))
+
+    # 35 skills were rewritten to call `select-rules --constraints`. A typo in
+    # that flag would not fail: select-rules drops unknown `--` args and falls
+    # back to listing files, so the run would silently pay the old cost. Pin
+    # the flags the skills ask for against the ones the script implements.
+    # Read every `--flag` literal the script names rather than the shape of one
+    # `in argv` test: the first version of this check coupled to
+    # `"--x" in sys.argv[1:]` and went red the moment that variable was
+    # renamed, which is a brittleness the check is supposed to catch, not have.
+    sel_src = (PS / "select-rules").read_text()
+    known = set(re.findall(r'"(--[a-z][a-z-]*)"', sel_src))
+    flag_bad = []
+    if not known:
+        flag_bad.append("could not read any flag out of select-rules")
+    for f in sorted((ROOT / "plugins/cereblnk/skills").rglob("SKILL.md")):
+        for m in re.finditer(r"select-rules((?:\s+--[a-z-]+)*)", f.read_text()):
+            for flag in m.group(1).split():
+                if flag not in known:
+                    flag_bad.append(f"{f.parent.name} asks for {flag}")
+    # And the sweep must have actually landed: a skill that still asks for the
+    # file list is paying three times the tokens for the same constraints.
+    listing = [f.parent.name
+               for f in sorted((ROOT / "plugins/cereblnk/skills").rglob("SKILL.md"))
+               if "constraint files to read" in f.read_text()]
+    if listing:
+        flag_bad.append(f"{len(listing)} skills still ask for files to read "
+                        f"({', '.join(listing[:3])})")
+    suite("skills call select-rules as it is implemented", not flag_bad,
+          "; ".join(flag_bad[:3]))
 
     # "One of the 48 suites" drifted twice while "N verify suites" was checked:
     # a second number in prose that no check covered. Prose carries no count now.

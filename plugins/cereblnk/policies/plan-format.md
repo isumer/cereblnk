@@ -15,6 +15,23 @@ committed plan may also live at
 `.claude/cereblnk/memory/plans/<slug>-<date>.md`. A task is done only
 when its live checkbox is `[x]` and its required evidence exists.
 
+## 1b. Where an authored document lands
+
+A document a run produces for the user to read — an analysis, a review write-up,
+a comparison, a findings summary — goes under
+`.claude/cereblnk/docs/<slug>-<date>.md`.
+
+It does NOT go in the project's own `docs/`. That directory belongs to the
+project being worked on, and a run that drops its working notes there mixes
+generated commentary into a tree the user maintains by hand. Until this was
+written down the location was never stated at all, so a run picked `docs/` by
+convention and the user had to move the file.
+
+Two neighbours, deliberately distinct:
+- `memory/specs/` is the source of truth a plan is built FROM — an agreed
+  specification, cited in the plan header.
+- `docs/` is output a run produced ABOUT the code. Nothing is planned from it.
+
 ## 2. Header (linter-enforced — all fields required)
 
 ```markdown

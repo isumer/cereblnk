@@ -113,6 +113,13 @@ for dirpath, dirnames, filenames in os.walk(root):
     for fn in filenames:
         if fn.endswith(".tf"):
             found.add("terraform")
+        # A C# project names itself in a per-project file, not a fixed manifest,
+        # so PRESENCE could never match it. `csharp` was the one stack token a
+        # skill declared and this script could not emit: with any other manifest
+        # present the profile would say `docker` alone and the gate would drop
+        # every csharp rule, naming the reason only under --explain.
+        elif fn.endswith((".csproj", ".sln")):
+            found.add("csharp")
         elif re.search(r"changelog.*\.(xml|ya?ml|sql)$", fn, re.I):
             found.add("liquibase")
     if rel.parts and rel.parts[-1] in ("k8s", "kubernetes"):

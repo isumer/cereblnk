@@ -30,6 +30,10 @@ hides "make X adoptable by a specific reader"; naming that reader is
 step one). Trap **#4**: exhaustive reference dumps that bury the one
 path most readers need.
 
+## Where the document lands
+
+A document produced for the user to read — an analysis, a review write-up, a comparison, a findings summary — is written to `.claude/cereblnk/docs/<slug>-<date>.md`, never to the project's own `docs/`. That tree is the user's to maintain; a run's commentary does not belong in it. Editing a document the project already owns is a different task and stays where the document is. plan-format §1b.
+
 ## Budget
 
 Default 5,000 tokens. `status: blocked` on missing source evidence,
