@@ -267,14 +267,21 @@ nothing. The rules layer therefore loads explicitly, in three steps.
    actually touches. Globs are per file, never per directory — a
    Spring controller pulls its matching handful, not the whole tree.
    A rule with no file type declares `applies_when:` instead and
-   matches on the task signal (R-4). A glob answers what kind of file
+   matches on the task signal (R-4) — pass the task with `--task "<text>"`
+   or those rules attach to nothing. That match is keyword overlap after
+   crude stemming, not comprehension: it only ever ADDS a rule, so a miss
+   leaves the rule excluded and a false hit costs tokens, never a
+   constraint. Ten rules under `architecture/`, `governance/` and
+   `security/` reach an agent only this way. A glob answers what kind of file
    this is; it cannot answer whether the framework is part of the
    project. `scripts/select-rules <path>` applies both — the glob and
-   the stack token the owning skill declares — and returns the list to
-   read. A framework rule for a dependency the project never declared
+   the stack token the owning skill declares. With `--constraints` it
+   emits those constraints rather than a list of files to open, which is
+   the same constraints for a third of the tokens. A framework rule for a dependency the project never declared
    is not a floor, it is the wrong project's idioms.
-3. **The common layer is read once per run**, not once per matched
-   file. `rules/common/` carries what holds regardless of language.
+3. **The common layer is not read at all.** `rules/common/` carries what
+   holds regardless of language, and RuleFloorHook puts it in context at
+   session start, so no run spends tokens fetching it.
 
 **Who reads them.** The executing specialist, never the conductor.
 Rules are file contents, and run-discipline §2 puts file contents in

@@ -34,6 +34,12 @@ TASK = ["src/main/java/com/x/UserService.java",
         "src/components/Button.tsx"]
 TASK_BUDGET = 20000
 
+# The --constraints projection must stay at or under this share of reading the
+# whole files. Measured 2026-09-09 across every path above: 0.333 best,
+# 0.347 worst, so the projection saves 65-67%. A ratchet — it comes down as
+# the projection tightens, and fails the run if the saving regresses.
+PROJECTION_MAX = 0.37
+
 
 def tokens(rel):
     p = RULES / rel
@@ -90,6 +96,34 @@ def main():
 
     if over:
         for line in over:
+            print("check-rule-budget: %s" % line, file=sys.stderr)
+        return 1
+
+    # The projection is what an agent actually pays once it stops reading whole
+    # rule files. Ratchet it separately: the saving is a number, so it can
+    # regress silently unless something fails when it does.
+    proj_over = []
+    for path, ceiling in sorted(BUDGET.items()):
+        r = subprocess.run([sys.executable, str(SELECT), "--constraints", path],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        if r.returncode != 0:
+            print("check-rule-budget: --constraints failed on %s" % path,
+                  file=sys.stderr)
+            return 2
+        proj = len(r.stdout) // 4
+        whole = next(c for p, _, c, _ in rows if p == path)
+        if proj > whole * PROJECTION_MAX:
+            proj_over.append("%s projects to %d of %d tokens (%.0f%%), over the "
+                             "%.0f%% ceiling" % (path, proj, whole,
+                                                 100 * proj / whole,
+                                                 100 * PROJECTION_MAX))
+        if report:
+            print("  %-4s %-44s %6d / %6d  (%.0f%% of whole)"
+                  % ("ok" if proj <= whole * PROJECTION_MAX else "OVER",
+                     path + "  --constraints", proj, int(whole * PROJECTION_MAX),
+                     100 * proj / whole))
+    if proj_over:
+        for line in proj_over:
             print("check-rule-budget: %s" % line, file=sys.stderr)
         return 1
 

@@ -3,13 +3,16 @@
 
 Exit: 0 all pass · 1 any case failed
 """
+import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "plugins/cereblnk/scripts/select-rules"
+RULES = ROOT / "plugins/cereblnk/rules"
 
 PROFILE = """root: {root}
 tokens:
@@ -19,6 +22,48 @@ tokens:
 manifests:
   - pom.xml
 """
+
+
+def _load_select_rules():
+    """select-rules has no .py suffix; import it by loader to reuse skeleton()."""
+    import importlib.machinery, importlib.util, sys as _sys
+    # Loading a plugin script must not leave a .pyc beside it: the reload
+    # copies whatever is in the tree into the packaged payload.
+    _prev, _sys.dont_write_bytecode = _sys.dont_write_bytecode, True
+    spec = importlib.util.spec_from_loader(
+        "cb_select_rules",
+        importlib.machinery.SourceFileLoader("cb_select_rules", str(SCRIPT)))
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        _sys.dont_write_bytecode = _prev
+    return mod
+
+
+def skeleton_of(text, rel):
+    return _load_select_rules().skeleton(text, rel)
+
+
+def source_bullets(text):
+    """Bullets as the source reads them: fences and the trigger table out,
+    wrapped continuations joined, so a truncation shows up as a mismatch."""
+    text = re.sub(r"^---\n.*?\n---\n", "", text, flags=re.S)
+    text = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+    text = re.sub(r"^## Trigger table.*?(?=^## |\Z)", "", text,
+                  flags=re.M | re.S)
+    out, wrap = [], False
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            wrap = False
+        elif s.startswith("- "):
+            out.append(s); wrap = True
+        elif wrap and not s.startswith("#") and not s.startswith("Avoid:"):
+            out[-1] += " " + s
+        else:
+            wrap = False
+    return out
 
 
 def run(cwd, *args):
@@ -69,10 +114,154 @@ def main():
         check("S-4 format rules survive without a token",
               "languages/sql/" in r.stdout, "a language rule was gated")
 
+        # S-8: `$HOME/.claude/cereblnk` is the last-resort runtime for any cwd
+        # that cannot host state, so profiles from unrelated throwaways collect
+        # there. One found in practice recorded a /tmp root with tokens
+        # [docker]; read as this project's, it gates out every java and react
+        # rule silently. detect-stack has always recorded the root — nothing
+        # read it back.
+        foreign = pathlib.Path(td) / "foreign"
+        (foreign / ".claude/cereblnk/context").mkdir(parents=True)
+        (foreign / ".claude/cereblnk/context/stack-profile.yaml").write_text(
+            PROFILE.format(root="/somewhere/else/entirely"), encoding="utf-8")
+        r = run(foreign, "src/components/Widget.tsx")
+        check("S-8 a profile recorded for another root is not applied",
+              "absent — no gate applied" in r.stdout,
+              "a foreign project's tokens gated this one")
+        check("S-8b rejecting it disables the gate rather than guessing",
+              "gated out" not in r.stdout, "rules were dropped on a stale profile")
+
         for cwd, label in ((bare, "no profile"), (gated, "with profile")):
             r = run(cwd, "src/main/java/Order.java")
             check(f"S-6 common/ is returned ({label})",
                   r.stdout.count("- common/") >= 5, r.stdout[-120:])
+
+        # --constraints: the projection that lets an agent skip reading the
+        # files. What it drops must be metadata or demonstration, never a
+        # constraint — so each case below names something that must survive.
+        c = run(bare, "--constraints", "src/main/java/Order.java")
+        full = sum(len((RULES / r).read_text(errors="replace"))
+                   for r in (m.group(1).strip() for m in re.finditer(
+                       r"^\s+-\s+(.+)$", run(bare, "src/main/java/Order.java").stdout,
+                       re.M)))
+        check("C-1 constraints mode emits bullets",
+              c.stdout.count("\n- ") > 40, c.stdout[:120])
+        check("C-2 frontmatter is gone",
+              "genre: constraint" not in c.stdout, "frontmatter leaked")
+        # The routing rows are `|` lines, so the prose default drops them even
+        # without the explicit strip — this asserts the contract, not the line.
+        check("C-3 the trigger table does not reach the output",
+              "Seen in the diff" not in c.stdout and "Trigger table" not in c.stdout,
+              "routing rows leaked")
+        # C-4 needs a YAML target, not Java: the only fenced lines that would
+        # leak are `- ` and `#` ones inside YAML/shell examples. On a Java file
+        # every fenced line is prose-shaped and the default drops it, so the
+        # test would pass against a build with no fence handling at all.
+        y = run(bare, "--constraints", "k8s/deployment.yaml")
+        check("C-4 a fenced example cannot pose as a constraint",
+              "DB_PASSWORD" not in y.stdout and "#!/usr/bin/env" not in y.stdout,
+              "a line inside a fenced example was emitted as a bullet")
+        check("C-5 headings survive for structure",
+              c.stdout.count("\n## ") > 15, "sections lost their headings")
+        # The bug this guards: a bullet wrapped over two source lines was
+        # emitted truncated, losing whatever the continuation said. Both
+        # strings below live ONLY on a continuation line — asserting on the
+        # first line would pass against the truncating version.
+        check("C-6 a wrapped bullet keeps its continuation",
+              "one tool, one config" in c.stdout,
+              "a wrapped constraint was truncated at the line break")
+        check("C-6b a second wrapped bullet survives",
+              "reverse domain" in c.stdout, "continuation dropped")
+        # The one drop that costs a constraint, so it is pinned in both
+        # directions: security keeps its concrete failure shapes, and the
+        # rest go. Either half regressing silently would be invisible.
+        check("C-7 a security Avoid keeps its concrete shapes",
+              "concatenated into a query" in c.stdout,
+              "the injection shape was dropped from a security rule")
+        check("C-7b a non-security Avoid is dropped",
+              "two public types in one file" not in c.stdout,
+              "a derivable Avoid line survived")
+        check("C-7c some Avoid lines still reach the output",
+              c.stdout.count("Avoid:") >= 4,
+              "every Avoid line was dropped, security included")
+        check("C-8 the projection is materially smaller",
+              0 < len(c.stdout) < full * 0.7,
+              f"{len(c.stdout)} vs {full} raw")
+
+        # R-4's other half. Ten rules under architecture/, governance/ and
+        # security/ declare applies_when and no paths, so before --task no
+        # path selected them at all and the policy documented a mechanism that
+        # did not exist. Pinned in both directions, because a matcher that
+        # fires on everything is as useless as one that fires on nothing.
+        def cross(task):
+            o = run(bare, "--task", task, "src/main/java/Order.java").stdout
+            return [l.strip()[2:] for l in o.splitlines()
+                    if l.strip().startswith("- ")
+                    and l.strip()[2:].split("/")[0] in
+                    ("architecture", "governance", "security")]
+
+        check("T-1 an architectural task reaches the path-less rules",
+              len(cross("define the contract between the billing and ledger"
+                        " systems")) >= 2,
+              "a rule with only applies_when stayed unreachable")
+        check("T-2 a superseded decision reaches governance",
+              any("decisions" in r for r in
+                  cross("record an architecture decision that supersedes the"
+                        " old one")),
+              "stemming failed: supersedes never met superseded")
+        for chore in ("rename a variable", "fix a typo in a comment",
+                      "bump the jackson version", "make the button green"):
+            check(f"T-3 an ordinary chore pulls none ({chore.split()[0]})",
+                  not cross(chore), f"{cross(chore)} for {chore!r}")
+        check("T-4 no task means no path-less rule, as before",
+              not [l for l in run(bare, "src/main/java/Order.java").stdout.splitlines()
+                   if l.strip().startswith("- architecture/")],
+              "the glob path changed behaviour without a task")
+
+        # The floor and this mode both deliver common/, and end-to-end that
+        # duplicate cost 1,805 tokens per file: the parts measured 67% while a
+        # real one-file task saved 49%. The marker decides, and all three
+        # states are pinned because two of them are the safe fallback.
+        def with_marker(session_in_marker, session_in_env):
+            proj = pathlib.Path(td) / f"m-{session_in_marker}-{session_in_env}"
+            (proj / ".claude/cereblnk/flags").mkdir(parents=True)
+            (proj / ".git").mkdir()
+            if session_in_marker:
+                (proj / ".claude/cereblnk/flags/rule-floor").write_text(
+                    session_in_marker, encoding="utf-8")
+            env = dict(os.environ)
+            env["CLAUDE_CODE_SESSION_ID"] = session_in_env
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT), "--constraints",
+                 "src/main/java/Order.java"],
+                cwd=str(proj), env=env, capture_output=True, text=True)
+            return r.stdout.count("<!-- common/")
+
+        check("F-1 the floor's own session skips common/",
+              with_marker("sess-a", "sess-a") == 0,
+              "common/ was sent twice in one session")
+        check("F-2 a marker from another session does not count",
+              with_marker("sess-old", "sess-new") == 10,
+              "a stale marker suppressed the floor layer")
+        check("F-3 no marker means common/ ships, as it must",
+              with_marker("", "sess-a") == 10,
+              "a failed floor would leave the session with no common/ at all")
+
+        # C-9 is the claim the whole projection rests on, checked over every
+        # rule file rather than the handful a path happens to select: a bullet
+        # is a constraint, and no bullet may be dropped or truncated. The Avoid
+        # trade is deliberate and scoped; silently losing a bullet would not be.
+        lost, seen = [], 0
+        for rf in sorted(RULES.rglob("*.md")):
+            body = rf.read_text(encoding="utf-8", errors="replace")
+            proj = skeleton_of(body, str(rf.relative_to(RULES)))
+            for bullet in source_bullets(body):
+                seen += 1
+                if bullet not in proj:
+                    lost.append(f"{rf.relative_to(RULES)}: {bullet[:50]}")
+        check("C-9 no constraint bullet is lost anywhere in the tree",
+              not lost and seen > 1000,
+              f"{len(lost)} lost of {seen} ({'; '.join(lost[:2])})")
 
     if fails:
         print("test-select-rules:")
