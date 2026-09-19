@@ -607,6 +607,53 @@ def main():
         check("history-archive: missing transcript never blocks compaction",
               archive(proj, "").returncode == 0, "non-zero exit on a missing transcript")
 
+        # CB-185: the constraint floor reaches context on SessionStart. It
+        # must be constraints, must be opt-outable, and must never cost the
+        # session anything when it cannot run.
+        rf = run("rule-floor.sh", "", proj)
+        check("rule-floor: exits 0 and emits SessionStart additionalContext",
+              rf.returncode == 0 and '"hookEventName": "SessionStart"' in rf.stdout,
+              f"rc={rf.returncode} out={rf.stdout[:120]!r}")
+        try:
+            ctx = json.loads(rf.stdout)["hookSpecificOutput"]["additionalContext"]
+        except Exception:
+            ctx = ""
+        check("rule-floor: carries the common/ constraints",
+              ctx.count("\n- ") > 50, f"{ctx.count(chr(10) + '- ')} bullets")
+        # The projection is the whole reason a per-session injection is
+        # defensible, so pin that this is the projection and not the files.
+        check("rule-floor: injects the projection, not the raw files",
+              "```" not in ctx and "genre: constraint" not in ctx,
+              "a fenced example or frontmatter reached the context")
+        check("rule-floor: keeps the security failure shapes",
+              "concatenated into a query" in ctx, "security Avoid lines lost")
+        check("rule-floor: says it is constraints, not instructions for the reply",
+              "not instructions for this" in ctx, "the framing line is missing")
+        # The marker is what lets select-rules stop appending common/ on top of
+        # the floor. It must name the session, or a marker left by an earlier
+        # one would suppress the layer in a session that never received it.
+        sid = "8f14e45f-ceea-467a-9f7d-1b2c3d4e5f60"
+        marker = proj / ".claude/cereblnk/flags/rule-floor"
+        marker.unlink(missing_ok=True)
+        run("rule-floor.sh",
+            json.dumps({"session_id": sid, "hook_event_name": "SessionStart"}),
+            proj)
+        check("rule-floor: records the session it injected for",
+              marker.is_file() and marker.read_text().strip() == sid,
+              f"marker={marker.read_text().strip()[:40] if marker.is_file() else 'absent'}")
+        # A floor that injected nothing must leave no marker, or select-rules
+        # would drop common/ for a session that never got it.
+        marker.unlink(missing_ok=True)
+        run("rule-floor.sh", json.dumps({"session_id": sid}), proj,
+            extra_env={"CB_RULE_FLOOR": "0"})
+        check("rule-floor: opted out writes no marker",
+              not marker.exists(), "a marker was left without an injection")
+
+        off = run("rule-floor.sh", "", proj, extra_env={"CB_RULE_FLOOR": "0"})
+        check("rule-floor: CB_RULE_FLOOR=0 injects nothing",
+              off.returncode == 0 and not off.stdout.strip(),
+              f"rc={off.returncode} out={off.stdout[:80]!r}")
+
         # CB-171: stale-run may warn, but never infer another run, mutate the flag, or block startup.
         def stale_project(name, plan_body=None, hours_old=13,
                           pin="R-2026-08-31-001"):
@@ -941,7 +988,7 @@ def main():
     if fails:
         print("\n".join("FAIL " + x for x in fails), file=sys.stderr)
         print(f"test-hooks: {len(fails)}/{ran} failed", file=sys.stderr); return 1
-    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, stale-run, scratch-guard, tool-floor, destructive-command)")
+    print(f"test-hooks: {ran} checks passed (delegation, secret, boundary, run-guard, digest-cap, context-monitor, history-archive, stale-run, rule-floor, scratch-guard, tool-floor, destructive-command)")
     return 0
 
 if __name__ == "__main__":

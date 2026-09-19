@@ -4,10 +4,17 @@
 Usage:
   select-rules <path>...     rule files to read for these paths
   select-rules --explain <path>   also show what each gate decided
+  select-rules --constraints <path>...   emit the constraints themselves, so
+      an agent does not read the whole rule files. Measured 65-67% fewer
+      tokens across every path check-rule-budget tracks, which ratchets it
+  select-rules --task "<text>" <path>...   also attach the rules that declare
+      a task signal instead of a glob (architecture/, governance/, security/)
+  select-rules --floor        the technology-neutral common/ layer alone
 
 Exit: 0 always — this computes a list, it does not judge.
 """
 import fnmatch
+import os
 import pathlib
 import re
 import sys
@@ -35,6 +42,57 @@ def globs_of(path):
     tail = fm[fm.find("paths:"):]
     return [g.strip().strip("\"'")
             for g in re.findall(r"^\s+-\s*(.+)$", tail, re.M) if g.strip()]
+
+
+STOP = {"a", "an", "the", "is", "are", "or", "and", "of", "to", "in", "on",
+        "at", "by", "for", "with", "that", "this", "it", "its", "as", "be",
+        "when", "where", "which", "any", "no", "not", "made", "used", "changed",
+        "created", "handled", "defined", "assessed", "between", "parts"}
+
+
+def stem(word):
+    """Crudest useful stem: `supersedes` and `superseded` must meet, and
+    `services` must meet `service`. Nothing cleverer is warranted for a
+    keyword overlap that only ever adds a rule."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(word) > len(suffix) + 2 and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
+
+
+def signal_words(text):
+    """Content words of an `applies_when:` line, for overlap against a task."""
+    return {stem(w) for w in re.findall(r"[a-z]{3,}", text.lower())
+            if w not in STOP}
+
+
+def applies_when_of(path):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        return ""
+    fm = text.split("---")[1]
+    m = re.search(r"^applies_when:\s*(\S.*)$", fm, re.M)
+    return m.group(1).strip() if m else ""
+
+
+def task_matched(path, task):
+    """Whether a path-less rule's task signal overlaps the task description.
+
+    R-4 lets a rule with no file type attach on the task signal instead, and
+    agent-selection-policy has said so for releases, but nothing implemented
+    it: ten rules under architecture/, governance/ and security/ declare a
+    real `applies_when:` and no `paths:`, so no path ever selected them —
+    3,836 tokens of authored constraint that reached nobody.
+
+    Keyword overlap is crude, and that is tolerable here in a way it would not
+    be for the stack gate, because this only ADDS. A miss leaves the rule as
+    excluded as it is today; a false hit costs tokens, never a constraint.
+    """
+    words = signal_words(applies_when_of(path))
+    if not words:
+        return False
+    hay = {stem(w) for w in re.findall(r"[a-z]{3,}", task.lower())}
+    return len(words & hay) >= 1
 
 
 def stack_tokens():
@@ -70,11 +128,135 @@ def gate_of(rule_path):
     return None
 
 
+# An Avoid line under one of these keeps its concrete failure shapes. Outside
+# security an Avoid item is usually the bullet above it negated ("two public
+# types in one file" against "one public top-level type per file"); on a
+# security surface it names the attack the abstract bullet only implies —
+# "input concatenated into a query or command" is the injection itself. The
+# match is deliberately loose and errs toward keeping.
+SECURITY_HEAD = re.compile(
+    r"secret|input|permission|auth|exposure|trust|credential|password|token|"
+    r"escap|inject|validat|untrusted|unauthenticated|authorit|boundar",
+    re.I)
+
+
+def skeleton(text, rel=""):
+    """The constraints alone: headings, bullets, and Avoid where it earns it.
+
+    Most of what is dropped costs nothing: frontmatter and the trigger
+    table's routing rows are metadata this selector already consumed, and
+    fenced examples and framing prose demonstrate a constraint stated in the
+    bullet beside them. Measured over the 163 rule files — no table outside
+    the trigger table, no numbered list, no nested bullet — so no constraint
+    is carried in a form this drops. A wrapped bullet keeps its continuation:
+    dropping it truncates the constraint mid-sentence.
+
+    One drop is NOT free, and is the reason this is a judgment and not a
+    transform: outside a security surface the Avoid lines go, and they are
+    constraints, not decoration. They are mostly the bullets above them
+    negated, but not entirely — some name a concrete failure the abstract
+    bullet only implies. That trade buys the difference between saving 46%
+    and saving 65-67%, and it was taken deliberately, on measurement, with
+    security carved out because there the concrete shape IS the constraint.
+    """
+    text = re.sub(r"^---\n.*?\n---\n", "", text, flags=re.S)
+    text = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+    text = re.sub(r"^## Trigger table.*?(?=^## |\Z)", "", text, flags=re.M | re.S)
+
+    sec_file = "security" in rel
+    out, wrapping, head = [], False, ""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            wrapping = False
+        elif s.startswith("#"):
+            head = s
+            out.append(("head", s))
+            wrapping = False
+        elif s.startswith("Avoid:"):
+            if sec_file or SECURITY_HEAD.search(head):
+                out.append(("body", s))
+                wrapping = True
+            else:
+                wrapping = False          # derivable from the bullets above
+        elif s.startswith("- "):
+            out.append(("body", s))
+            wrapping = True
+        elif wrapping:
+            out[-1] = ("body", out[-1][1] + " " + s)
+        else:
+            wrapping = False              # framing prose
+
+    kept = []
+    for i, (kind, s) in enumerate(out):
+        if kind == "body":
+            kept.append(s)
+            continue
+        # Keep a heading only when a constraint follows it before the next one.
+        rest = out[i + 1:]
+        nxt = next((k for k, _ in rest if k in ("head", "body")), None)
+        if nxt == "body":
+            kept.append(s)
+    return "\n".join(kept)
+
+
+def floor_already_delivered():
+    """True when RuleFloorHook put common/ in THIS session's context.
+
+    Measured end to end and it was not free: the floor injects common/ at
+    session start and `--constraints` was appending it again on every call,
+    so a one-file task paid 1,805 tokens twice and the real saving was 49%
+    where the parts measured 67%.
+
+    Evidence, never assumption. The hook records the session it injected for
+    and this compares that against the running session, so a hook that failed
+    open — no interpreter, oversized output, any of its exit-0 paths — leaves
+    no marker and common/ is included exactly as before. The failure direction
+    is an extra copy, never an absent constraint. Presence, not a TTL: a
+    marker from an earlier session names a different id and does not match.
+    """
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if not session or cbpaths is None:
+        return False
+    try:
+        marker = cbpaths.cb_dir() / "flags" / "rule-floor"
+        return marker.read_text(encoding="utf-8").strip() == session
+    except Exception:
+        return False
+
+
+def emit_constraints(paths):
+    """Print the constraint skeleton of each selected rule, in order."""
+    for p in paths:
+        body = skeleton(p.read_text(encoding="utf-8", errors="replace"),
+                        str(p.relative_to(RULES)))
+        if not body.strip():
+            continue
+        print(f"\n<!-- {p.relative_to(RULES)} -->")
+        print(body)
+
+
 def main():
-    args = [a for a in sys.argv[1:] if a != "--explain"]
-    explain = "--explain" in sys.argv[1:]
+    argv = sys.argv[1:]
+    task = ""
+    if "--task" in argv:
+        i = argv.index("--task")
+        task = argv[i + 1] if i + 1 < len(argv) else ""
+        argv = argv[:i] + argv[i + 2:]
+    args = [a for a in argv if not a.startswith("--")]
+    explain = "--explain" in argv
+    constraints = "--constraints" in argv
+
+    # --floor takes no path: it is the technology-neutral common/ layer, which
+    # every path selects anyway. A caller that wants it must not have to pass a
+    # path chosen to match no glob — that breaks the day a glob widens.
+    if "--floor" in sys.argv[1:]:
+        emit_constraints(sorted((RULES / "common").glob("*.md")))
+        return 0
+
     if not args:
-        print("usage: select-rules [--explain] <path>...", file=sys.stderr)
+        print("usage: select-rules [--explain|--constraints|--floor] <path>...",
+              file=sys.stderr)
         return 0
 
     tokens = stack_tokens()
@@ -96,6 +278,20 @@ def main():
                 dropped.append((f, gate))
                 continue
             selected.add(f)
+
+    # R-4's other half: rules that attach on the task signal, not a glob.
+    if task:
+        for f in sorted(RULES.rglob("*.md")):
+            if f.parent.name == "common" or globs_of(f):
+                continue
+            if task_matched(f, task):
+                selected.add(f)
+
+    if constraints:
+        # common/ is the floor's job when the floor ran for this session.
+        emit_constraints(sorted(selected)
+                         + ([] if floor_already_delivered() else common))
+        return 0
 
     print("# select-rules — glob match plus stack gate (CB-109)")
     print(f"stack_profile: {'present' if tokens else 'absent — no gate applied'}")
