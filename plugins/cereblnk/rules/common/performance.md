@@ -62,7 +62,7 @@ rule · staleness nobody agreed to.
 
 ## Bounds
 
-- Every collection paginated, every retry capped, every call timed out
+- Every externally returned collection that can grow without bound is paginated, every retry capped, every call timed out
 
 Avoid: a query returning everything · a retry with no ceiling · an
 outbound call with no timeout.
